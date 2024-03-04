@@ -13,10 +13,10 @@ Currently, pesde is in a very early stage of development, but already supports t
 pesde can be installed from GitHub Releases. You can find the latest release [here](https://github.com/daimond113/pesde/releases).
 It can also be installed by using [Aftman](https://github.com/LPGhatguy/aftman).
 
-## Hosting
+## Registry
 
-The pesde registry is hosted on [fly.io](https://fly.io). You can find the registry [here](https://registry.pesde.daimond113.com).
+The main pesde registry is hosted on [fly.io](https://fly.io). You can find it at https://registry.pesde.daimond113.com.
 
 ## Previous art
 
-pesde is heavily inspired by [npm](https://www.npmjs.com/), [pnpm](https://pnpm.io/), [wally](https://wally.run), and [cargo](https://doc.rust-lang.org/cargo/). It aims to take the best parts of each package manager and combine them into one.
+pesde is heavily inspired by [npm](https://www.npmjs.com/), [pnpm](https://pnpm.io/), [Wally](https://wally.run), and [Cargo](https://doc.rust-lang.org/cargo/).
