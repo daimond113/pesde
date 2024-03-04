@@ -1,3 +1,4 @@
+use anyhow::bail;
 use std::{
     fs::{create_dir_all, read},
     hash::{DefaultHasher, Hash, Hasher},
@@ -184,11 +185,19 @@ fn main() -> anyhow::Result<()> {
 
     let mut header_map = reqwest::header::HeaderMap::new();
     header_map.insert(ACCEPT, "application/json".parse()?);
-    header_map.insert(
-        AUTHORIZATION,
-        format!("Bearer {}", api_token_entry.get_password()?).parse()?,
-    );
     header_map.insert("X-GitHub-Api-Version", "2022-11-28".parse()?);
+
+    match api_token_entry.get_password() {
+        Ok(api_token) => {
+            header_map.insert(AUTHORIZATION, format!("Bearer {api_token}").parse()?);
+        }
+        Err(err) => match err {
+            keyring::Error::NoEntry => {}
+            _ => {
+                bail!("error getting api token from keyring: {err}")
+            }
+        },
+    };
 
     let reqwest_client = reqwest::blocking::Client::builder()
         .user_agent(concat!(
