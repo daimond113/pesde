@@ -1,0 +1,56 @@
+[package]
+name = "pesde"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["daimond113 <contact@daimond113.com>"]
+description = "A package manager for Roblox"
+homepage = "https://pesde.daimond113.com"
+
+[features]
+bin = ["clap", "directories", "keyring", "anyhow", "ignore", "pretty_env_logger", "serde_json", "reqwest/json", "reqwest/multipart", "lune", "futures-executor", "indicatif", "auth-git2", "indicatif-log-bridge"]
+
+[[bin]]
+name = "pesde"
+path = "src/main.rs"
+required-features = ["bin"]
+
+[dependencies]
+serde = { version = "1.0.197", features = ["derive"] }
+serde_yaml = "0.9.32"
+git2 = "0.18.2"
+semver = { version = "1.0.22", features = ["serde"] }
+reqwest = { version = "0.11.24", default-features = false, features = ["rustls-tls", "blocking"] }
+tar = "0.4.40"
+flate2 = "1.0.28"
+pathdiff = "0.2.1"
+relative-path = { version = "1.9.2", features = ["serde"] }
+log = "0.4.20"
+thiserror = "1.0.57"
+threadpool = "1.8.1"
+full_moon = { version = "0.19.0", features = ["stacker", "roblox"] }
+
+clap = { version = "4.5.1", features = ["derive"], optional = true }
+directories = { version = "5.0.1", optional = true }
+keyring = { version = "2.3.2", optional = true }
+anyhow = { version = "1.0.80", optional = true }
+ignore = { version = "0.4.22", optional = true }
+pretty_env_logger = { version = "0.5.0", optional = true }
+serde_json = { version = "1.0.114", optional = true }
+lune = { version = "0.8.0", optional = true }
+futures-executor = { version = "0.3.30", optional = true }
+indicatif = { version = "0.17.8", optional = true }
+auth-git2 = { version = "0.5.3", optional = true }
+indicatif-log-bridge = { version = "0.2.2", optional = true }
+
+[dev-dependencies]
+tempfile = "3.10.1"
+
+[workspace]
+resolver = "2"
+members = [
+    "registry"
+]
+
+[profile.dev.package.full_moon]
+opt-level = 3

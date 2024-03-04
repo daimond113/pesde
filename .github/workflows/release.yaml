@@ -1,0 +1,101 @@
+name: Release
+on:
+  push:
+    tags:
+      - v*
+jobs:
+  build:
+    strategy:
+      matrix:
+       include:
+         - os: ubuntu-latest
+           host: linux
+           label: linux-x86_64
+           target: x86_64-unknown-linux-gnu
+
+         - os: windows-latest
+           host: windows
+           label: windows-x86_64
+           target: x86_64-pc-windows-msvc
+
+         - os: macos-latest
+           host: macos
+           label: macos-x86_64
+           target: x86_64-apple-darwin
+
+         - os: macos-latest-xlarge
+           host: macos
+           label: macos-aarch64
+           target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    name: Build for ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: moonrepo/setup-rust@v1
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Set env
+        shell: bash
+        run: |
+          BIN_NAME=pesde
+          ARCHIVE_NAME=$BIN_NAME-$(echo ${{ github.ref_name }} | cut -c 2-)-${{ matrix.label }}.zip
+          
+          echo "BIN_NAME=$BIN_NAME" >> $GITHUB_ENV
+          echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
+
+      - name: Build
+        run: cargo build --bins --all-features --release --target ${{ matrix.target }} --locked
+
+      - name: Archive
+        shell: bash
+        run: |
+          if [ ${{ matrix.host }} = "windows" ]; then
+            cp target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe ${{ env.BIN_NAME }}.exe
+            7z a ${{ env.ARCHIVE_NAME }} ${{ env.BIN_NAME }}.exe
+          else
+            cp target/${{ matrix.target }}/release/${{ env.BIN_NAME }} ${{ env.BIN_NAME }}
+            zip -r ${{ env.ARCHIVE_NAME }} ${{ env.BIN_NAME }}
+          fi
+
+      - name: Upload assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ${{ env.ARCHIVE_NAME }}
+
+  create_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v3
+        id: git-cliff
+        with:
+          config: cliff.toml
+          args: --verbose --current --strip header --github-repo ${{ github.repository }} --github-token ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.git-cliff.outputs.content }}
+          draft: true
+          prerelease: false
+          files: artifacts/*

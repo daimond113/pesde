@@ -1,0 +1,31 @@
+# fly.toml app configuration file generated for pesde-registry on 2024-03-04T20:57:13+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'pesde-registry'
+primary_region = 'waw'
+kill_signal = 'SIGINT'
+kill_timeout = '5s'
+
+[build]
+
+[env]
+ADDRESS = '0.0.0.0'
+PORT = '8080'
+INDEX_REPO_URL = 'https://github.com/daimond113/pesde-index'
+COMITTER_GIT_NAME = 'Pesde Index Updater'
+COMITTER_GIT_EMAIL = 'pesde@daimond113.com'
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = true
+auto_start_machines = true
+min_machines_running = 0
+processes = ['app']
+
+[[vm]]
+memory = '1gb'
+cpu_kind = 'shared'
+cpus = 1
