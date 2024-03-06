@@ -86,7 +86,10 @@ jobs:
         id: git-cliff
         with:
           config: cliff.toml
-          args: --verbose --current --strip header --github-repo ${{ github.repository }} --github-token ${{ secrets.GITHUB_TOKEN }}
+          args: --verbose --current --strip header
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
 
       - name: Create Release
         id: create_release
@@ -99,3 +102,6 @@ jobs:
           draft: true
           prerelease: false
           files: artifacts/*
+
+      - name: Publish on crates.io
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} --allow-dirty --locked
