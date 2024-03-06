@@ -1,10 +1,11 @@
 use std::{fs::read_dir, sync::Mutex, time::Duration};
 
 use actix_cors::Cors;
+use actix_governor::{Governor, GovernorConfigBuilder, KeyExtractor, SimpleKeyExtractionError};
 use actix_web::{
     dev::ServiceRequest,
     error::ErrorUnauthorized,
-    middleware::{Compress, Condition},
+    middleware::{Compress, Condition, Logger},
     rt::System,
     web, App, Error, HttpMessage, HttpServer,
 };
@@ -73,7 +74,7 @@ pub fn commit_signature<'a>() -> Signature<'a> {
     .unwrap()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct UserId(pub u64);
 
 async fn validator(
@@ -105,6 +106,18 @@ async fn validator(
     req.extensions_mut().insert(UserId(id));
 
     Ok(req)
+}
+
+#[derive(Debug, Clone)]
+struct UserIdKey;
+
+impl KeyExtractor for UserIdKey {
+    type Key = UserId;
+    type KeyExtractionError = SimpleKeyExtractionError<&'static str>;
+
+    fn extract(&self, req: &ServiceRequest) -> Result<Self::Key, Self::KeyExtractionError> {
+        Ok(*req.extensions().get::<UserId>().unwrap())
+    }
 }
 
 fn search_index(index: &GitIndex) -> (IndexReader, IndexWriter) {
@@ -245,23 +258,52 @@ fn main() -> std::io::Result<()> {
         search_writer: Mutex::new(search_writer),
     });
 
+    let upload_governor_config = GovernorConfigBuilder::default()
+        .burst_size(10)
+        .per_second(600)
+        .key_extractor(UserIdKey)
+        .use_headers()
+        .finish()
+        .unwrap();
+
+    let generic_governor_config = GovernorConfigBuilder::default()
+        .burst_size(10)
+        .per_second(10)
+        .use_headers()
+        .finish()
+        .unwrap();
+
     info!("listening on {address}:{port}");
 
     System::new().block_on(async move {
         HttpServer::new(move || {
             App::new()
                 .wrap(Condition::new(with_sentry, sentry_actix::Sentry::new()))
+                .wrap(Logger::default())
                 .wrap(Cors::permissive())
                 .wrap(Compress::default())
                 .app_data(app_data.clone())
                 .route("/", web::get().to(|| async { env!("CARGO_PKG_VERSION") }))
                 .service(
                     web::scope("/v0")
-                        .configure(endpoints::search::configure)
-                        .service(
-                            web::scope("")
-                                .wrap(HttpAuthentication::with_fn(validator))
-                                .configure(endpoints::configure),
+                        .route(
+                            "/search",
+                            web::get()
+                                .to(endpoints::search::search_packages)
+                                .wrap(Governor::new(&generic_governor_config)),
+                        )
+                        .route(
+                            "/packages/{scope}/{name}/{version}",
+                            web::get()
+                                .to(endpoints::packages::get_package_version)
+                                .wrap(Governor::new(&generic_governor_config)),
+                        )
+                        .route(
+                            "/packages",
+                            web::post()
+                                .to(endpoints::packages::create_package)
+                                .wrap(Governor::new(&upload_governor_config))
+                                .wrap(HttpAuthentication::bearer(validator)),
                         ),
                 )
         })

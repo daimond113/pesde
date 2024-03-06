@@ -1,5 +1,5 @@
 use actix_multipart::form::{bytes::Bytes, MultipartForm};
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{web, HttpResponse, Responder};
 use flate2::read::GzDecoder;
 use reqwest::StatusCode;
 use rusty_s3::S3Action;
@@ -14,13 +14,12 @@ use pesde::{
 use crate::{commit_signature, errors, AppState, UserId, S3_EXPIRY};
 
 #[derive(MultipartForm)]
-struct CreateForm {
+pub struct CreateForm {
     #[multipart(limit = "4 MiB")]
     tarball: Bytes,
 }
 
-#[post("/packages")]
-async fn create(
+pub async fn create_package(
     form: MultipartForm<CreateForm>,
     app_state: web::Data<AppState>,
     user_id: web::ReqData<UserId>,
@@ -156,8 +155,7 @@ async fn create(
     )))
 }
 
-#[get("/packages/{author_name}/{package_name}/{version}")]
-async fn get(
+pub async fn get_package_version(
     app_state: web::Data<AppState>,
     path: web::Path<(String, String, String)>,
 ) -> Result<impl Responder, errors::Errors> {
@@ -201,8 +199,4 @@ async fn get(
     };
 
     Ok(HttpResponse::Ok().body(response.bytes().await?))
-}
-
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(create).service(get);
 }

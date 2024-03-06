@@ -1,16 +1,15 @@
-use actix_web::{get, web, Responder};
+use actix_web::{web, Responder};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::{errors, AppState};
 
 #[derive(Deserialize)]
-struct Query {
+pub struct Query {
     query: String,
 }
 
-#[get("/search")]
-async fn search(
+pub async fn search_packages(
     app_state: web::Data<AppState>,
     query: web::Query<Query>,
 ) -> Result<impl Responder, errors::Errors> {
@@ -49,8 +48,4 @@ async fn search(
             })
             .collect::<Vec<Value>>(),
     ))
-}
-
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(search);
 }
