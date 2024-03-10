@@ -22,6 +22,7 @@ pub struct RegistryDependencySpecifier {
     // #[serde(skip_serializing_if = "Option::is_none")]
     // pub registry: Option<String>,
     /// The realm of the package
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub realm: Option<Realm>,
 }
 

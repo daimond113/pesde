@@ -143,7 +143,7 @@ impl<I: Index> Project<I> {
         &self,
         map: &ResolvedVersionsMap,
     ) -> Result<MultithreadedJob<DownloadError>, InstallProjectError> {
-        let (job, tx) = MultithreadedJob::new();
+        let job = MultithreadedJob::new();
 
         for (name, versions) in map.clone() {
             for (version, resolved_package) in versions {
@@ -162,12 +162,8 @@ impl<I: Index> Project<I> {
                 create_dir_all(&source)?;
 
                 let project = self.clone();
-                let tx = tx.clone();
 
-                job.pool.execute(move || {
-                    let result = resolved_package.pkg_ref.download(&project, source);
-                    tx.send(result).unwrap();
-                });
+                job.execute(move || resolved_package.pkg_ref.download(&project, source));
             }
         }
 

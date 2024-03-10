@@ -8,6 +8,7 @@ use crate::{CliConfig, CliParams};
 pub enum ConfigCommand {
     /// Sets the index repository URL
     SetIndexRepo {
+        /// The URL of the index repository
         #[clap(value_name = "URL")]
         url: String,
     },
@@ -16,6 +17,7 @@ pub enum ConfigCommand {
 
     /// Sets the cache directory
     SetCacheDir {
+        /// The directory to use as the cache directory
         #[clap(value_name = "DIRECTORY")]
         directory: Option<PathBuf>,
     },

@@ -9,7 +9,7 @@ homepage = "https://pesde.daimond113.com"
 include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [features]
-bin = ["clap", "directories", "keyring", "anyhow", "ignore", "pretty_env_logger", "serde_json", "reqwest/json", "reqwest/multipart", "lune", "futures-executor", "indicatif", "auth-git2", "indicatif-log-bridge"]
+bin = ["clap", "directories", "keyring", "anyhow", "ignore", "pretty_env_logger", "serde_json", "reqwest/json", "reqwest/multipart", "lune", "futures-executor", "indicatif", "auth-git2", "indicatif-log-bridge", "inquire"]
 
 [[bin]]
 name = "pesde"
@@ -46,6 +46,7 @@ futures-executor = { version = "0.3.30", optional = true }
 indicatif = { version = "0.17.8", optional = true }
 auth-git2 = { version = "0.5.3", optional = true }
 indicatif-log-bridge = { version = "0.2.2", optional = true }
+inquire = { version = "0.7.0", optional = true }
 
 [dev-dependencies]
 tempfile = "3.10.1"

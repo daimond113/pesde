@@ -3,6 +3,7 @@ use std::{
     fs::{create_dir_all, read},
     hash::{DefaultHasher, Hash, Hasher},
     path::PathBuf,
+    str::FromStr,
 };
 
 use auth_git2::GitAuthenticator;
@@ -11,8 +12,13 @@ use directories::ProjectDirs;
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
 use keyring::Entry;
+use log::error;
 use pretty_env_logger::env_logger::Env;
-use reqwest::header::{ACCEPT, AUTHORIZATION};
+use reqwest::{
+    blocking::{RequestBuilder, Response},
+    header::{ACCEPT, AUTHORIZATION},
+};
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 
 use cli::{
@@ -20,29 +26,79 @@ use cli::{
     config::{config_command, ConfigCommand},
     root::root_command,
 };
-use pesde::index::GitIndex;
+use pesde::{index::GitIndex, manifest::Realm, package_name::PackageName};
 
 mod cli;
 
+#[derive(Debug, Clone)]
+pub struct VersionedPackageName<V: FromStr<Err = semver::Error>>(PackageName, V);
+
+impl<V: FromStr<Err = semver::Error>> FromStr for VersionedPackageName<V> {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (name, version) = s.split_once('@').ok_or_else(|| {
+            anyhow::anyhow!("invalid package name: {s}; expected format: name@version")
+        })?;
+
+        Ok(VersionedPackageName(
+            name.to_string().parse()?,
+            version.parse()?,
+        ))
+    }
+}
+
 #[derive(Subcommand)]
 pub enum Command {
+    /// Initializes a manifest file
+    Init,
+
+    /// Adds a package to the manifest
+    Add {
+        /// The package to add
+        #[clap(value_name = "PACKAGE")]
+        package: VersionedPackageName<VersionReq>,
+
+        /// Whether the package is a peer dependency
+        #[clap(long, short)]
+        peer: bool,
+
+        /// The realm of the package
+        #[clap(long, short)]
+        realm: Option<Realm>,
+    },
+
+    /// Removes a package from the manifest
+    Remove {
+        /// The package to remove
+        #[clap(value_name = "PACKAGE")]
+        package: PackageName,
+    },
+
+    /// Lists outdated packages
+    Outdated,
+
     /// Installs the dependencies of the project
     Install {
+        /// Whether to use the lockfile for resolving dependencies
         #[clap(long, short)]
         locked: bool,
     },
 
     /// Runs the `bin` export of the specified package
     Run {
+        /// The package to run
         #[clap(value_name = "PACKAGE")]
-        package: String,
+        package: PackageName,
 
+        /// The arguments to pass to the package
         #[clap(last = true)]
         args: Vec<String>,
     },
 
     /// Searches for a package on the registry
     Search {
+        /// The query to search for
         #[clap(value_name = "QUERY")]
         query: Option<String>,
     },
@@ -51,10 +107,15 @@ pub enum Command {
     Publish,
 
     /// Begins a new patch
-    Patch { package: String },
+    Patch {
+        /// The package to patch
+        #[clap(value_name = "PACKAGE")]
+        package: VersionedPackageName<Version>,
+    },
 
-    /// Commits (finished) the patch
+    /// Commits (finishes) the patch
     PatchCommit {
+        /// The package's changed directory
         #[clap(value_name = "DIRECTORY")]
         dir: PathBuf,
     },
@@ -77,6 +138,7 @@ struct Cli {
     #[clap(subcommand)]
     command: Command,
 
+    /// The directory to run the command in
     #[arg(short, long, value_name = "DIRECTORY")]
     directory: Option<PathBuf>,
 }
@@ -117,18 +179,16 @@ impl CliConfig {
     }
 }
 
-#[macro_export]
-macro_rules! send_request {
-    ($req:expr) => {{
-        let res = $req.send()?;
+pub fn send_request(request_builder: RequestBuilder) -> anyhow::Result<Response> {
+    let res = request_builder.send()?;
 
-        match res.error_for_status_ref() {
-            Ok(_) => res,
-            Err(e) => {
-                panic!("request failed: {e}\nbody: {}", res.text()?);
-            }
+    match res.error_for_status_ref() {
+        Ok(_) => Ok(res),
+        Err(e) => {
+            error!("request failed: {e}\nbody: {}", res.text()?);
+            Err(e.into())
         }
-    }};
+    }
 }
 
 fn main() -> anyhow::Result<()> {

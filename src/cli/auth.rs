@@ -17,10 +17,10 @@ pub fn auth_command(cmd: AuthCommand, params: CliParams) -> anyhow::Result<()> {
 
     match cmd {
         AuthCommand::Login => {
-            let response = send_request!(params.reqwest_client.post(Url::parse_with_params(
+            let response = send_request(params.reqwest_client.post(Url::parse_with_params(
                 "https://github.com/login/device/code",
                 &[("client_id", index_config.github_oauth_client_id.as_str())],
-            )?))
+            )?))?
             .json::<serde_json::Value>()?;
 
             println!(
@@ -43,14 +43,14 @@ pub fn auth_command(cmd: AuthCommand, params: CliParams) -> anyhow::Result<()> {
             while time_left > 0 {
                 std::thread::sleep(interval);
                 time_left -= interval.as_secs() as i64;
-                let response = send_request!(params.reqwest_client.post(Url::parse_with_params(
+                let response = send_request(params.reqwest_client.post(Url::parse_with_params(
                     "https://github.com/login/oauth/access_token",
                     &[
                         ("client_id", index_config.github_oauth_client_id.as_str()),
                         ("device_code", device_code),
-                        ("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
+                        ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
                     ],
-                )?))
+                )?))?
                 .json::<serde_json::Value>()?;
 
                 match response
@@ -82,10 +82,12 @@ pub fn auth_command(cmd: AuthCommand, params: CliParams) -> anyhow::Result<()> {
 
                     params.api_token_entry.set_password(access_token)?;
 
-                    let response = send_request!(params
-                        .reqwest_client
-                        .get("https://api.github.com/user")
-                        .header(AUTHORIZATION, format!("Bearer {access_token}")))
+                    let response = send_request(
+                        params
+                            .reqwest_client
+                            .get("https://api.github.com/user")
+                            .header(AUTHORIZATION, format!("Bearer {access_token}")),
+                    )?
                     .json::<serde_json::Value>()?;
 
                     let login = response["login"]

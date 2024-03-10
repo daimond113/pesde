@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::{collections::BTreeMap, fmt::Display, fs::read};
 
 use relative_path::RelativePathBuf;
@@ -83,6 +84,24 @@ impl Display for Realm {
             Realm::Shared => write!(f, "shared"),
             Realm::Server => write!(f, "server"),
             Realm::Development => write!(f, "development"),
+        }
+    }
+}
+
+/// An error that occurred while parsing a realm from a string
+#[derive(Debug, Error)]
+#[error("invalid realm {0}")]
+pub struct FromStrRealmError(String);
+
+impl FromStr for Realm {
+    type Err = FromStrRealmError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "shared" => Ok(Realm::Shared),
+            "server" => Ok(Realm::Server),
+            "development" => Ok(Realm::Development),
+            _ => Err(FromStrRealmError(s.to_string())),
         }
     }
 }

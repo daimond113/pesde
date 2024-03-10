@@ -515,7 +515,6 @@ impl IndexConfig {
 
 /// An entry in the index file
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct IndexFileEntry {
     /// The version of the package
     pub version: Version,
@@ -525,12 +524,6 @@ pub struct IndexFileEntry {
     /// A description of the package
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// The license of the package
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub license: Option<String>,
-    /// The authors of the package
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub authors: Option<Vec<String>>,
 
     /// The dependencies of the package
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -546,8 +539,6 @@ impl From<Manifest> for IndexFileEntry {
             realm: manifest.realm,
 
             description: manifest.description,
-            license: manifest.license,
-            authors: manifest.authors,
 
             dependencies,
         }

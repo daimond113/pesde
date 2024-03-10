@@ -22,6 +22,7 @@ pub struct GitDependencySpecifier {
     /// The revision of the git repository to use
     pub rev: String,
     /// The realm of the package
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub realm: Option<Realm>,
 }
 
@@ -65,17 +66,15 @@ impl GitDependencySpecifier {
         // should also work with ssh urls
         let is_url = self.repo.contains(':');
 
-        let repo_name = {
-            if !is_url {
-                self.repo.to_string()
-            } else {
-                let parts: Vec<&str> = self.repo.split('/').collect();
-                format!(
-                    "{}/{}",
-                    parts[parts.len() - 2],
-                    parts[parts.len() - 1].trim_end_matches(".git")
-                )
-            }
+        let repo_name = if !is_url {
+            self.repo.to_string()
+        } else {
+            let parts: Vec<&str> = self.repo.split('/').collect();
+            format!(
+                "{}/{}",
+                parts[parts.len() - 2],
+                parts[parts.len() - 1].trim_end_matches(".git")
+            )
         };
 
         if is_url {
@@ -84,12 +83,10 @@ impl GitDependencySpecifier {
             debug!("assuming git repository is a name: {}", &repo_name);
         }
 
-        let repo_url = {
-            if !is_url {
-                format!("https://github.com/{}.git", &self.repo)
-            } else {
-                self.repo.to_string()
-            }
+        let repo_url = if !is_url {
+            format!("https://github.com/{}.git", &self.repo)
+        } else {
+            self.repo.to_string()
         };
 
         if is_url {
