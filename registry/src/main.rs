@@ -293,6 +293,12 @@ fn main() -> std::io::Result<()> {
                                 .wrap(Governor::new(&generic_governor_config)),
                         )
                         .route(
+                            "/packages/{scope}/{name}/versions",
+                            web::get()
+                                .to(endpoints::packages::get_package_versions)
+                                .wrap(Governor::new(&generic_governor_config)),
+                        )
+                        .route(
                             "/packages/{scope}/{name}/{version}",
                             web::get()
                                 .to(endpoints::packages::get_package_version)

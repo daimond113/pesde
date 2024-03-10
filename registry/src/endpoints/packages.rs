@@ -1,6 +1,7 @@
 use actix_multipart::form::{bytes::Bytes, MultipartForm};
 use actix_web::{web, HttpResponse, Responder};
 use flate2::read::GzDecoder;
+use log::error;
 use reqwest::StatusCode;
 use rusty_s3::S3Action;
 use tantivy::{doc, Term};
@@ -159,15 +160,28 @@ pub async fn get_package_version(
     app_state: web::Data<AppState>,
     path: web::Path<(String, String, String)>,
 ) -> Result<impl Responder, errors::Errors> {
-    let (scope, name, version) = path.into_inner();
+    let (scope, name, mut version) = path.into_inner();
 
     let package_name = PackageName::new(&scope, &name)?;
 
     {
         let index = app_state.index.lock().unwrap();
 
-        if !index.package(&package_name)?.is_some() {
-            return Ok(HttpResponse::NotFound().finish());
+        match index.package(&package_name)? {
+            Some(package) => {
+                if version == "latest" {
+                    version = package
+                        .iter()
+                        .max_by(|a, b| a.version.cmp(&b.version))
+                        .map(|v| v.version.to_string())
+                        .unwrap();
+                } else {
+                    if !package.iter().any(|v| v.version.to_string() == version) {
+                        return Ok(HttpResponse::NotFound().finish());
+                    }
+                }
+            }
+            None => return Ok(HttpResponse::NotFound().finish()),
         }
     }
 
@@ -190,7 +204,11 @@ pub async fn get_package_version(
         Err(e) => {
             if let Some(status) = e.status() {
                 if status == StatusCode::NOT_FOUND {
-                    return Ok(HttpResponse::NotFound().finish());
+                    error!(
+                        "package {}@{} not found in S3, but found in index",
+                        package_name, version
+                    );
+                    return Ok(HttpResponse::InternalServerError().finish());
                 }
             }
 
@@ -199,4 +217,29 @@ pub async fn get_package_version(
     };
 
     Ok(HttpResponse::Ok().body(response.bytes().await?))
+}
+
+pub async fn get_package_versions(
+    app_state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> Result<impl Responder, errors::Errors> {
+    let (scope, name) = path.into_inner();
+
+    let package_name = PackageName::new(&scope, &name)?;
+
+    {
+        let index = app_state.index.lock().unwrap();
+
+        match index.package(&package_name)? {
+            Some(package) => {
+                let versions = package
+                    .iter()
+                    .map(|v| v.version.to_string())
+                    .collect::<Vec<String>>();
+
+                Ok(HttpResponse::Ok().json(versions))
+            }
+            None => Ok(HttpResponse::NotFound().finish()),
+        }
+    }
 }
