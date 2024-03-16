@@ -1,7 +1,7 @@
 <br>
 
 <div align="center">
-    <img src="website/static/logo.svg" alt="pesde" width="200" />
+    <img src="https://raw.githubusercontent.com/daimond113/pesde/master/website/static/logo.svg" alt="pesde" width="200" />
 </div>
 
 <br>

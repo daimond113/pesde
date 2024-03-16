@@ -1,6 +1,8 @@
 *
 !src
 !registry
+registry/.env
+registry/cache
 !Cargo.lock
 !Cargo.toml
 !rust-toolchain.toml
