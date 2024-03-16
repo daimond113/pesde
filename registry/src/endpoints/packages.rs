@@ -1,10 +1,11 @@
 use actix_multipart::form::{bytes::Bytes, MultipartForm};
 use actix_web::{web, HttpResponse, Responder};
+use chrono::Utc;
 use flate2::read::GzDecoder;
 use log::error;
 use reqwest::StatusCode;
 use rusty_s3::S3Action;
-use tantivy::{doc, Term};
+use tantivy::{doc, DateTime, Term};
 use tar::Archive;
 
 use pesde::{
@@ -131,10 +132,11 @@ pub async fn create_package(
 
         search_writer.add_document(
             doc!(
-            name_field => manifest.name.to_string(),
-            schema.get_field("version").unwrap() => manifest.version.to_string(),
-            schema.get_field("description").unwrap() => manifest.description.unwrap_or_default(),
-        )
+                name_field => manifest.name.to_string(),
+                schema.get_field("version").unwrap() => manifest.version.to_string(),
+                schema.get_field("description").unwrap() => manifest.description.unwrap_or_default(),
+                schema.get_field("published_at").unwrap() => DateTime::from_timestamp_secs(Utc::now().timestamp()),
+            )
         ).unwrap();
 
         search_writer.commit().unwrap();
@@ -234,8 +236,8 @@ pub async fn get_package_versions(
             Some(package) => {
                 let versions = package
                     .iter()
-                    .map(|v| v.version.to_string())
-                    .collect::<Vec<String>>();
+                    .map(|v| (v.version.to_string(), v.published_at.timestamp()))
+                    .collect::<Vec<_>>();
 
                 Ok(HttpResponse::Ok().json(versions))
             }

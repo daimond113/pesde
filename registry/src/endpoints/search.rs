@@ -1,12 +1,16 @@
 use actix_web::{web, Responder};
+use semver::Version;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tantivy::{query::AllQuery, DateTime, DocAddress, Order};
+
+use pesde::{index::Index, package_name::PackageName};
 
 use crate::{errors, AppState};
 
 #[derive(Deserialize)]
 pub struct Query {
-    query: String,
+    query: Option<String>,
 }
 
 pub async fn search_packages(
@@ -20,32 +24,64 @@ pub async fn search_packages(
     let version = schema.get_field("version").unwrap();
     let description = schema.get_field("description").unwrap();
 
-    let query = query.query.trim();
-
-    if query.is_empty() {
-        return Ok(web::Json(vec![]));
-    }
+    let query = query.query.as_deref().unwrap_or_default().trim();
 
     let query_parser =
         tantivy::query::QueryParser::for_index(&searcher.index(), vec![name, description]);
-    let query = query_parser.parse_query(&query)?;
+    let query = if query.is_empty() {
+        Box::new(AllQuery)
+    } else {
+        query_parser.parse_query(&query)?
+    };
 
-    let top_docs = searcher
-        .search(&query, &tantivy::collector::TopDocs::with_limit(10))
+    let top_docs: Vec<(DateTime, DocAddress)> = searcher
+        .search(
+            &query,
+            &tantivy::collector::TopDocs::with_limit(10)
+                .order_by_fast_field("published_at", Order::Desc),
+        )
         .unwrap();
 
-    Ok(web::Json(
-        top_docs
-            .into_iter()
-            .map(|(_, doc_address)| {
-                let retrieved_doc = searcher.doc(doc_address).unwrap();
+    {
+        let index = app_state.index.lock().unwrap();
 
-                json!({
-                    "name": retrieved_doc.get_first(name).unwrap().as_text().unwrap(),
-                    "version": retrieved_doc.get_first(version).unwrap().as_text().unwrap(),
-                    "description": retrieved_doc.get_first(description).unwrap().as_text().unwrap(),
+        Ok(web::Json(
+            top_docs
+                .into_iter()
+                .map(|(published_at, doc_address)| {
+                    let retrieved_doc = searcher.doc(doc_address).unwrap();
+                    let name: PackageName = retrieved_doc
+                        .get_first(name)
+                        .unwrap()
+                        .as_text()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+
+                    let version: Version = retrieved_doc
+                        .get_first(version)
+                        .unwrap()
+                        .as_text()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+
+                    let entry = index
+                        .package(&name)
+                        .unwrap()
+                        .unwrap()
+                        .into_iter()
+                        .find(|v| v.version == version)
+                        .unwrap();
+
+                    json!({
+                        "name": name,
+                        "version": version,
+                        "description": entry.description,
+                        "published_at": published_at.into_timestamp_secs(),
+                    })
                 })
-            })
-            .collect::<Vec<Value>>(),
-    ))
+                .collect::<Vec<Value>>(),
+        ))
+    }
 }

@@ -15,7 +15,7 @@ use git2::{Cred, Signature};
 use log::info;
 use reqwest::{header::AUTHORIZATION, Client};
 use rusty_s3::{Bucket, Credentials, UrlStyle};
-use tantivy::{doc, IndexReader, IndexWriter};
+use tantivy::{doc, DateTime, IndexReader, IndexWriter};
 
 use pesde::{
     index::{GitIndex, IndexFile},
@@ -126,10 +126,8 @@ fn search_index(index: &GitIndex) -> (IndexReader, IndexWriter) {
         schema_builder.add_text_field("name", tantivy::schema::TEXT | tantivy::schema::STORED);
     let version =
         schema_builder.add_text_field("version", tantivy::schema::TEXT | tantivy::schema::STORED);
-    let description = schema_builder.add_text_field(
-        "description",
-        tantivy::schema::TEXT | tantivy::schema::STORED,
-    );
+    let description = schema_builder.add_text_field("description", tantivy::schema::TEXT);
+    let published_at = schema_builder.add_date_field("published_at", tantivy::schema::FAST);
 
     let search_index = tantivy::Index::create_in_ram(schema_builder.build());
     let search_reader = search_index
@@ -172,7 +170,8 @@ fn search_index(index: &GitIndex) -> (IndexReader, IndexWriter) {
                 .add_document(doc!(
                     name => package_name.to_string(),
                     version => entry.version.to_string(),
-                    description => entry.description.unwrap_or_default()
+                    description => entry.description.unwrap_or_default(),
+                    published_at => DateTime::from_timestamp_secs(entry.published_at.timestamp()),
                 ))
                 .unwrap();
         }
@@ -267,7 +266,7 @@ fn main() -> std::io::Result<()> {
         .unwrap();
 
     let generic_governor_config = GovernorConfigBuilder::default()
-        .burst_size(10)
+        .burst_size(50)
         .per_second(10)
         .use_headers()
         .finish()
