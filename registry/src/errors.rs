@@ -57,13 +57,13 @@ impl ResponseError for Errors {
 
         match self {
             Errors::UserYaml(err) => HttpResponse::BadRequest().json(ErrorResponse {
-                error: format!("Error parsing YAML file: {}", err.to_string()),
+                error: format!("Error parsing YAML file: {err}"),
             }),
             Errors::PackageName(err) => HttpResponse::BadRequest().json(ErrorResponse {
-                error: format!("Invalid package name: {}", err.to_string()),
+                error: format!("Invalid package name: {err}"),
             }),
             Errors::QueryParser(err) => HttpResponse::BadRequest().json(ErrorResponse {
-                error: format!("Error parsing query: {}", err.to_string()),
+                error: format!("Error parsing query: {err}"),
             }),
             _ => HttpResponse::InternalServerError().finish(),
         }

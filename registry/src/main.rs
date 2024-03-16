@@ -141,11 +141,11 @@ fn search_index(index: &GitIndex) -> (IndexReader, IndexWriter) {
         let entry = entry.unwrap();
         let path = entry.path();
 
-        if !path.is_dir() || path.file_name().unwrap() == ".git" {
+        if !path.is_dir() || path.file_name().is_some_and(|v| v == ".git") {
             continue;
         }
 
-        let scope = path.file_name().unwrap().to_str().unwrap();
+        let scope = path.file_name().and_then(|v| v.to_str()).unwrap();
 
         for entry in read_dir(&path).unwrap() {
             let entry = entry.unwrap();
@@ -155,16 +155,12 @@ fn search_index(index: &GitIndex) -> (IndexReader, IndexWriter) {
                 continue;
             }
 
-            let package = path.file_name().unwrap().to_str().unwrap();
+            let package = path.file_name().and_then(|v| v.to_str()).unwrap();
 
             let package_name = PackageName::new(scope, package).unwrap();
             let entries: IndexFile =
                 serde_yaml::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-            let entry = entries
-                .iter()
-                .max_by(|a, b| a.version.cmp(&b.version))
-                .unwrap()
-                .clone();
+            let entry = entries.last().unwrap().clone();
 
             search_writer
                 .add_document(doc!(

@@ -1,6 +1,5 @@
 use actix_multipart::form::{bytes::Bytes, MultipartForm};
 use actix_web::{web, HttpResponse, Responder};
-use chrono::Utc;
 use flate2::read::GzDecoder;
 use log::error;
 use reqwest::StatusCode;
@@ -80,7 +79,7 @@ pub async fn create_package(
 
     let (scope, name) = manifest.name.parts();
 
-    {
+    let entry = {
         let mut index = app_state.index.lock().unwrap();
         let config = index.config()?;
 
@@ -103,22 +102,25 @@ pub async fn create_package(
             };
         }
 
-        let success = index.create_package_version(&manifest, &user_id.0)?;
+        match index.create_package_version(&manifest, &user_id.0)? {
+            Some(entry) => {
+                index.commit_and_push(
+                    &format!("Add version {}@{}", manifest.name, manifest.version),
+                    &commit_signature(),
+                )?;
 
-        if !success {
-            return Ok(HttpResponse::BadRequest().json(errors::ErrorResponse {
-                error: format!(
-                    "Version {} of {} already exists",
-                    manifest.version, manifest.name
-                ),
-            }));
+                entry
+            }
+            None => {
+                return Ok(HttpResponse::BadRequest().json(errors::ErrorResponse {
+                    error: format!(
+                        "Version {} of {} already exists",
+                        manifest.version, manifest.name
+                    ),
+                }));
+            }
         }
-
-        index.commit_and_push(
-            &format!("Add version {}@{}", manifest.name, manifest.version),
-            &commit_signature(),
-        )?;
-    }
+    };
 
     {
         let mut search_writer = app_state.search_writer.lock().unwrap();
@@ -135,7 +137,7 @@ pub async fn create_package(
                 name_field => manifest.name.to_string(),
                 schema.get_field("version").unwrap() => manifest.version.to_string(),
                 schema.get_field("description").unwrap() => manifest.description.unwrap_or_default(),
-                schema.get_field("published_at").unwrap() => DateTime::from_timestamp_secs(Utc::now().timestamp()),
+                schema.get_field("published_at").unwrap() => DateTime::from_timestamp_secs(entry.published_at.timestamp())
             )
         ).unwrap();
 
@@ -146,7 +148,7 @@ pub async fn create_package(
         .s3_bucket
         .put_object(
             Some(&app_state.s3_credentials),
-            &*format!("{scope}-{name}-{}.tar.gz", manifest.version),
+            &format!("{scope}-{name}-{}.tar.gz", manifest.version),
         )
         .sign(S3_EXPIRY);
 
@@ -173,14 +175,11 @@ pub async fn get_package_version(
             Some(package) => {
                 if version == "latest" {
                     version = package
-                        .iter()
-                        .max_by(|a, b| a.version.cmp(&b.version))
+                        .last()
                         .map(|v| v.version.to_string())
                         .unwrap();
-                } else {
-                    if !package.iter().any(|v| v.version.to_string() == version) {
-                        return Ok(HttpResponse::NotFound().finish());
-                    }
+                } else if !package.iter().any(|v| v.version.to_string() == version) {
+                    return Ok(HttpResponse::NotFound().finish());
                 }
             }
             None => return Ok(HttpResponse::NotFound().finish()),
@@ -191,7 +190,7 @@ pub async fn get_package_version(
         .s3_bucket
         .get_object(
             Some(&app_state.s3_credentials),
-            &*format!("{scope}-{name}-{version}.tar.gz"),
+            &format!("{scope}-{name}-{version}.tar.gz"),
         )
         .sign(S3_EXPIRY);
 

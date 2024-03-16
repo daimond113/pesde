@@ -27,11 +27,11 @@ pub async fn search_packages(
     let query = query.query.as_deref().unwrap_or_default().trim();
 
     let query_parser =
-        tantivy::query::QueryParser::for_index(&searcher.index(), vec![name, description]);
+        tantivy::query::QueryParser::for_index(searcher.index(), vec![name, description]);
     let query = if query.is_empty() {
         Box::new(AllQuery)
     } else {
-        query_parser.parse_query(&query)?
+        query_parser.parse_query(query)?
     };
 
     let top_docs: Vec<(DateTime, DocAddress)> = searcher
@@ -52,26 +52,20 @@ pub async fn search_packages(
                     let retrieved_doc = searcher.doc(doc_address).unwrap();
                     let name: PackageName = retrieved_doc
                         .get_first(name)
-                        .unwrap()
-                        .as_text()
-                        .unwrap()
-                        .parse()
+                        .and_then(|v| v.as_text())
+                        .and_then(|v| v.parse().ok())
                         .unwrap();
 
                     let version: Version = retrieved_doc
                         .get_first(version)
-                        .unwrap()
-                        .as_text()
-                        .unwrap()
-                        .parse()
+                        .and_then(|v| v.as_text())
+                        .and_then(|v| v.parse().ok())
                         .unwrap();
 
                     let entry = index
                         .package(&name)
                         .unwrap()
-                        .unwrap()
-                        .into_iter()
-                        .find(|v| v.version == version)
+                        .and_then(|v| v.into_iter().find(|v| v.version == version))
                         .unwrap();
 
                     json!({
