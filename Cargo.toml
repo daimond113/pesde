@@ -32,7 +32,7 @@ threadpool = "1.8.1"
 full_moon = { version = "0.19.0", features = ["stacker", "roblox"] }
 
 # chrono-lc breaks because of https://github.com/chronotope/chrono/compare/v0.4.34...v0.4.35#diff-67de5678fb5c14378bbff7ecf7f8bfab17cc223c4726f8da3afca183a4e59543
-chrono = "=0.4.34"
+chrono = { version = "=0.4.34", features = ["serde"] }
 
 clap = { version = "4.5.1", features = ["derive"], optional = true }
 directories = { version = "5.0.1", optional = true }

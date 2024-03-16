@@ -67,6 +67,16 @@ fn multithreaded_bar<E: Send + Sync + Into<anyhow::Error> + 'static>(
     Ok(())
 }
 
+macro_rules! none_if_empty {
+    ($s:expr) => {
+        if $s.is_empty() {
+            None
+        } else {
+            Some($s)
+        }
+    };
+}
+
 pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
     match cmd {
         Command::Install { locked } => {
@@ -140,7 +150,7 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
 
             let response = send_request(params.reqwest_client.get(Url::parse_with_params(
                 &format!("{}/v0/search", api_url),
-                &query.map_or_else(Vec::new, |q| vec![("query", q)]),
+                &query.map(|q| vec![("query", q)]).unwrap_or_default(),
             )?))?
             .json::<Value>()?;
 
@@ -156,7 +166,7 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                         } else {
                             format!("\n{}\n", d)
                         })
-                        .unwrap()
+                        .unwrap_or_default()
                 );
             }
         }
@@ -324,7 +334,9 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                 .prompt()?
                 .split(';')
                 .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
                 .collect::<Vec<String>>();
+            let repository = Text::new("What is the repository of the package?").prompt()?;
 
             let private = Select::new("Is this package private?", vec!["yes", "no"]).prompt()?;
             let private = private == "yes";
@@ -351,9 +363,10 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                 realm: Some(realm),
                 dependencies: Default::default(),
                 peer_dependencies: Default::default(),
-                description: Some(description),
-                license: Some(license),
-                authors: Some(authors),
+                description: none_if_empty!(description),
+                license: none_if_empty!(license),
+                authors: none_if_empty!(authors),
+                repository: none_if_empty!(repository),
             };
 
             serde_yaml::to_writer(File::create(manifest_path)?, &manifest)?;

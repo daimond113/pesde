@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use std::{
     collections::BTreeSet,
     fmt::Debug,
@@ -520,6 +521,9 @@ pub struct IndexFileEntry {
     pub version: Version,
     /// The realm of the package
     pub realm: Option<Realm>,
+    /// When the package was published
+    #[serde(default = "Utc::now")]
+    pub published_at: DateTime<Utc>,
 
     /// A description of the package
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -537,6 +541,7 @@ impl From<Manifest> for IndexFileEntry {
         IndexFileEntry {
             version: manifest.version,
             realm: manifest.realm,
+            published_at: Utc::now(),
 
             description: manifest.description,
 

@@ -142,6 +142,9 @@ pub struct Manifest {
     /// The authors of the package
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authors: Option<Vec<String>>,
+    /// The repository of the package
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
 }
 
 /// An error that occurred while reading the manifest

@@ -44,6 +44,7 @@ fn test_resolves_package() {
         description: Some(description.to_string()),
         license: None,
         authors: None,
+        repository: None,
     };
 
     let mut pkg_2_manifest = pkg_manifest.clone();
@@ -77,6 +78,7 @@ fn test_resolves_package() {
         description: Some(description.to_string()),
         license: None,
         authors: None,
+        repository: None,
     };
 
     let project = Project::new(&dir_path, &dir_path, index, user_manifest, None);
