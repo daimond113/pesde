@@ -1,5 +1,8 @@
 <svelte:head>
 	<title>Policies</title>
+	<meta content="Policies for content on the public pesde registry" property="og:title" />
+	<meta content="Rules about content on the public pesde registry" name="description" />
+	<meta content="Rules about content on the public pesde registry" property="og:description" />
 </svelte:head>
 
 <div class="max-w-prose">

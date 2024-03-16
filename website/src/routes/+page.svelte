@@ -2,10 +2,16 @@
 	import type { PageData } from './$types';
 
 	export let data: PageData;
+
+	const tagline =
+		'pesde is a package manager for Roblox that is designed to be feature-rich and easy to use.';
 </script>
 
 <svelte:head>
 	<title>pesde</title>
+	<meta content="pesde" property="og:title" />
+	<meta content={tagline} name="description" />
+	<meta content={tagline} property="og:description" />
 </svelte:head>
 
 <section
@@ -15,7 +21,7 @@
 		pesde - the feature-rich Roblox package manager
 	</h1>
 	<div class="text-xl font-medium text-balance">
-		pesde is a package manager for Roblox that is designed to be feature-rich and easy to use.
+		{tagline}
 	</div>
 	<div>
 		<a

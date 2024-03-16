@@ -60,6 +60,11 @@
 
 <svelte:head>
 	<title>{data.scope}/{data.name}@{data.version}</title>
+	<meta content="{data.scope}/{data.name}@{data.version} - pesde" property="og:title" />
+	{#if data.description}
+		<meta content={data.description} name="description" />
+		<meta content={data.description} property="og:description" />
+	{/if}
 </svelte:head>
 
 <div class="flex flex-col lg:flex-row">

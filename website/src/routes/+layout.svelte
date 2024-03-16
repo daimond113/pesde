@@ -50,7 +50,7 @@
 	<header
 		class="flex-0 flex flex-col lg:flex-row relative items-center gap-4 lg:gap-0 min-h-12 w-full"
 	>
-		<div class="flex items-center gap-8">
+		<div class="flex items-center gap-8 z-10">
 			<a href="/" class="inline-block lg:absolute top-0 left-0">
 				<img src="/logo.svg" alt="pesde" class="h-12" />
 			</a>
@@ -69,10 +69,10 @@
 					<Menu class="size-8" />
 				</button>
 				<div
-					class="absolute top-8 right-0 bg-paper-1-alt z-10 flex flex-col gap-4 px-2 py-4 rounded-md *:no-underline *:text-standard-text hover:*:brightness-110 *:max-w-60 *:w-max"
+					class="absolute top-8 right-0 bg-paper-1-alt z-10 flex flex-col gap-4 p-4 rounded-md *:no-underline *:text-standard-text hover:*:brightness-110 *:max-w-60"
 					class:hidden={!linksOpen}
 				>
-					<a href="https://github.com/daimond113/pesde">GitHub Repository</a>
+					<a href="https://github.com/daimond113/pesde" class="w-max">GitHub Repository</a>
 					<a href="/policies">Policies</a>
 				</div>
 			</div>
