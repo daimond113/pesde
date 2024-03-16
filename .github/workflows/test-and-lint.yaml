@@ -24,7 +24,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all --all-targets --all-features -- -D warnings
 
       - name: Generate coverage report
         run: cargo tarpaulin --all-features --out xml --exclude-files src/cli/*  --exclude-files registry/* --exclude-files src/main.rs --skip-clean
