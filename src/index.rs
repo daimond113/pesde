@@ -43,7 +43,7 @@ pub trait Index: Send + Sync + Debug + Clone + 'static {
         &mut self,
         manifest: &Manifest,
         uploader: &u64,
-    ) -> Result<bool, CreatePackageVersionError>;
+    ) -> Result<Option<IndexFileEntry>, CreatePackageVersionError>;
 
     /// Gets the index's configuration
     fn config(&self) -> Result<IndexConfig, ConfigError>;
@@ -421,7 +421,7 @@ impl Index for GitIndex {
         &mut self,
         manifest: &Manifest,
         uploader: &u64,
-    ) -> Result<bool, CreatePackageVersionError> {
+    ) -> Result<Option<IndexFileEntry>, CreatePackageVersionError> {
         let scope = manifest.name.scope();
 
         if let Some(owners) = self.scope_owners(scope)? {
@@ -436,14 +436,15 @@ impl Index for GitIndex {
 
         let mut file = if let Some(file) = self.package(&manifest.name)? {
             if file.iter().any(|e| e.version == manifest.version) {
-                return Ok(false);
+                return Ok(None);
             }
             file
         } else {
-            vec![]
+            BTreeSet::new()
         };
 
-        file.push(manifest.clone().into());
+        let entry: IndexFileEntry = manifest.clone().into();
+        file.insert(entry.clone());
 
         serde_yaml::to_writer(
             std::fs::File::create(path.join(manifest.name.name()))?,
@@ -451,7 +452,7 @@ impl Index for GitIndex {
         )
         .map_err(CreatePackageVersionError::FileSer)?;
 
-        Ok(true)
+        Ok(Some(entry))
     }
 
     fn config(&self) -> Result<IndexConfig, ConfigError> {
@@ -515,7 +516,7 @@ impl IndexConfig {
 }
 
 /// An entry in the index file
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct IndexFileEntry {
     /// The version of the package
     pub version: Version,
@@ -550,5 +551,17 @@ impl From<Manifest> for IndexFileEntry {
     }
 }
 
+impl PartialOrd for IndexFileEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.version.cmp(&other.version))
+    }
+}
+
+impl Ord for IndexFileEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.version.cmp(&other.version)
+    }
+}
+
 /// An index file
-pub type IndexFile = Vec<IndexFileEntry>;
+pub type IndexFile = BTreeSet<IndexFileEntry>;

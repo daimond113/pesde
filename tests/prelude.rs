@@ -34,7 +34,7 @@ impl InMemoryIndex {
             .entry(scope.to_string())
             .or_insert_with(|| (BTreeSet::new(), IndexFile::default()))
             .1
-            .push(index_file);
+            .insert(index_file);
         self
     }
 }
@@ -65,7 +65,7 @@ impl Index for InMemoryIndex {
         &mut self,
         manifest: &Manifest,
         uploader: &u64,
-    ) -> Result<bool, CreatePackageVersionError> {
+    ) -> Result<Option<IndexFileEntry>, CreatePackageVersionError> {
         let scope = manifest.name.scope();
 
         if let Some(owners) = self.scope_owners(scope)? {
@@ -78,9 +78,10 @@ impl Index for InMemoryIndex {
 
         let package = self.packages.get_mut(scope).unwrap();
 
-        package.1.push(manifest.clone().into());
+        let entry: IndexFileEntry = manifest.clone().into();
+        package.1.insert(entry.clone());
 
-        Ok(true)
+        Ok(Some(entry))
     }
 
     fn config(&self) -> Result<IndexConfig, ConfigError> {

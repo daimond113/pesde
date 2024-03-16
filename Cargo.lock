@@ -3275,6 +3275,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "threadpool",
+ "toml",
 ]
 
 [[package]]
@@ -3287,7 +3288,6 @@ dependencies = [
  "actix-multipart-derive",
  "actix-web",
  "actix-web-httpauth",
- "chrono",
  "dotenvy",
  "flate2",
  "git2",

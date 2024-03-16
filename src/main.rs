@@ -106,6 +106,9 @@ pub enum Command {
     /// Publishes the project to the registry
     Publish,
 
+    /// Converts a `wally.toml` file to a `pesde.yaml` file
+    Convert,
+
     /// Begins a new patch
     Patch {
         /// The package to patch

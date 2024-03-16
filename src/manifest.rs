@@ -1,11 +1,14 @@
+use std::fs::read_to_string;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::{collections::BTreeMap, fmt::Display, fs::read};
 
 use relative_path::RelativePathBuf;
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::dependencies::registry::RegistryDependencySpecifier;
 use crate::{dependencies::DependencySpecifier, package_name::PackageName, MANIFEST_FILE_NAME};
 
 /// The files exported by the package
@@ -159,6 +162,42 @@ pub enum ManifestReadError {
     ManifestDeser(#[source] serde_yaml::Error),
 }
 
+/// An error that occurred while converting the manifest
+#[derive(Debug, Error)]
+pub enum ManifestConvertError {
+    /// An error that occurred while reading the manifest
+    #[error("error reading the manifest")]
+    ManifestRead(#[from] ManifestReadError),
+
+    /// An error that occurred while converting the manifest
+    #[error("error converting the manifest")]
+    ManifestConvert(#[source] toml::de::Error),
+
+    /// The given path does not have a parent
+    #[error("the path {0} does not have a parent")]
+    NoParent(PathBuf),
+
+    /// An error that occurred while interacting with the file system
+    #[error("error interacting with the file system")]
+    Io(#[from] std::io::Error),
+
+    /// An error that occurred while making a package name from a string
+    #[error("error making a package name from a string")]
+    PackageName(#[from] crate::package_name::FromStrPackageNameParseError),
+
+    /// An error that occurred while writing the manifest
+    #[error("error writing the manifest")]
+    ManifestWrite(#[from] serde_yaml::Error),
+
+    /// An error that occurred while converting a dependency specifier's version
+    #[error("error converting a dependency specifier's version")]
+    Version(#[from] semver::Error),
+
+    /// The dependency specifier isn't in the format of `scope/name@version`
+    #[error("the dependency specifier {0} isn't in the format of `scope/name@version`")]
+    InvalidDependencySpecifier(String),
+}
+
 /// The type of dependency
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
@@ -185,6 +224,144 @@ impl Manifest {
             serde_yaml::from_slice(&raw_contents).map_err(ManifestReadError::ManifestDeser)?;
 
         Ok(manifest)
+    }
+
+    /// Tries to read the manifest from the given path, and if it fails, tries converting the `wally.toml` and writes a `pesde.yaml` in the same directory
+    pub fn from_path_or_convert<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> Result<Self, ManifestConvertError> {
+        let dir_path = if path.as_ref().file_name() == Some(MANIFEST_FILE_NAME.as_ref()) {
+            path.as_ref()
+                .parent()
+                .ok_or_else(|| ManifestConvertError::NoParent(path.as_ref().to_path_buf()))?
+                .to_path_buf()
+        } else {
+            path.as_ref().to_path_buf()
+        };
+
+        Self::from_path(path).or_else(|_| {
+            #[derive(Deserialize)]
+            struct WallyPackage {
+                name: String,
+                version: Version,
+                #[serde(default)]
+                realm: Option<String>,
+                #[serde(default)]
+                description: Option<String>,
+                #[serde(default)]
+                license: Option<String>,
+                #[serde(default)]
+                authors: Option<Vec<String>>,
+                #[serde(default)]
+                private: Option<bool>,
+            }
+
+            #[derive(Deserialize, Default)]
+            struct WallyPlace {
+                #[serde(default)]
+                shared_packages: Option<String>,
+                #[serde(default)]
+                server_packages: Option<String>,
+            }
+
+            #[derive(Deserialize)]
+            struct WallyDependencySpecifier(String);
+
+            impl TryFrom<WallyDependencySpecifier> for DependencySpecifier {
+                type Error = ManifestConvertError;
+
+                fn try_from(specifier: WallyDependencySpecifier) -> Result<Self, Self::Error> {
+                    let (name, req) = specifier.0.split_once('@').ok_or_else(|| {
+                        ManifestConvertError::InvalidDependencySpecifier(specifier.0.clone())
+                    })?;
+                    let name: PackageName = name.replace('-', "_").parse()?;
+                    let req: VersionReq = req.parse()?;
+
+                    Ok(DependencySpecifier::Registry(RegistryDependencySpecifier {
+                        name,
+                        version: req,
+                        realm: None,
+                    }))
+                }
+            }
+
+            #[derive(Deserialize)]
+            struct WallyManifest {
+                package: WallyPackage,
+                #[serde(default)]
+                place: WallyPlace,
+                #[serde(default)]
+                dependencies: BTreeMap<String, WallyDependencySpecifier>,
+                #[serde(default)]
+                server_dependencies: BTreeMap<String, WallyDependencySpecifier>,
+                #[serde(default)]
+                dev_dependencies: BTreeMap<String, WallyDependencySpecifier>,
+            }
+
+            let toml_path = dir_path.join("wally.toml");
+            let toml_contents = read_to_string(toml_path)?;
+            let wally_manifest: WallyManifest =
+                toml::from_str(&toml_contents).map_err(ManifestConvertError::ManifestConvert)?;
+
+            let mut place = BTreeMap::new();
+
+            if let Some(shared) = wally_manifest.place.shared_packages {
+                if !shared.is_empty() {
+                    place.insert(Realm::Shared, shared);
+                }
+            }
+
+            if let Some(server) = wally_manifest.place.server_packages {
+                if !server.is_empty() {
+                    place.insert(Realm::Server, server);
+                }
+            }
+
+            let manifest = Self {
+                name: wally_manifest.package.name.replace('-', "_").parse()?,
+                version: wally_manifest.package.version,
+                exports: Exports::default(),
+                path_style: PathStyle::Roblox { place },
+                private: wally_manifest.package.private.unwrap_or(false),
+                realm: wally_manifest
+                    .package
+                    .realm
+                    .map(|r| r.parse().unwrap_or(Realm::Shared)),
+                dependencies: [
+                    (wally_manifest.dependencies, Realm::Shared),
+                    (wally_manifest.server_dependencies, Realm::Server),
+                    (wally_manifest.dev_dependencies, Realm::Development),
+                ]
+                .into_iter()
+                .flat_map(|(deps, realm)| {
+                    deps.into_values()
+                        .map(|specifier| {
+                            specifier.try_into().map(|mut specifier| {
+                                match specifier {
+                                    DependencySpecifier::Registry(ref mut specifier) => {
+                                        specifier.realm = Some(realm);
+                                    }
+                                    _ => unreachable!(),
+                                }
+
+                                specifier
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Result<_, _>>()?,
+                peer_dependencies: Vec::new(),
+                description: wally_manifest.package.description,
+                license: wally_manifest.package.license,
+                authors: wally_manifest.package.authors,
+                repository: None,
+            };
+
+            let manifest_path = dir_path.join(MANIFEST_FILE_NAME);
+            serde_yaml::to_writer(std::fs::File::create(manifest_path)?, &manifest)?;
+
+            Ok(manifest)
+        })
     }
 
     /// Returns all dependencies

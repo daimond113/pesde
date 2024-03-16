@@ -19,34 +19,35 @@ required-features = ["bin"]
 [dependencies]
 serde = { version = "1.0.197", features = ["derive"] }
 serde_yaml = "0.9.32"
+toml = "0.8.11"
 git2 = "0.18.2"
 semver = { version = "1.0.22", features = ["serde"] }
-reqwest = { version = "0.11.24", default-features = false, features = ["rustls-tls", "blocking"] }
+reqwest = { version = "0.11.26", default-features = false, features = ["rustls-tls", "blocking"] }
 tar = "0.4.40"
 flate2 = "1.0.28"
 pathdiff = "0.2.1"
 relative-path = { version = "1.9.2", features = ["serde"] }
-log = "0.4.20"
-thiserror = "1.0.57"
+log = "0.4.21"
+thiserror = "1.0.58"
 threadpool = "1.8.1"
 full_moon = { version = "0.19.0", features = ["stacker", "roblox"] }
 
 # chrono-lc breaks because of https://github.com/chronotope/chrono/compare/v0.4.34...v0.4.35#diff-67de5678fb5c14378bbff7ecf7f8bfab17cc223c4726f8da3afca183a4e59543
 chrono = { version = "=0.4.34", features = ["serde"] }
 
-clap = { version = "4.5.1", features = ["derive"], optional = true }
+clap = { version = "4.5.3", features = ["derive"], optional = true }
 directories = { version = "5.0.1", optional = true }
 keyring = { version = "2.3.2", optional = true }
-anyhow = { version = "1.0.80", optional = true }
+anyhow = { version = "1.0.81", optional = true }
 ignore = { version = "0.4.22", optional = true }
 pretty_env_logger = { version = "0.5.0", optional = true }
 serde_json = { version = "1.0.114", optional = true }
-lune = { version = "0.8.0", optional = true }
+lune = { version = "0.8.2", optional = true }
 futures-executor = { version = "0.3.30", optional = true }
 indicatif = { version = "0.17.8", optional = true }
-auth-git2 = { version = "0.5.3", optional = true }
+auth-git2 = { version = "0.5.4", optional = true }
 indicatif-log-bridge = { version = "0.2.2", optional = true }
-inquire = { version = "0.7.0", optional = true }
+inquire = { version = "0.7.1", optional = true }
 
 [dev-dependencies]
 tempfile = "3.10.1"

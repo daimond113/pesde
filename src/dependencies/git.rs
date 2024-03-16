@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::{
     index::{remote_callbacks, Index},
-    manifest::{Manifest, ManifestReadError, Realm},
+    manifest::{Manifest, ManifestConvertError, Realm},
     package_name::PackageName,
     project::Project,
 };
@@ -53,7 +53,7 @@ pub enum GitDownloadError {
 
     /// An error that occurred while reading the manifest of the git repository
     #[error("error reading manifest")]
-    ManifestRead(#[from] ManifestReadError),
+    ManifestRead(#[from] ManifestConvertError),
 }
 
 impl GitDependencySpecifier {
@@ -120,7 +120,7 @@ impl GitDependencySpecifier {
         repo.reset(&obj, git2::ResetType::Hard, None)?;
 
         Ok((
-            Manifest::from_path(dest)?,
+            Manifest::from_path_or_convert(dest)?,
             repo_url.to_string(),
             obj.id().to_string(),
         ))
@@ -152,6 +152,8 @@ impl GitPackageRef {
         }
 
         repo.reset(&obj, git2::ResetType::Hard, None)?;
+        
+        Manifest::from_path_or_convert(dest)?;
 
         Ok(())
     }

@@ -307,17 +307,21 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                 anyhow::bail!("manifest already exists");
             }
 
-            let default_name = params.cwd.file_name().unwrap().to_str().unwrap();
+            let default_name = params.cwd.file_name().and_then(|s| s.to_str());
 
-            let name = Text::new("What is the name of the package?")
-                .with_initial_value(default_name)
-                .with_validator(|name: &str| {
+            let mut name =
+                Text::new("What is the name of the package?").with_validator(|name: &str| {
                     Ok(match PackageName::from_str(name) {
                         Ok(_) => Validation::Valid,
                         Err(e) => Validation::Invalid(e.into()),
                     })
-                })
-                .prompt()?;
+                });
+
+            if let Some(name_str) = default_name {
+                name = name.with_initial_value(name_str);
+            }
+
+            let name = name.prompt()?;
 
             let path_style =
                 Select::new("What style of paths do you want to use?", vec!["roblox"]).prompt()?;
@@ -438,13 +442,12 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                         )))?
                         .json::<Value>()?
                         .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|v| Version::parse(v.as_str().unwrap()))
-                        .collect::<Result<Vec<Version>, semver::Error>>()?
-                        .into_iter()
-                        .max()
-                        .unwrap();
+                        .and_then(|a| a.last())
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<Version>().ok())
+                        .ok_or(anyhow::anyhow!(
+                            "failed to get latest version of {name}@{version}"
+                        ))?;
 
                         if latest_version > version {
                             println!(
@@ -454,6 +457,9 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                     }
                 }
             }
+        }
+        Command::Convert => {
+            Manifest::from_path_or_convert(&params.cwd)?;
         }
         _ => unreachable!(),
     }
