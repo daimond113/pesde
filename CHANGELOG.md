@@ -5,12 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2024-03-16
+### Details
+#### Features
+- :children_crossing: add wally conversion
+- :sparkles: add embed metadata by @daimond113
+
+#### Miscellaneous Tasks
+- :bug: show logo on all platforms by @daimond113
+
+#### Refactor
+- :zap: store index files as btreemaps
+
 ## [0.1.4] - 2024-03-16
 ### Details
 #### Features
-- :sparkles: add repository field
-- :rocket: create website
-- :sparkles: add listing newest packages
+- :sparkles: add repository field by @daimond113
+- :rocket: create website by @daimond113
+- :sparkles: add listing newest packages by @daimond113
 
 ## [0.1.3] - 2024-03-10
 ### Details
@@ -39,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Features
 - :tada: initial commit by @daimond113
 
+[0.1.5]: https://github.com/daimond113/pesde/compare/v0.1.4..v0.1.5
 [0.1.4]: https://github.com/daimond113/pesde/compare/v0.1.3..v0.1.4
 [0.1.3]: https://github.com/daimond113/pesde/compare/v0.1.2..v0.1.3
 [0.1.2]: https://github.com/daimond113/pesde/compare/v0.1.1..v0.1.2
