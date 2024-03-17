@@ -174,10 +174,7 @@ pub async fn get_package_version(
         match index.package(&package_name)? {
             Some(package) => {
                 if version == "latest" {
-                    version = package
-                        .last()
-                        .map(|v| v.version.to_string())
-                        .unwrap();
+                    version = package.last().map(|v| v.version.to_string()).unwrap();
                 } else if !package.iter().any(|v| v.version.to_string() == version) {
                     return Ok(HttpResponse::NotFound().finish());
                 }

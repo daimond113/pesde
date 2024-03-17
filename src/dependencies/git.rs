@@ -152,7 +152,7 @@ impl GitPackageRef {
         }
 
         repo.reset(&obj, git2::ResetType::Hard, None)?;
-        
+
         Manifest::from_path_or_convert(dest)?;
 
         Ok(())

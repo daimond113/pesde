@@ -2,9 +2,9 @@ use clap::Subcommand;
 use pesde::index::Index;
 use reqwest::{header::AUTHORIZATION, Url};
 
-use crate::{send_request, CliParams};
+use crate::cli::{api_token::API_TOKEN_SOURCE, send_request, INDEX, REQWEST_CLIENT};
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum AuthCommand {
     /// Logs in to the registry
     Login,
@@ -12,14 +12,14 @@ pub enum AuthCommand {
     Logout,
 }
 
-pub fn auth_command(cmd: AuthCommand, params: CliParams) -> anyhow::Result<()> {
-    let index_config = params.index.config()?;
-
+pub fn auth_command(cmd: AuthCommand) -> anyhow::Result<()> {
     match cmd {
         AuthCommand::Login => {
-            let response = send_request(params.reqwest_client.post(Url::parse_with_params(
+            let github_oauth_client_id = INDEX.config()?.github_oauth_client_id;
+
+            let response = send_request(REQWEST_CLIENT.post(Url::parse_with_params(
                 "https://github.com/login/device/code",
-                &[("client_id", index_config.github_oauth_client_id.as_str())],
+                &[("client_id", &github_oauth_client_id)],
             )?))?
             .json::<serde_json::Value>()?;
 
@@ -43,10 +43,10 @@ pub fn auth_command(cmd: AuthCommand, params: CliParams) -> anyhow::Result<()> {
             while time_left > 0 {
                 std::thread::sleep(interval);
                 time_left -= interval.as_secs() as i64;
-                let response = send_request(params.reqwest_client.post(Url::parse_with_params(
+                let response = send_request(REQWEST_CLIENT.post(Url::parse_with_params(
                     "https://github.com/login/oauth/access_token",
                     &[
-                        ("client_id", index_config.github_oauth_client_id.as_str()),
+                        ("client_id", github_oauth_client_id.as_str()),
                         ("device_code", device_code),
                         ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
                     ],
@@ -80,11 +80,10 @@ pub fn auth_command(cmd: AuthCommand, params: CliParams) -> anyhow::Result<()> {
                         .as_str()
                         .ok_or(anyhow::anyhow!("couldn't get access_token"))?;
 
-                    params.api_token_entry.set_password(access_token)?;
+                    API_TOKEN_SOURCE.set_api_token(access_token)?;
 
                     let response = send_request(
-                        params
-                            .reqwest_client
+                        REQWEST_CLIENT
                             .get("https://api.github.com/user")
                             .header(AUTHORIZATION, format!("Bearer {access_token}")),
                     )?
@@ -102,7 +101,7 @@ pub fn auth_command(cmd: AuthCommand, params: CliParams) -> anyhow::Result<()> {
             anyhow::bail!("code expired, please re-run the login command");
         }
         AuthCommand::Logout => {
-            params.api_token_entry.delete_password()?;
+            API_TOKEN_SOURCE.delete_api_token()?;
 
             println!("you're now logged out");
         }

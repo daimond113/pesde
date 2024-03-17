@@ -13,10 +13,7 @@ impl<E: Send + Sync + 'static> MultithreadedJob<E> {
         let (tx, rx) = std::sync::mpsc::channel();
         let pool = ThreadPool::new(6);
 
-        (Self {
-            progress: rx,
-            pool,
-        }, tx)
+        (Self { progress: rx, pool }, tx)
     }
 
     /// Returns the progress of the job
@@ -41,7 +38,7 @@ impl<E: Send + Sync + 'static> MultithreadedJob<E> {
         F: (FnOnce() -> Result<(), E>) + Send + 'static,
     {
         let sender = tx.clone();
-        
+
         self.pool.execute(move || {
             let result = f();
             sender.send(result).unwrap();

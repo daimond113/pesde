@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 
-use crate::{CliConfig, CliParams};
+use crate::{cli::CLI_CONFIG, CliConfig};
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum ConfigCommand {
     /// Sets the index repository URL
     SetIndexRepo {
@@ -25,41 +25,41 @@ pub enum ConfigCommand {
     GetCacheDir,
 }
 
-pub fn config_command(cmd: ConfigCommand, params: CliParams) -> anyhow::Result<()> {
+pub fn config_command(cmd: ConfigCommand) -> anyhow::Result<()> {
     match cmd {
         ConfigCommand::SetIndexRepo { url } => {
             let cli_config = CliConfig {
                 index_repo_url: url.clone(),
-                ..params.cli_config
+                ..CLI_CONFIG.clone()
             };
 
-            cli_config.write(&params.directories)?;
+            cli_config.write()?;
 
             println!("index repository url set to: `{url}`");
         }
         ConfigCommand::GetIndexRepo => {
             println!(
                 "current index repository url: `{}`",
-                params.cli_config.index_repo_url
+                CLI_CONFIG.index_repo_url
             );
         }
         ConfigCommand::SetCacheDir { directory } => {
             let cli_config = CliConfig {
                 cache_dir: directory,
-                ..params.cli_config
+                ..CLI_CONFIG.clone()
             };
 
-            cli_config.write(&params.directories)?;
+            cli_config.write()?;
 
             println!(
                 "cache directory set to: `{}`",
-                cli_config.cache_dir(&params.directories).display()
+                cli_config.cache_dir().display()
             );
         }
         ConfigCommand::GetCacheDir => {
             println!(
                 "current cache directory: `{}`",
-                params.cli_config.cache_dir(&params.directories).display()
+                CLI_CONFIG.cache_dir().display()
             );
         }
     }

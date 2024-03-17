@@ -163,7 +163,9 @@ impl<I: Index> Project<I> {
 
                 let project = self.clone();
 
-                job.execute(&tx, move || resolved_package.pkg_ref.download(&project, source));
+                job.execute(&tx, move || {
+                    resolved_package.pkg_ref.download(&project, source)
+                });
             }
         }
 

@@ -10,6 +10,7 @@ use ignore::{overrides::OverrideBuilder, WalkBuilder};
 use inquire::{validator::Validation, Select, Text};
 use log::debug;
 use lune::Runtime;
+use once_cell::sync::Lazy;
 use reqwest::{header::AUTHORIZATION, Url};
 use semver::Version;
 use serde_json::Value;
@@ -27,27 +28,19 @@ use pesde::{
     SERVER_PACKAGES_FOLDER,
 };
 
-use crate::{send_request, CliParams, Command};
+use crate::cli::{
+    api_token::API_TOKEN_SOURCE, send_request, Command, CLI_CONFIG, CWD, DIRS, INDEX, MULTI,
+    REQWEST_CLIENT,
+};
 
 pub const MAX_ARCHIVE_SIZE: usize = 4 * 1024 * 1024;
 
-fn get_project(params: &CliParams) -> anyhow::Result<Project<GitIndex>> {
-    Project::from_path(
-        &params.cwd,
-        params.cli_config.cache_dir(&params.directories),
-        params.index.clone(),
-        params.api_token_entry.get_password().ok(),
-    )
-    .map_err(Into::into)
-}
-
 fn multithreaded_bar<E: Send + Sync + Into<anyhow::Error> + 'static>(
-    params: &CliParams,
     job: MultithreadedJob<E>,
     len: u64,
     message: String,
 ) -> Result<(), anyhow::Error> {
-    let bar = params.multi.add(
+    let bar = MULTI.add(
         indicatif::ProgressBar::new(len)
             .with_style(
                 indicatif::ProgressStyle::default_bar()
@@ -77,13 +70,21 @@ macro_rules! none_if_empty {
     };
 }
 
-pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
+pub fn root_command(cmd: Command) -> anyhow::Result<()> {
+    let project: Lazy<Project<GitIndex>> = Lazy::new(|| {
+        Project::from_path(
+            CWD.to_path_buf(),
+            CLI_CONFIG.cache_dir(),
+            INDEX.clone(),
+            API_TOKEN_SOURCE.get_api_token().ok().flatten(),
+        )
+        .unwrap()
+    });
+
     match cmd {
         Command::Install { locked } => {
-            let project = get_project(&params)?;
-
             for packages_folder in &[PACKAGES_FOLDER, DEV_PACKAGES_FOLDER, SERVER_PACKAGES_FOLDER] {
-                if let Err(e) = remove_dir_all(&params.cwd.join(packages_folder)) {
+                if let Err(e) = remove_dir_all(CWD.join(packages_folder)) {
                     if e.kind() != std::io::ErrorKind::NotFound {
                         return Err(e.into());
                     } else {
@@ -97,7 +98,6 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             let download_job = project.download(&resolved_versions_map)?;
 
             multithreaded_bar(
-                &params,
                 download_job,
                 resolved_versions_map.len() as u64,
                 "Downloading packages".to_string(),
@@ -111,8 +111,6 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             )?;
         }
         Command::Run { package, args } => {
-            let project = get_project(&params)?;
-
             let lockfile = project
                 .lockfile()?
                 .ok_or(anyhow::anyhow!("lockfile not found"))?;
@@ -145,10 +143,10 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             ))?;
         }
         Command::Search { query } => {
-            let config = params.index.config()?;
+            let config = INDEX.config()?;
             let api_url = config.api();
 
-            let response = send_request(params.reqwest_client.get(Url::parse_with_params(
+            let response = send_request(REQWEST_CLIENT.get(Url::parse_with_params(
                 &format!("{}/v0/search", api_url),
                 &query.map(|q| vec![("query", q)]).unwrap_or_default(),
             )?))?
@@ -171,8 +169,6 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             }
         }
         Command::Publish => {
-            let project = get_project(&params)?;
-
             if project.manifest().private {
                 anyhow::bail!("package is private, cannot publish");
             }
@@ -180,9 +176,11 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             let encoder = GzEncoder::new(vec![], Compression::default());
             let mut archive = TarBuilder::new(encoder);
 
-            let mut walk_builder = WalkBuilder::new(&params.cwd);
+            let cwd = &CWD.to_path_buf();
+
+            let mut walk_builder = WalkBuilder::new(cwd);
             walk_builder.add_custom_ignore_filename(".pesdeignore");
-            let mut overrides = OverrideBuilder::new(&params.cwd);
+            let mut overrides = OverrideBuilder::new(cwd);
 
             for packages_folder in IGNORED_FOLDERS {
                 overrides.add(&format!("!{}", packages_folder))?;
@@ -193,7 +191,7 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             for entry in walk_builder.build() {
                 let entry = entry?;
                 let path = entry.path();
-                let relative_path = path.strip_prefix(&params.cwd)?;
+                let relative_path = path.strip_prefix(cwd)?;
                 let entry_type = entry
                     .file_type()
                     .ok_or(anyhow::anyhow!("failed to get file type"))?;
@@ -222,8 +220,7 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                 .file_name("tarball.tar.gz")
                 .mime_str("application/gzip")?;
 
-            let mut request = params
-                .reqwest_client
+            let mut request = REQWEST_CLIENT
                 .post(format!("{}/v0/packages", project.index().config()?.api()))
                 .multipart(reqwest::blocking::multipart::Form::new().part("tarball", part));
 
@@ -236,8 +233,6 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             println!("{}", send_request(request)?.text()?);
         }
         Command::Patch { package } => {
-            let project = get_project(&params)?;
-
             let lockfile = project
                 .lockfile()?
                 .ok_or(anyhow::anyhow!("lockfile not found"))?;
@@ -247,7 +242,7 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                 .and_then(|versions| versions.get(&package.1))
                 .ok_or(anyhow::anyhow!("package not found in lockfile"))?;
 
-            let dir = params.directories.data_dir().join("patches").join(format!(
+            let dir = DIRS.data_dir().join("patches").join(format!(
                 "{}_{}",
                 package.0.escaped(),
                 package.1
@@ -273,8 +268,6 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             println!("done! modify the files in {} and run `{} patch-commit <DIRECTORY>` to commit the changes", dir.display(), env!("CARGO_BIN_NAME"));
         }
         Command::PatchCommit { dir } => {
-            let project = get_project(&params)?;
-
             let manifest = Manifest::from_path(&dir)?;
             let patch_path = project.path().join(PATCHES_FOLDER).join(format!(
                 "{}@{}.patch",
@@ -301,13 +294,13 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             );
         }
         Command::Init => {
-            let manifest_path = params.cwd.join(MANIFEST_FILE_NAME);
+            let manifest_path = CWD.join(MANIFEST_FILE_NAME);
 
             if manifest_path.exists() {
                 anyhow::bail!("manifest already exists");
             }
 
-            let default_name = params.cwd.file_name().and_then(|s| s.to_str());
+            let default_name = CWD.file_name().and_then(|s| s.to_str());
 
             let mut name =
                 Text::new("What is the name of the package?").with_validator(|name: &str| {
@@ -380,8 +373,6 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             realm,
             peer,
         } => {
-            let project = get_project(&params)?;
-
             let mut manifest = project.manifest().clone();
 
             let specifier = DependencySpecifier::Registry(RegistryDependencySpecifier {
@@ -402,8 +393,6 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             )?;
         }
         Command::Remove { package } => {
-            let project = get_project(&params)?;
-
             let mut manifest = project.manifest().clone();
 
             for dependencies in [&mut manifest.dependencies, &mut manifest.peer_dependencies] {
@@ -422,8 +411,6 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             )?;
         }
         Command::Outdated => {
-            let project = get_project(&params)?;
-
             let manifest = project.manifest();
             let dependency_tree = manifest.dependency_tree(&project, false)?;
 
@@ -434,7 +421,7 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
                     }
 
                     if let PackageRef::Registry(registry) = resolved_pkg.pkg_ref {
-                        let latest_version = send_request(params.reqwest_client.get(format!(
+                        let latest_version = send_request(REQWEST_CLIENT.get(format!(
                             "{}/v0/packages/{}/{}/versions",
                             project.index().config()?.api(),
                             registry.name.scope(),
@@ -459,7 +446,7 @@ pub fn root_command(cmd: Command, params: CliParams) -> anyhow::Result<()> {
             }
         }
         Command::Convert => {
-            Manifest::from_path_or_convert(&params.cwd)?;
+            Manifest::from_path_or_convert(CWD.to_path_buf())?;
         }
         _ => unreachable!(),
     }
