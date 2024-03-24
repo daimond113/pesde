@@ -14,8 +14,8 @@ kill_timeout = '5s'
 ADDRESS = '0.0.0.0'
 PORT = '8080'
 INDEX_REPO_URL = 'https://github.com/daimond113/pesde-index'
-COMITTER_GIT_NAME = 'Pesde Index Updater'
-COMITTER_GIT_EMAIL = 'pesde@daimond113.com'
+COMMITTER_GIT_NAME = 'Pesde Index Updater'
+COMMITTER_GIT_EMAIL = 'pesde@daimond113.com'
 
 [http_service]
 internal_port = 8080
