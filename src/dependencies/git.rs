@@ -1,4 +1,3 @@
-use cfg_if::cfg_if;
 use std::{fs::create_dir_all, path::Path, sync::Arc};
 
 use git2::{build::RepoBuilder, Repository};
@@ -173,16 +172,6 @@ impl GitPackageRef {
         }
 
         repo.reset(&obj, git2::ResetType::Hard, None)?;
-
-        cfg_if! {
-            if #[cfg(feature = "wally")] {
-                Manifest::from_path_or_convert(dest)?;
-            } else {
-                if Manifest::from_path(dest).is_err() {
-                    return Err(GitDownloadError::ManifestNotPresent);
-                }
-            }
-        }
 
         Ok(())
     }

@@ -3,6 +3,7 @@ use chrono::Utc;
 use std::{
     collections::{BTreeMap, HashMap},
     fs::{create_dir_all, read, remove_dir_all, write, File},
+    process::Command as SysCommand,
     str::FromStr,
     time::Duration,
 };
@@ -113,6 +114,26 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 resolved_versions_map.len() as u64,
                 "Downloading packages".to_string(),
             )?;
+
+            project.convert_manifests(&resolved_versions_map, |path| {
+                if let Some(sourcemap_generator) = &manifest.sourcemap_generator {
+                    cfg_if! {
+                        if #[cfg(target_os = "windows")] {
+                            SysCommand::new("pwsh")
+                                .args(["-C", &sourcemap_generator])
+                                .current_dir(path)
+                                .output()
+                                .expect("failed to execute process");
+                        } else {
+                            SysCommand::new("sh")
+                                .args(["-c", &sourcemap_generator])
+                                .current_dir(path)
+                                .output()
+                                .expect("failed to execute process");
+                        }
+                    }
+                }
+            })?;
 
             let project = Lazy::force_mut(&mut project);
 
@@ -393,6 +414,8 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                     DEFAULT_INDEX_NAME.to_string(),
                     DEFAULT_INDEX_URL.to_string(),
                 )]),
+                sourcemap_generator: None,
+
                 dependencies: Default::default(),
                 peer_dependencies: Default::default(),
                 description: none_if_empty!(description),

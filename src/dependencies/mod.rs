@@ -1,8 +1,13 @@
+use std::{
+    fmt::Display,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
 use cfg_if::cfg_if;
 use log::debug;
 use reqwest::header::AUTHORIZATION;
-use std::{fmt::Display, fs::create_dir_all, path::Path, sync::Arc};
-
 use semver::Version;
 use serde::{de::IntoDeserializer, Deserialize, Deserializer, Serialize};
 use serde_yaml::Value;
@@ -16,7 +21,7 @@ use crate::{
         resolution::ResolvedVersionsMap,
     },
     index::{CredentialsFn, Index},
-    manifest::Realm,
+    manifest::{Manifest, Realm},
     multithread::MultithreadedJob,
     package_name::PackageName,
     project::{get_index, get_index_by_url, InstallProjectError, Project},
@@ -239,6 +244,32 @@ impl PackageRef {
     }
 }
 
+/// An error that occurred while converting a manifest
+#[derive(Debug, Error)]
+pub enum ConvertManifestsError {
+    /// An error that occurred while converting the manifest
+    #[error("error converting the manifest")]
+    Manifest(#[from] crate::manifest::ManifestConvertError),
+
+    /// An error that occurred while reading the sourcemap
+    #[error("error reading the sourcemap")]
+    Sourcemap(#[from] std::io::Error),
+
+    /// An error that occurred while parsing the sourcemap
+    #[cfg(feature = "wally")]
+    #[error("error parsing the sourcemap")]
+    Parse(#[from] serde_json::Error),
+    
+    /// An error that occurred while writing the manifest
+    #[error("error writing the manifest")]
+    Write(#[from] serde_yaml::Error),
+
+    /// A manifest is not present in a dependency, and the wally feature is not enabled
+    #[cfg(not(feature = "wally"))]
+    #[error("wally feature is not enabled, but the manifest is not present in the dependency")]
+    ManifestNotPresent,
+}
+
 impl Project {
     /// Downloads the project's dependencies
     pub fn download(
@@ -282,6 +313,80 @@ impl Project {
         }
 
         Ok(job)
+    }
+
+    /// Converts the manifests of the project's dependencies
+    #[cfg(feature = "wally")]
+    pub fn convert_manifests<F: Fn(PathBuf)>(
+        &self,
+        map: &ResolvedVersionsMap,
+        generate_sourcemap: F,
+    ) -> Result<(), ConvertManifestsError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SourcemapNode {
+            #[serde(default)]
+            file_paths: Vec<relative_path::RelativePathBuf>,
+        }
+
+        for versions in map.values() {
+            for resolved_package in versions.values() {
+                let source = match &resolved_package.pkg_ref {
+                    PackageRef::Wally(_) | PackageRef::Git(_) => {
+                        resolved_package.directory(self.path()).1
+                    }
+                    _ => continue,
+                };
+
+                let mut manifest = Manifest::from_path_or_convert(&source)?;
+
+                generate_sourcemap(source.to_path_buf());
+
+                let sourcemap = source.join("sourcemap.json");
+                let sourcemap: SourcemapNode = if sourcemap.exists() {
+                    serde_json::from_str(&std::fs::read_to_string(&sourcemap)?)?
+                } else {
+                    log::warn!("sourcemap for {resolved_package} not found, skipping...");
+                    continue;
+                };
+
+                manifest.exports.lib = sourcemap
+                    .file_paths
+                    .into_iter()
+                    .find(|path| {
+                        path.extension()
+                            .is_some_and(|ext| ext == "lua" || ext == "luau")
+                    })
+                    .or_else(|| Some(relative_path::RelativePathBuf::from("true")));
+                
+                serde_yaml::to_writer(&std::fs::File::create(&source.join(crate::MANIFEST_FILE_NAME))?, &manifest)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Errors if dependencies don't have manifests, enable the `wally` feature to convert them
+    #[cfg(not(feature = "wally"))]
+    pub fn convert_manifests<F: Fn(PathBuf)>(
+        &self,
+        map: &ResolvedVersionsMap,
+        _generate_sourcemap: F,
+    ) -> Result<(), ConvertManifestsError> {
+        for versions in map.values() {
+            for resolved_package in versions.values() {
+                let source = match &resolved_package.pkg_ref {
+                    PackageRef::Git(_) => resolved_package.directory(self.path()).1,
+                    _ => continue,
+                };
+
+                if Manifest::from_path_or_convert(&source).is_err() {
+                    return Err(ConvertManifestsError::ManifestNotPresent);
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

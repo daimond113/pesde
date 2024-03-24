@@ -41,6 +41,8 @@ fn test_resolves_package() {
         private: true,
         realm: None,
         indices: Default::default(),
+        sourcemap_generator: None,
+
         dependencies: vec![],
         peer_dependencies: vec![],
         description: Some(description.to_string()),
@@ -78,6 +80,8 @@ fn test_resolves_package() {
         private: true,
         realm: None,
         indices: Default::default(),
+        sourcemap_generator: None,
+
         dependencies: vec![specifier.clone()],
         peer_dependencies: vec![specifier_2.clone()],
         description: Some(description.to_string()),

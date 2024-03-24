@@ -110,7 +110,6 @@ impl FromStr for Realm {
 
 /// The manifest of a package
 #[derive(Serialize, Deserialize, Debug, Clone)]
-// #[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// The name of the package
     pub name: StandardPackageName,
@@ -129,6 +128,10 @@ pub struct Manifest {
     pub realm: Option<Realm>,
     /// Indices of the package
     pub indices: BTreeMap<String, String>,
+    /// The command to generate a `sourcemap.json`
+    #[cfg(feature = "wally")]
+    #[serde(default)]
+    pub sourcemap_generator: Option<String>,
 
     /// The dependencies of the package
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -289,6 +292,8 @@ impl Manifest {
                     crate::project::DEFAULT_INDEX_NAME.to_string(),
                     "".to_string(),
                 )]),
+                sourcemap_generator: None,
+
                 dependencies,
                 peer_dependencies: Vec::new(),
                 description: wally_manifest.package.description,

@@ -16,7 +16,7 @@ use url::Url;
 use crate::{
     dependencies::{maybe_authenticated_request, DependencySpecifier},
     index::{remote_callbacks, IndexFileEntry, WallyIndex},
-    manifest::{DependencyType, Manifest, ManifestConvertError, Realm},
+    manifest::{DependencyType, ManifestConvertError, Realm},
     package_name::{
         FromStrPackageNameParseError, WallyPackageName, WallyPackageNameValidationError,
     },
@@ -225,7 +225,10 @@ impl WallyPackageRef {
     ) -> Result<(), WallyDownloadError> {
         let response =
             maybe_authenticated_request(reqwest_client, url.as_str(), registry_auth_token)
-                .header("Wally-Version", "0.3.2")
+                .header(
+                    "Wally-Version",
+                    std::env::var("WALLY_VERSION").unwrap_or("0.3.2".to_string()),
+                )
                 .send()?;
 
         if !response.status().is_success() {
@@ -247,8 +250,6 @@ impl WallyPackageRef {
 
         let mut archive = zip::read::ZipArchive::new(Cursor::new(bytes))?;
         archive.extract(dest.as_ref())?;
-
-        Manifest::from_path_or_convert(dest.as_ref())?;
 
         Ok(())
     }

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs::{read_to_string, write},
     iter,
     path::{Component, Path, PathBuf},
@@ -127,6 +128,7 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
     resolved_pkg: &ResolvedPackage,
     destination_dir: P,
     parent_dependency_packages_dir: Q,
+    only_name: bool,
 ) -> Result<(), LinkingError> {
     let (_, source_dir) = resolved_pkg.directory(project.path());
     let file = Manifest::from_path(&source_dir)?;
@@ -153,7 +155,11 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
         destination_dir.as_ref().to_path_buf()
     };
 
-    let destination_file = destination_dir.join(format!("{}{}.lua", pkg_name.prefix(), name));
+    let destination_file = destination_dir.join(format!(
+        "{}{}.lua",
+        if only_name { "" } else { pkg_name.prefix() },
+        name
+    ));
 
     let realm_folder = project.path().join(resolved_pkg.packages_folder());
     let in_different_folders = realm_folder != parent_dependency_packages_dir.as_ref();
@@ -227,6 +233,12 @@ impl Project {
         &self,
         map: &ResolvedVersionsMap,
     ) -> Result<(), LinkingDependenciesError> {
+        let root_deps: HashSet<String> = HashSet::from_iter(
+            map.iter()
+                .flat_map(|(_, v)| v)
+                .filter_map(|(_, v)| v.is_root.then_some(v.pkg_ref.name().name().to_string())),
+        );
+
         for (name, versions) in map {
             for (version, resolved_pkg) in versions {
                 let (container_dir, _) = resolved_pkg.directory(self.path());
@@ -247,6 +259,10 @@ impl Project {
                         dep,
                         &container_dir,
                         &self.path().join(resolved_pkg.packages_folder()),
+                        resolved_pkg
+                            .dependencies
+                            .iter()
+                            .any(|(n, _)| n.name() == dep_name.name()),
                     )
                     .map_err(|e| {
                         LinkingDependenciesError(
@@ -267,7 +283,14 @@ impl Project {
                         linking_dir.display()
                     );
 
-                    link(self, resolved_pkg, linking_dir, linking_dir).map_err(|e| {
+                    link(
+                        self,
+                        resolved_pkg,
+                        linking_dir,
+                        linking_dir,
+                        root_deps.contains(name.name()),
+                    )
+                    .map_err(|e| {
                         LinkingDependenciesError(
                             e,
                             name.clone(),
