@@ -259,7 +259,7 @@ pub enum ConvertManifestsError {
     #[cfg(feature = "wally")]
     #[error("error parsing the sourcemap")]
     Parse(#[from] serde_json::Error),
-    
+
     /// An error that occurred while writing the manifest
     #[error("error writing the manifest")]
     Write(#[from] serde_yaml::Error),
@@ -358,8 +358,11 @@ impl Project {
                             .is_some_and(|ext| ext == "lua" || ext == "luau")
                     })
                     .or_else(|| Some(relative_path::RelativePathBuf::from("true")));
-                
-                serde_yaml::to_writer(&std::fs::File::create(&source.join(crate::MANIFEST_FILE_NAME))?, &manifest)?;
+
+                serde_yaml::to_writer(
+                    &std::fs::File::create(&source.join(crate::MANIFEST_FILE_NAME))?,
+                    &manifest,
+                )?;
             }
         }
 

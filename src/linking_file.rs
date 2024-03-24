@@ -1,7 +1,6 @@
 use std::{
     collections::HashSet,
     fs::{read_to_string, write},
-    iter,
     path::{Component, Path, PathBuf},
 };
 
@@ -185,8 +184,9 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
         "script.Parent".to_string()
     };
 
-    let path = iter::once(Ok(beginning))
-        .chain(path.components().map(|component| {
+    let mut components = path
+        .components()
+        .map(|component| {
             Ok(match component {
                 Component::ParentDir => ".Parent".to_string(),
                 Component::Normal(part) => format!(
@@ -195,8 +195,11 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
                 ),
                 _ => unreachable!("invalid path component"),
             })
-        }))
-        .collect::<Result<String, LinkingError>>()?;
+        })
+        .collect::<Result<Vec<_>, LinkingError>>()?;
+    components.pop();
+
+    let path = beginning + &components.join("") + &format!("[{name:?}]");
 
     debug!(
         "writing linking file for {} with import `{path}` to {}",
