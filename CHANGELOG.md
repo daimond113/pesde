@@ -5,10 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2024-03-24
+### Details
+#### Bug Fixes
+- :bug: correct linking file paths
+- :bug: correctly enable fields with features by @daimond113
+
 ## [0.3.1] - 2024-03-24
 ### Details
 #### Features
-- :sparkles: automatically find file to use as lib
+- :sparkles: automatically find file to use as lib by @daimond113
 
 ## [0.3.0] - 2024-03-24
 ### Details
@@ -65,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Features
 - :tada: initial commit by @daimond113
 
+[0.3.2]: https://github.com/daimond113/pesde/compare/v0.3.1..v0.3.2
 [0.3.1]: https://github.com/daimond113/pesde/compare/v0.3.0..v0.3.1
 [0.3.0]: https://github.com/daimond113/pesde/compare/v0.2.0..v0.3.0
 [0.2.0]: https://github.com/daimond113/pesde/compare/v0.1.4..v0.2.0
