@@ -3,7 +3,6 @@ use chrono::Utc;
 use std::{
     collections::{BTreeMap, HashMap},
     fs::{create_dir_all, read, remove_dir_all, write, File},
-    process::Command as SysCommand,
     str::FromStr,
     time::Duration,
 };
@@ -115,21 +114,26 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 "Downloading packages".to_string(),
             )?;
 
+            #[allow(unused_variables)]
             project.convert_manifests(&resolved_versions_map, |path| {
-                if let Some(sourcemap_generator) = &manifest.sourcemap_generator {
-                    cfg_if! {
-                        if #[cfg(target_os = "windows")] {
-                            SysCommand::new("pwsh")
-                                .args(["-C", &sourcemap_generator])
-                                .current_dir(path)
-                                .output()
-                                .expect("failed to execute process");
-                        } else {
-                            SysCommand::new("sh")
-                                .args(["-c", &sourcemap_generator])
-                                .current_dir(path)
-                                .output()
-                                .expect("failed to execute process");
+                cfg_if! {
+                    if #[cfg(feature = "wally")] {
+                        if let Some(sourcemap_generator) = &manifest.sourcemap_generator {
+                            cfg_if! {
+                                if #[cfg(target_os = "windows")] {
+                                    std::process::Command::new("pwsh")
+                                        .args(["-C", &sourcemap_generator])
+                                        .current_dir(path)
+                                        .output()
+                                        .expect("failed to execute process");
+                                } else {
+                                    std::process::Command::new("sh")
+                                        .args(["-c", &sourcemap_generator])
+                                        .current_dir(path)
+                                        .output()
+                                        .expect("failed to execute process");
+                                }
+                            }
                         }
                     }
                 }
@@ -414,6 +418,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                     DEFAULT_INDEX_NAME.to_string(),
                     DEFAULT_INDEX_URL.to_string(),
                 )]),
+                #[cfg(feature = "wally")]
                 sourcemap_generator: None,
 
                 dependencies: Default::default(),

@@ -41,6 +41,7 @@ fn test_resolves_package() {
         private: true,
         realm: None,
         indices: Default::default(),
+        #[cfg(feature = "wally")]
         sourcemap_generator: None,
 
         dependencies: vec![],
@@ -80,6 +81,7 @@ fn test_resolves_package() {
         private: true,
         realm: None,
         indices: Default::default(),
+        #[cfg(feature = "wally")]
         sourcemap_generator: None,
 
         dependencies: vec![specifier.clone()],
