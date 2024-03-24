@@ -1,9 +1,13 @@
+use cfg_if::cfg_if;
 use log::debug;
-use std::{fmt::Display, fs::create_dir_all, path::Path};
+use reqwest::header::AUTHORIZATION;
+use std::{fmt::Display, fs::create_dir_all, path::Path, sync::Arc};
 
 use semver::Version;
 use serde::{de::IntoDeserializer, Deserialize, Deserializer, Serialize};
+use serde_yaml::Value;
 use thiserror::Error;
+use url::Url;
 
 use crate::{
     dependencies::{
@@ -11,11 +15,11 @@ use crate::{
         registry::{RegistryDependencySpecifier, RegistryPackageRef},
         resolution::ResolvedVersionsMap,
     },
-    index::Index,
+    index::{CredentialsFn, Index},
     manifest::Realm,
     multithread::MultithreadedJob,
     package_name::PackageName,
-    project::{InstallProjectError, Project},
+    project::{get_index, get_index_by_url, InstallProjectError, Project},
 };
 
 /// Git dependency related stuff
@@ -24,6 +28,9 @@ pub mod git;
 pub mod registry;
 /// Resolution
 pub mod resolution;
+/// Wally dependency related stuff
+#[cfg(feature = "wally")]
+pub mod wally;
 
 // To improve developer experience, we resolve the type of the dependency specifier with a custom deserializer, so that the user doesn't have to specify the type of the dependency
 /// A dependency of a package
@@ -34,6 +41,9 @@ pub enum DependencySpecifier {
     Registry(RegistryDependencySpecifier),
     /// A dependency that can be downloaded from a git repository
     Git(GitDependencySpecifier),
+    /// A dependency that can be downloaded from a wally registry
+    #[cfg(feature = "wally")]
+    Wally(wally::WallyDependencySpecifier),
 }
 
 impl DependencySpecifier {
@@ -42,6 +52,8 @@ impl DependencySpecifier {
         match self {
             DependencySpecifier::Registry(registry) => registry.name.to_string(),
             DependencySpecifier::Git(git) => git.repo.to_string(),
+            #[cfg(feature = "wally")]
+            DependencySpecifier::Wally(wally) => wally.name.to_string(),
         }
     }
 
@@ -50,6 +62,8 @@ impl DependencySpecifier {
         match self {
             DependencySpecifier::Registry(registry) => registry.version.to_string(),
             DependencySpecifier::Git(git) => git.rev.clone(),
+            #[cfg(feature = "wally")]
+            DependencySpecifier::Wally(wally) => wally.version.to_string(),
         }
     }
 
@@ -58,13 +72,15 @@ impl DependencySpecifier {
         match self {
             DependencySpecifier::Registry(registry) => registry.realm.as_ref(),
             DependencySpecifier::Git(git) => git.realm.as_ref(),
+            #[cfg(feature = "wally")]
+            DependencySpecifier::Wally(wally) => wally.realm.as_ref(),
         }
     }
 }
 
 impl<'de> Deserialize<'de> for DependencySpecifier {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let yaml = serde_yaml::Value::deserialize(deserializer)?;
+        let yaml = Value::deserialize(deserializer)?;
 
         let result = if yaml.get("repo").is_some() {
             GitDependencySpecifier::deserialize(yaml.into_deserializer())
@@ -72,6 +88,15 @@ impl<'de> Deserialize<'de> for DependencySpecifier {
         } else if yaml.get("name").is_some() {
             RegistryDependencySpecifier::deserialize(yaml.into_deserializer())
                 .map(DependencySpecifier::Registry)
+        } else if yaml.get("wally").is_some() {
+            cfg_if! {
+                if #[cfg(feature = "wally")] {
+                    wally::WallyDependencySpecifier::deserialize(yaml.into_deserializer())
+                        .map(DependencySpecifier::Wally)
+                } else {
+                    Err(serde::de::Error::custom("wally is not enabled"))
+                }
+            }
         } else {
             Err(serde::de::Error::custom("invalid dependency"))
         };
@@ -89,6 +114,9 @@ pub enum PackageRef {
     Registry(RegistryPackageRef),
     /// A reference to a package that can be downloaded from a git repository
     Git(GitPackageRef),
+    /// A reference to a package that can be downloaded from a wally registry
+    #[cfg(feature = "wally")]
+    Wally(wally::WallyPackageRef),
 }
 
 /// An error that occurred while downloading a package
@@ -101,14 +129,38 @@ pub enum DownloadError {
     /// An error that occurred while downloading a package from a git repository
     #[error("error downloading package {1} from git repository")]
     Git(#[source] git::GitDownloadError, Box<PackageRef>),
+
+    /// An error that occurred while downloading a package from a wally registry
+    #[cfg(feature = "wally")]
+    #[error("error downloading package {1} from wally registry")]
+    Wally(#[source] wally::WallyDownloadError, Box<PackageRef>),
+
+    /// A URL is required for this type of package reference
+    #[error("a URL is required for this type of package reference")]
+    UrlRequired,
+}
+
+/// An error that occurred while resolving a URL
+#[derive(Debug, Error)]
+pub enum UrlResolveError {
+    /// An error that occurred while resolving a URL of a registry package
+    #[error("error resolving URL of registry package")]
+    Registry(#[from] registry::RegistryUrlResolveError),
+
+    /// An error that occurred while resolving a URL of a wally package
+    #[cfg(feature = "wally")]
+    #[error("error resolving URL of wally package")]
+    Wally(#[from] wally::ResolveWallyUrlError),
 }
 
 impl PackageRef {
     /// Gets the name of the package
-    pub fn name(&self) -> &PackageName {
+    pub fn name(&self) -> PackageName {
         match self {
-            PackageRef::Registry(registry) => &registry.name,
-            PackageRef::Git(git) => &git.name,
+            PackageRef::Registry(registry) => PackageName::Standard(registry.name.clone()),
+            PackageRef::Git(git) => PackageName::Standard(git.name.clone()),
+            #[cfg(feature = "wally")]
+            PackageRef::Wally(wally) => PackageName::Wally(wally.name.clone()),
         }
     }
 
@@ -117,31 +169,81 @@ impl PackageRef {
         match self {
             PackageRef::Registry(registry) => &registry.version,
             PackageRef::Git(git) => &git.version,
+            #[cfg(feature = "wally")]
+            PackageRef::Wally(wally) => &wally.version,
+        }
+    }
+
+    /// Returns the URL of the index
+    pub fn index_url(&self) -> Option<Url> {
+        match self {
+            PackageRef::Registry(registry) => Some(registry.index_url.clone()),
+            PackageRef::Git(_) => None,
+            #[cfg(feature = "wally")]
+            PackageRef::Wally(wally) => Some(wally.index_url.clone()),
+        }
+    }
+
+    /// Resolves the URL of the package
+    pub fn resolve_url(&self, project: &mut Project) -> Result<Option<Url>, UrlResolveError> {
+        Ok(match &self {
+            PackageRef::Registry(registry) => Some(registry.resolve_url(project.indices())?),
+            PackageRef::Git(_) => None,
+            #[cfg(feature = "wally")]
+            PackageRef::Wally(wally) => {
+                let cache_dir = project.cache_dir().to_path_buf();
+                Some(wally.resolve_url(&cache_dir, project.indices_mut())?)
+            }
+        })
+    }
+
+    /// Gets the index of the package
+    pub fn get_index<'a>(&self, project: &'a Project) -> &'a dyn Index {
+        match &self.index_url() {
+            Some(url) => get_index_by_url(project.indices(), url),
+            None => get_index(project.indices(), None),
         }
     }
 
     /// Downloads the package to the specified destination
-    pub fn download<P: AsRef<Path>, I: Index>(
+    pub fn download<P: AsRef<Path>>(
         &self,
-        project: &Project<I>,
+        reqwest_client: &reqwest::blocking::Client,
+        registry_auth_token: Option<String>,
+        url: Option<&Url>,
+        credentials_fn: Option<Arc<CredentialsFn>>,
         dest: P,
     ) -> Result<(), DownloadError> {
         match self {
             PackageRef::Registry(registry) => registry
-                .download(project, dest)
+                .download(
+                    reqwest_client,
+                    url.ok_or(DownloadError::UrlRequired)?,
+                    registry_auth_token,
+                    dest,
+                )
                 .map_err(|e| DownloadError::Registry(e, Box::new(self.clone()))),
             PackageRef::Git(git) => git
-                .download(project, dest)
+                .download(dest, credentials_fn)
                 .map_err(|e| DownloadError::Git(e, Box::new(self.clone()))),
+            #[cfg(feature = "wally")]
+            PackageRef::Wally(wally) => wally
+                .download(
+                    reqwest_client,
+                    url.ok_or(DownloadError::UrlRequired)?,
+                    registry_auth_token,
+                    dest,
+                )
+                .map_err(|e| DownloadError::Wally(e, Box::new(self.clone()))),
         }
     }
 }
 
-impl<I: Index> Project<I> {
+impl Project {
     /// Downloads the project's dependencies
     pub fn download(
-        &self,
-        map: &ResolvedVersionsMap,
+        &mut self,
+        map: ResolvedVersionsMap,
     ) -> Result<MultithreadedJob<DownloadError>, InstallProjectError> {
         let (job, tx) = MultithreadedJob::new();
 
@@ -161,10 +263,20 @@ impl<I: Index> Project<I> {
 
                 create_dir_all(&source)?;
 
-                let project = self.clone();
+                let reqwest_client = self.reqwest_client.clone();
+                let url = resolved_package.pkg_ref.resolve_url(self)?;
+                let index = resolved_package.pkg_ref.get_index(self);
+                let registry_auth_token = index.registry_auth_token().map(|t| t.to_string());
+                let credentials_fn = index.credentials_fn().cloned();
 
                 job.execute(&tx, move || {
-                    resolved_package.pkg_ref.download(&project, source)
+                    resolved_package.pkg_ref.download(
+                        &reqwest_client,
+                        registry_auth_token,
+                        url.as_ref(),
+                        credentials_fn,
+                        source,
+                    )
                 });
             }
         }
@@ -177,4 +289,25 @@ impl Display for PackageRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}@{}", self.name(), self.version())
     }
+}
+
+pub(crate) fn maybe_authenticated_request(
+    reqwest_client: &reqwest::blocking::Client,
+    url: &str,
+    registry_auth_token: Option<String>,
+) -> reqwest::blocking::RequestBuilder {
+    let mut builder = reqwest_client.get(url);
+    debug!("sending request to {}", url);
+
+    if let Some(token) = registry_auth_token {
+        let hidden_token = token
+            .chars()
+            .enumerate()
+            .map(|(i, c)| if i <= 8 { c } else { '*' })
+            .collect::<String>();
+        debug!("with registry token {hidden_token}");
+        builder = builder.header(AUTHORIZATION, format!("Bearer {token}"));
+    }
+
+    builder
 }

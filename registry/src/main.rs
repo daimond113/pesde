@@ -18,8 +18,8 @@ use rusty_s3::{Bucket, Credentials, UrlStyle};
 use tantivy::{doc, DateTime, IndexReader, IndexWriter};
 
 use pesde::{
-    index::{GitIndex, IndexFile},
-    package_name::PackageName,
+    index::{GitIndex, Index, IndexFile},
+    package_name::StandardPackageName,
 };
 
 mod endpoints;
@@ -157,7 +157,7 @@ fn search_index(index: &GitIndex) -> (IndexReader, IndexWriter) {
 
             let package = path.file_name().and_then(|v| v.to_str()).unwrap();
 
-            let package_name = PackageName::new(scope, package).unwrap();
+            let package_name = StandardPackageName::new(scope, package).unwrap();
             let entries: IndexFile =
                 serde_yaml::from_slice(&std::fs::read(&path).unwrap()).unwrap();
             let entry = entries.last().unwrap().clone();
@@ -216,7 +216,7 @@ fn main() -> std::io::Result<()> {
 
     let index = GitIndex::new(
         current_dir.join("cache"),
-        &get_env!("INDEX_REPO_URL"),
+        &get_env!("INDEX_REPO_URL", "p"),
         Some(Box::new(|| {
             Box::new(|_, _, _| {
                 let username = get_env!("GITHUB_USERNAME");
@@ -225,6 +225,7 @@ fn main() -> std::io::Result<()> {
                 Cred::userpass_plaintext(&username, &pat)
             })
         })),
+        None,
     );
     index.refresh().expect("failed to refresh index");
 

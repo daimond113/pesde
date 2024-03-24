@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use std::{
+    any::Any,
     collections::BTreeSet,
     fmt::Debug,
     fs::create_dir_all,
@@ -8,11 +8,13 @@ use std::{
     sync::Arc,
 };
 
+use chrono::{DateTime, Utc};
 use git2::{build::RepoBuilder, Remote, Repository, Signature};
 use log::debug;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use url::Url;
 
 use crate::{
     dependencies::DependencySpecifier,
@@ -24,7 +26,7 @@ use crate::{
 pub type ScopeOwners = BTreeSet<u64>;
 
 /// A packages index
-pub trait Index: Send + Sync + Debug + Clone + 'static {
+pub trait Index: Send + Sync + Debug + Any + 'static {
     /// Gets the owners of a scope
     fn scope_owners(&self, scope: &str) -> Result<Option<ScopeOwners>, ScopeOwnersError>;
 
@@ -50,6 +52,22 @@ pub trait Index: Send + Sync + Debug + Clone + 'static {
 
     /// Returns a function that gets the credentials for a git repository
     fn credentials_fn(&self) -> Option<&Arc<CredentialsFn>>;
+
+    /// Returns the URL of the index's repository
+    fn url(&self) -> &Url;
+
+    /// Returns the token to this index's registry
+    fn registry_auth_token(&self) -> Option<&str> {
+        None
+    }
+
+    /// Updates the index
+    fn refresh(&self) -> Result<(), RefreshError> {
+        Ok(())
+    }
+
+    /// Returns this as Any
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// A function that gets the credentials for a git repository
@@ -64,7 +82,8 @@ pub type CredentialsFn = Box<
 #[derive(Clone)]
 pub struct GitIndex {
     path: PathBuf,
-    repo_url: String,
+    repo_url: Url,
+    registry_auth_token: Option<String>,
     pub(crate) credentials_fn: Option<Arc<CredentialsFn>>,
 }
 
@@ -174,6 +193,10 @@ pub enum IndexPackageError {
     /// An error that occurred while deserializing the index file
     #[error("error deserializing index file")]
     FileDeser(#[source] serde_yaml::Error),
+
+    /// An unknown error occurred
+    #[error("unknown error")]
+    Other(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// An error that occurred while creating a package version
@@ -202,6 +225,10 @@ pub enum CreatePackageVersionError {
     /// The scope is missing ownership
     #[error("missing scope ownership")]
     MissingScopeOwnership,
+
+    /// An error that occurred while converting a manifest to an index file entry
+    #[error("error converting manifest to index file entry")]
+    FromManifestIndexFileEntry(#[from] FromManifestIndexFileEntry),
 }
 
 /// An error that occurred while getting the index's configuration
@@ -247,87 +274,42 @@ fn get_refspec(
     Ok((refspec.to_string(), upstream_branch.to_string()))
 }
 
-pub(crate) fn remote_callbacks<I: Index>(index: &I) -> git2::RemoteCallbacks {
-    let mut remote_callbacks = git2::RemoteCallbacks::new();
+macro_rules! remote_callbacks {
+    ($index:expr) => {{
+        #[allow(unused_imports)]
+        use crate::index::Index;
+        let mut remote_callbacks = git2::RemoteCallbacks::new();
 
-    if let Some(credentials) = &index.credentials_fn() {
-        let credentials = std::sync::Arc::clone(credentials);
+        if let Some(credentials) = &$index.credentials_fn() {
+            let credentials = std::sync::Arc::clone(credentials);
 
-        remote_callbacks.credentials(move |a, b, c| credentials()(a, b, c));
-    }
+            remote_callbacks.credentials(move |a, b, c| credentials()(a, b, c));
+        }
 
-    remote_callbacks
+        remote_callbacks
+    }};
 }
+pub(crate) use remote_callbacks;
 
 impl GitIndex {
     /// Creates a new git index. The `refresh` method must be called before using the index, preferably immediately after creating it.
     pub fn new<P: AsRef<Path>>(
         path: P,
-        repo_url: &str,
+        repo_url: &Url,
         credentials: Option<CredentialsFn>,
+        registry_auth_token: Option<String>,
     ) -> Self {
         Self {
             path: path.as_ref().to_path_buf(),
-            repo_url: repo_url.to_string(),
+            repo_url: repo_url.clone(),
             credentials_fn: credentials.map(Arc::new),
+            registry_auth_token,
         }
     }
 
     /// Gets the path of the index
     pub fn path(&self) -> &Path {
         &self.path
-    }
-
-    /// Gets the URL of the index's repository
-    pub fn repo_url(&self) -> &str {
-        &self.repo_url
-    }
-
-    /// Refreshes the index
-    pub fn refresh(&self) -> Result<(), RefreshError> {
-        let repo = if self.path.exists() {
-            Repository::open(&self.path).ok()
-        } else {
-            None
-        };
-
-        if let Some(repo) = repo {
-            let mut remote = repo.find_remote("origin")?;
-            let (refspec, upstream_branch) = get_refspec(&repo, &mut remote)?;
-
-            remote.fetch(
-                &[&refspec],
-                Some(git2::FetchOptions::new().remote_callbacks(remote_callbacks(self))),
-                None,
-            )?;
-
-            let commit = repo.find_reference(&upstream_branch)?.peel_to_commit()?;
-
-            debug!(
-                "refreshing index, fetching {refspec}#{} from origin",
-                commit.id().to_string()
-            );
-
-            repo.reset(&commit.into_object(), git2::ResetType::Hard, None)?;
-
-            Ok(())
-        } else {
-            debug!(
-                "refreshing index - first time, cloning {} into {}",
-                self.repo_url,
-                self.path.display()
-            );
-            create_dir_all(&self.path)?;
-
-            let mut fetch_options = git2::FetchOptions::new();
-            fetch_options.remote_callbacks(remote_callbacks(self));
-
-            RepoBuilder::new()
-                .fetch_options(fetch_options)
-                .clone(&self.repo_url, &self.path)?;
-
-            Ok(())
-        }
     }
 
     /// Commits and pushes to the index
@@ -362,11 +344,59 @@ impl GitIndex {
 
         remote.push(
             &[&refspec],
-            Some(git2::PushOptions::new().remote_callbacks(remote_callbacks(self))),
+            Some(git2::PushOptions::new().remote_callbacks(remote_callbacks!(self))),
         )?;
 
         Ok(())
     }
+}
+
+macro_rules! refresh_git_based_index {
+    ($index:expr) => {{
+        let repo = if $index.path.exists() {
+            Repository::open(&$index.path).ok()
+        } else {
+            None
+        };
+
+        if let Some(repo) = repo {
+            let mut remote = repo.find_remote("origin")?;
+            let (refspec, upstream_branch) = get_refspec(&repo, &mut remote)?;
+
+            remote.fetch(
+                &[&refspec],
+                Some(git2::FetchOptions::new().remote_callbacks(remote_callbacks!($index))),
+                None,
+            )?;
+
+            let commit = repo.find_reference(&upstream_branch)?.peel_to_commit()?;
+
+            debug!(
+                "refreshing index, fetching {refspec}#{} from origin",
+                commit.id().to_string()
+            );
+
+            repo.reset(&commit.into_object(), git2::ResetType::Hard, None)?;
+
+            Ok(())
+        } else {
+            debug!(
+                "refreshing index - first time, cloning {} into {}",
+                $index.repo_url,
+                $index.path.display()
+            );
+            create_dir_all(&$index.path)?;
+
+            let mut fetch_options = git2::FetchOptions::new();
+            fetch_options.remote_callbacks(remote_callbacks!($index));
+
+            RepoBuilder::new()
+                .fetch_options(fetch_options)
+                .clone(&$index.repo_url.to_string(), &$index.path)?;
+
+            Ok(())
+        }
+    }};
 }
 
 impl Index for GitIndex {
@@ -434,16 +464,17 @@ impl Index for GitIndex {
 
         let path = self.path.join(scope);
 
-        let mut file = if let Some(file) = self.package(&manifest.name)? {
-            if file.iter().any(|e| e.version == manifest.version) {
-                return Ok(None);
-            }
-            file
-        } else {
-            BTreeSet::new()
-        };
+        let mut file =
+            if let Some(file) = self.package(&PackageName::Standard(manifest.name.clone()))? {
+                if file.iter().any(|e| e.version == manifest.version) {
+                    return Ok(None);
+                }
+                file
+            } else {
+                BTreeSet::new()
+            };
 
-        let entry: IndexFileEntry = manifest.clone().into();
+        let entry: IndexFileEntry = manifest.clone().try_into()?;
         file.insert(entry.clone());
 
         serde_yaml::to_writer(
@@ -472,6 +503,22 @@ impl Index for GitIndex {
     fn credentials_fn(&self) -> Option<&Arc<CredentialsFn>> {
         self.credentials_fn.as_ref()
     }
+
+    fn url(&self) -> &Url {
+        &self.repo_url
+    }
+
+    fn registry_auth_token(&self) -> Option<&str> {
+        self.registry_auth_token.as_deref()
+    }
+
+    fn refresh(&self) -> Result<(), RefreshError> {
+        refresh_git_based_index!(self)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 /// The configuration of the index
@@ -479,10 +526,10 @@ impl Index for GitIndex {
 #[serde(deny_unknown_fields)]
 pub struct IndexConfig {
     /// The URL of the index's API
-    pub api: String,
+    pub api: Url,
     /// The URL of the index's download API, defaults to `{API_URL}/v0/packages/{PACKAGE_AUTHOR}/{PACKAGE_NAME}/{PACKAGE_VERSION}`.
     /// Has the following variables:
-    /// - `{API_URL}`: The URL of the index's API
+    /// - `{API_URL}`: The URL of the index's API (without trailing `/`)
     /// - `{PACKAGE_AUTHOR}`: The author of the package
     /// - `{PACKAGE_NAME}`: The name of the package
     /// - `{PACKAGE_VERSION}`: The version of the package
@@ -500,7 +547,7 @@ pub struct IndexConfig {
 impl IndexConfig {
     /// Gets the URL of the index's API
     pub fn api(&self) -> &str {
-        self.api.strip_suffix('/').unwrap_or(&self.api)
+        self.api.as_str().trim_end_matches('/')
     }
 
     /// Gets the URL of the index's download API
@@ -535,19 +582,48 @@ pub struct IndexFileEntry {
     pub dependencies: Vec<(DependencySpecifier, DependencyType)>,
 }
 
-impl From<Manifest> for IndexFileEntry {
-    fn from(manifest: Manifest) -> IndexFileEntry {
-        let dependencies = manifest.dependencies();
+/// An error that occurred while converting a manifest to an index file entry
+#[derive(Debug, Error)]
+pub enum FromManifestIndexFileEntry {
+    /// An error that occurred because an index is not specified
+    #[error("index {0} is not specified")]
+    IndexNotSpecified(String),
+}
 
-        IndexFileEntry {
+impl TryFrom<Manifest> for IndexFileEntry {
+    type Error = FromManifestIndexFileEntry;
+
+    fn try_from(manifest: Manifest) -> Result<Self, Self::Error> {
+        let dependencies = manifest.dependencies();
+        let indices = manifest.indices;
+
+        Ok(Self {
             version: manifest.version,
             realm: manifest.realm,
             published_at: Utc::now(),
 
             description: manifest.description,
 
-            dependencies,
-        }
+            dependencies: dependencies
+                .into_iter()
+                .map(|(dep, ty)| {
+                    Ok(match dep {
+                        DependencySpecifier::Registry(mut registry) => {
+                            registry.index = indices
+                                .get(&registry.index)
+                                .ok_or_else(|| {
+                                    FromManifestIndexFileEntry::IndexNotSpecified(
+                                        registry.index.clone(),
+                                    )
+                                })?
+                                .clone();
+                            (DependencySpecifier::Registry(registry), ty)
+                        }
+                        d => (d, ty),
+                    })
+                })
+                .collect::<Result<_, _>>()?,
+        })
     }
 }
 
@@ -565,3 +641,110 @@ impl Ord for IndexFileEntry {
 
 /// An index file
 pub type IndexFile = BTreeSet<IndexFileEntry>;
+
+#[cfg(feature = "wally")]
+#[derive(Clone)]
+pub(crate) struct WallyIndex {
+    repo_url: Url,
+    registry_auth_token: Option<String>,
+    credentials_fn: Option<Arc<CredentialsFn>>,
+    pub(crate) path: PathBuf,
+}
+
+#[cfg(feature = "wally")]
+impl Debug for WallyIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WallyIndex")
+            .field("path", &self.path)
+            .field("repo_url", &self.repo_url)
+            .finish()
+    }
+}
+
+#[cfg(feature = "wally")]
+impl WallyIndex {
+    pub(crate) fn new(
+        repo_url: Url,
+        registry_auth_token: Option<String>,
+        path: &Path,
+        credentials_fn: Option<Arc<CredentialsFn>>,
+    ) -> Self {
+        Self {
+            repo_url,
+            registry_auth_token,
+            path: path.to_path_buf(),
+            credentials_fn,
+        }
+    }
+}
+
+#[cfg(feature = "wally")]
+impl Index for WallyIndex {
+    fn scope_owners(&self, _scope: &str) -> Result<Option<ScopeOwners>, ScopeOwnersError> {
+        unimplemented!("wally index is a virtual index meant for wally compatibility only")
+    }
+
+    fn create_scope_for(
+        &mut self,
+        _scope: &str,
+        _owners: &ScopeOwners,
+    ) -> Result<bool, ScopeOwnersError> {
+        unimplemented!("wally index is a virtual index meant for wally compatibility only")
+    }
+
+    fn package(&self, name: &PackageName) -> Result<Option<IndexFile>, IndexPackageError> {
+        let path = self.path.join(name.scope()).join(name.name());
+
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        let file = std::fs::File::open(&path)?;
+        let file = std::io::BufReader::new(file);
+
+        let manifest_stream = serde_json::Deserializer::from_reader(file)
+            .into_iter::<crate::dependencies::wally::WallyManifest>()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| IndexPackageError::Other(Box::new(e)))?;
+
+        Ok(Some(BTreeSet::from_iter(
+            manifest_stream
+                .into_iter()
+                .map(|m| m.try_into())
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| IndexPackageError::Other(Box::new(e)))?,
+        )))
+    }
+
+    fn create_package_version(
+        &mut self,
+        _manifest: &Manifest,
+        _uploader: &u64,
+    ) -> Result<Option<IndexFileEntry>, CreatePackageVersionError> {
+        unimplemented!("wally index is a virtual index meant for wally compatibility only")
+    }
+
+    fn config(&self) -> Result<IndexConfig, ConfigError> {
+        unimplemented!("wally index is a virtual index meant for wally compatibility only")
+    }
+
+    fn credentials_fn(&self) -> Option<&Arc<CredentialsFn>> {
+        self.credentials_fn.as_ref()
+    }
+
+    fn url(&self) -> &Url {
+        &self.repo_url
+    }
+
+    fn registry_auth_token(&self) -> Option<&str> {
+        self.registry_auth_token.as_deref()
+    }
+
+    fn refresh(&self) -> Result<(), RefreshError> {
+        refresh_git_based_index!(self)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}

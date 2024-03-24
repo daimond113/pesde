@@ -5,6 +5,7 @@
 //! - Re-exporting types
 //! - `bin` exports (ran with Lune)
 //! - Patching packages
+//! - Downloading packages from Wally registries
 
 /// Resolving, downloading and managing dependencies
 pub mod dependencies;
@@ -44,5 +45,3 @@ pub const IGNORED_FOLDERS: &[&str] = &[
     SERVER_PACKAGES_FOLDER,
     ".git",
 ];
-
-const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));

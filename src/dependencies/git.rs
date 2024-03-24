@@ -1,16 +1,18 @@
-use std::{fs::create_dir_all, path::Path};
+use cfg_if::cfg_if;
+use std::{fs::create_dir_all, path::Path, sync::Arc};
 
 use git2::{build::RepoBuilder, Repository};
-use log::{debug, warn};
+use log::{debug, error, warn};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use url::Url;
 
 use crate::{
-    index::{remote_callbacks, Index},
+    index::{remote_callbacks, CredentialsFn},
     manifest::{Manifest, ManifestConvertError, Realm},
-    package_name::PackageName,
-    project::Project,
+    package_name::StandardPackageName,
+    project::{get_index, Indices},
 };
 
 /// A dependency of a package that can be downloaded from a git repository
@@ -31,11 +33,11 @@ pub struct GitDependencySpecifier {
 #[serde(deny_unknown_fields)]
 pub struct GitPackageRef {
     /// The name of the package
-    pub name: PackageName,
+    pub name: StandardPackageName,
     /// The version of the package
     pub version: Version,
     /// The URL of the git repository
-    pub repo_url: String,
+    pub repo_url: Url,
     /// The revision of the git repository to use
     pub rev: String,
 }
@@ -54,13 +56,23 @@ pub enum GitDownloadError {
     /// An error that occurred while reading the manifest of the git repository
     #[error("error reading manifest")]
     ManifestRead(#[from] ManifestConvertError),
+
+    /// An error that occurred because the URL is invalid
+    #[error("invalid URL")]
+    InvalidUrl(#[from] url::ParseError),
+
+    /// An error that occurred because the manifest is not present in the git repository, and the wally feature is not enabled
+    #[cfg(not(feature = "wally"))]
+    #[error("wally feature is not enabled, but the manifest is not present in the git repository")]
+    ManifestNotPresent,
 }
 
 impl GitDependencySpecifier {
-    pub(crate) fn resolve<I: Index>(
+    pub(crate) fn resolve(
         &self,
-        project: &Project<I>,
-    ) -> Result<(Manifest, String, String), GitDownloadError> {
+        cache_dir: &Path,
+        indices: &Indices,
+    ) -> Result<(Manifest, Url, String), GitDownloadError> {
         debug!("resolving git dependency {}", self.repo);
 
         // should also work with ssh urls
@@ -84,10 +96,10 @@ impl GitDependencySpecifier {
         }
 
         let repo_url = if !is_url {
-            format!("https://github.com/{}.git", &self.repo)
+            Url::parse(&format!("https://github.com/{}.git", &self.repo))
         } else {
-            self.repo.to_string()
-        };
+            Url::parse(&self.repo)
+        }?;
 
         if is_url {
             debug!("assuming git repository is a url: {}", &repo_url);
@@ -95,8 +107,7 @@ impl GitDependencySpecifier {
             debug!("resolved git repository url to: {}", &repo_url);
         }
 
-        let dest = project
-            .cache_dir()
+        let dest = cache_dir
             .join("git")
             .join(repo_name.replace('/', "_"))
             .join(&self.rev);
@@ -105,11 +116,11 @@ impl GitDependencySpecifier {
             create_dir_all(&dest)?;
 
             let mut fetch_options = git2::FetchOptions::new();
-            fetch_options.remote_callbacks(remote_callbacks(project.index()));
+            fetch_options.remote_callbacks(remote_callbacks!(get_index(indices, None)));
 
             RepoBuilder::new()
                 .fetch_options(fetch_options)
-                .clone(&repo_url, &dest)?
+                .clone(repo_url.as_ref(), &dest)?
         } else {
             Repository::open(&dest)?
         };
@@ -121,7 +132,7 @@ impl GitDependencySpecifier {
 
         Ok((
             Manifest::from_path_or_convert(dest)?,
-            repo_url.to_string(),
+            repo_url,
             obj.id().to_string(),
         ))
     }
@@ -129,17 +140,27 @@ impl GitDependencySpecifier {
 
 impl GitPackageRef {
     /// Downloads the package to the specified destination
-    pub fn download<P: AsRef<Path>, I: Index>(
+    pub fn download<P: AsRef<Path>>(
         &self,
-        project: &Project<I>,
         dest: P,
+        credentials_fn: Option<Arc<CredentialsFn>>,
     ) -> Result<(), GitDownloadError> {
         let mut fetch_options = git2::FetchOptions::new();
-        fetch_options.remote_callbacks(remote_callbacks(project.index()));
+        let mut remote_callbacks = git2::RemoteCallbacks::new();
+        let credentials_fn = credentials_fn.map(|f| f());
+
+        if let Some(credentials_fn) = credentials_fn {
+            debug!("authenticating this git clone with credentials");
+            remote_callbacks.credentials(credentials_fn);
+        } else {
+            debug!("no credentials provided for this git clone");
+        }
+
+        fetch_options.remote_callbacks(remote_callbacks);
 
         let repo = RepoBuilder::new()
             .fetch_options(fetch_options)
-            .clone(&self.repo_url, dest.as_ref())?;
+            .clone(self.repo_url.as_ref(), dest.as_ref())?;
 
         let obj = repo.revparse_single(&self.rev)?;
 
@@ -153,7 +174,15 @@ impl GitPackageRef {
 
         repo.reset(&obj, git2::ResetType::Hard, None)?;
 
-        Manifest::from_path_or_convert(dest)?;
+        cfg_if! {
+            if #[cfg(feature = "wally")] {
+                Manifest::from_path_or_convert(dest)?;
+            } else {
+                if Manifest::from_path(dest).is_err() {
+                    return Err(GitDownloadError::ManifestNotPresent);
+                }
+            }
+        }
 
         Ok(())
     }

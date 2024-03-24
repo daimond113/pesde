@@ -13,6 +13,7 @@ Currently, pesde is in a very early stage of development, but already supports t
 - Re-exporting types
 - `bin` exports (ran with Lune)
 - Patching packages
+- Downloading packages from Wally registries
 
 ## Installation
 

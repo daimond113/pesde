@@ -10,6 +10,7 @@ include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHAN
 
 [features]
 bin = ["clap", "directories", "keyring", "anyhow", "ignore", "pretty_env_logger", "serde_json", "reqwest/json", "reqwest/multipart", "lune", "futures-executor", "indicatif", "auth-git2", "indicatif-log-bridge", "inquire", "once_cell"]
+wally = ["toml", "zip", "serde_json"]
 
 [[bin]]
 name = "pesde"
@@ -18,11 +19,10 @@ required-features = ["bin"]
 
 [dependencies]
 serde = { version = "1.0.197", features = ["derive"] }
-serde_yaml = "0.9.32"
-toml = "0.8.11"
-git2 = "0.18.2"
+serde_yaml = "0.9.33"
+git2 = "0.18.3"
 semver = { version = "1.0.22", features = ["serde"] }
-reqwest = { version = "0.11.26", default-features = false, features = ["rustls-tls", "blocking"] }
+reqwest = { version = "0.12.1", default-features = false, features = ["rustls-tls", "blocking"] }
 tar = "0.4.40"
 flate2 = "1.0.28"
 pathdiff = "0.2.1"
@@ -31,6 +31,11 @@ log = "0.4.21"
 thiserror = "1.0.58"
 threadpool = "1.8.1"
 full_moon = { version = "0.19.0", features = ["stacker", "roblox"] }
+url = { version = "2.5.0", features = ["serde"] }
+cfg-if = "1.0.0"
+
+toml = { version = "0.8.12", optional = true }
+zip = { version = "0.6.6", optional = true }
 
 # chrono-lc breaks because of https://github.com/chronotope/chrono/compare/v0.4.34...v0.4.35#diff-67de5678fb5c14378bbff7ecf7f8bfab17cc223c4726f8da3afca183a4e59543
 chrono = { version = "=0.4.34", features = ["serde"] }
@@ -47,7 +52,7 @@ futures-executor = { version = "0.3.30", optional = true }
 indicatif = { version = "0.17.8", optional = true }
 auth-git2 = { version = "0.5.4", optional = true }
 indicatif-log-bridge = { version = "0.2.2", optional = true }
-inquire = { version = "0.7.1", optional = true }
+inquire = { version = "0.7.3", optional = true }
 once_cell = { version = "1.19.0", optional = true }
 
 [dev-dependencies]

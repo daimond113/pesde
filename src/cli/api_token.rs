@@ -1,25 +1,15 @@
 use std::path::PathBuf;
 
+use crate::cli::DEFAULT_INDEX_DATA;
 use keyring::Entry;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-use crate::cli::INDEX_DIR;
-
-pub trait ApiTokenSource: Send + Sync {
-    fn get_api_token(&self) -> anyhow::Result<Option<String>>;
-    fn set_api_token(&self, api_token: &str) -> anyhow::Result<()>;
-    fn delete_api_token(&self) -> anyhow::Result<()>;
-    fn persists(&self) -> bool {
-        true
-    }
-}
-
-pub struct EnvVarApiTokenSource;
+struct EnvVarApiTokenSource;
 
 const API_TOKEN_ENV_VAR: &str = "PESDE_API_TOKEN";
 
-impl ApiTokenSource for EnvVarApiTokenSource {
+impl EnvVarApiTokenSource {
     fn get_api_token(&self) -> anyhow::Result<Option<String>> {
         match std::env::var(API_TOKEN_ENV_VAR) {
             Ok(token) => Ok(Some(token)),
@@ -27,51 +17,10 @@ impl ApiTokenSource for EnvVarApiTokenSource {
             Err(e) => Err(e.into()),
         }
     }
-
-    // don't need to implement set_api_token or delete_api_token
-    fn set_api_token(&self, _api_token: &str) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn delete_api_token(&self) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn persists(&self) -> bool {
-        false
-    }
 }
 
-static KEYRING_ENTRY: Lazy<Entry> =
-    Lazy::new(|| Entry::new(env!("CARGO_BIN_NAME"), "api_token").unwrap());
-
-pub struct KeyringApiTokenSource;
-
-impl ApiTokenSource for KeyringApiTokenSource {
-    fn get_api_token(&self) -> anyhow::Result<Option<String>> {
-        match KEYRING_ENTRY.get_password() {
-            Ok(api_token) => Ok(Some(api_token)),
-            Err(err) => match err {
-                keyring::Error::NoEntry | keyring::Error::PlatformFailure(_) => Ok(None),
-                _ => Err(err.into()),
-            },
-        }
-    }
-
-    fn set_api_token(&self, api_token: &str) -> anyhow::Result<()> {
-        KEYRING_ENTRY.set_password(api_token)?;
-
-        Ok(())
-    }
-
-    fn delete_api_token(&self) -> anyhow::Result<()> {
-        KEYRING_ENTRY.delete_password()?;
-
-        Ok(())
-    }
-}
-
-static AUTH_FILE_PATH: Lazy<PathBuf> = Lazy::new(|| INDEX_DIR.join("auth.yaml"));
+static AUTH_FILE_PATH: Lazy<PathBuf> =
+    Lazy::new(|| DEFAULT_INDEX_DATA.0.parent().unwrap().join("auth.yaml"));
 static AUTH_FILE: Lazy<AuthFile> =
     Lazy::new(
         || match std::fs::read_to_string(AUTH_FILE_PATH.to_path_buf()) {
@@ -87,9 +36,9 @@ struct AuthFile {
     api_token: Option<String>,
 }
 
-pub struct ConfigFileApiTokenSource;
+struct ConfigFileApiTokenSource;
 
-impl ApiTokenSource for ConfigFileApiTokenSource {
+impl ConfigFileApiTokenSource {
     fn get_api_token(&self) -> anyhow::Result<Option<String>> {
         Ok(AUTH_FILE.api_token.clone())
     }
@@ -120,11 +69,77 @@ impl ApiTokenSource for ConfigFileApiTokenSource {
     }
 }
 
-pub static API_TOKEN_SOURCE: Lazy<Box<dyn ApiTokenSource>> = Lazy::new(|| {
-    let sources: Vec<Box<dyn ApiTokenSource>> = vec![
-        Box::new(EnvVarApiTokenSource),
-        Box::new(KeyringApiTokenSource),
-        Box::new(ConfigFileApiTokenSource),
+static KEYRING_ENTRY: Lazy<Entry> =
+    Lazy::new(|| Entry::new(env!("CARGO_PKG_NAME"), "api_token").unwrap());
+
+struct KeyringApiTokenSource;
+
+impl KeyringApiTokenSource {
+    fn get_api_token(&self) -> anyhow::Result<Option<String>> {
+        match KEYRING_ENTRY.get_password() {
+            Ok(api_token) => Ok(Some(api_token)),
+            Err(err) => match err {
+                keyring::Error::NoEntry | keyring::Error::PlatformFailure(_) => Ok(None),
+                _ => Err(err.into()),
+            },
+        }
+    }
+
+    fn set_api_token(&self, api_token: &str) -> anyhow::Result<()> {
+        KEYRING_ENTRY.set_password(api_token)?;
+
+        Ok(())
+    }
+
+    fn delete_api_token(&self) -> anyhow::Result<()> {
+        KEYRING_ENTRY.delete_password()?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum ApiTokenSource {
+    EnvVar,
+    ConfigFile,
+    Keyring,
+}
+
+impl ApiTokenSource {
+    pub fn get_api_token(&self) -> anyhow::Result<Option<String>> {
+        match self {
+            ApiTokenSource::EnvVar => EnvVarApiTokenSource.get_api_token(),
+            ApiTokenSource::ConfigFile => ConfigFileApiTokenSource.get_api_token(),
+            ApiTokenSource::Keyring => KeyringApiTokenSource.get_api_token(),
+        }
+    }
+
+    pub fn set_api_token(&self, api_token: &str) -> anyhow::Result<()> {
+        match self {
+            ApiTokenSource::EnvVar => Ok(()),
+            ApiTokenSource::ConfigFile => ConfigFileApiTokenSource.set_api_token(api_token),
+            ApiTokenSource::Keyring => KeyringApiTokenSource.set_api_token(api_token),
+        }
+    }
+
+    pub fn delete_api_token(&self) -> anyhow::Result<()> {
+        match self {
+            ApiTokenSource::EnvVar => Ok(()),
+            ApiTokenSource::ConfigFile => ConfigFileApiTokenSource.delete_api_token(),
+            ApiTokenSource::Keyring => KeyringApiTokenSource.delete_api_token(),
+        }
+    }
+
+    fn persists(&self) -> bool {
+        !matches!(self, ApiTokenSource::EnvVar)
+    }
+}
+
+pub static API_TOKEN_SOURCE: Lazy<ApiTokenSource> = Lazy::new(|| {
+    let sources: [ApiTokenSource; 3] = [
+        ApiTokenSource::EnvVar,
+        ApiTokenSource::ConfigFile,
+        ApiTokenSource::Keyring,
     ];
 
     let mut valid_sources = vec![];

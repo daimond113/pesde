@@ -8,8 +8,9 @@ use tantivy::{doc, DateTime, Term};
 use tar::Archive;
 
 use pesde::{
-    dependencies::DependencySpecifier, index::Index, manifest::Manifest, package_name::PackageName,
-    IGNORED_FOLDERS, MANIFEST_FILE_NAME,
+    dependencies::DependencySpecifier, index::Index, manifest::Manifest,
+    package_name::StandardPackageName, project::DEFAULT_INDEX_NAME, IGNORED_FOLDERS,
+    MANIFEST_FILE_NAME,
 };
 
 use crate::{commit_signature, errors, AppState, UserId, S3_EXPIRY};
@@ -83,7 +84,7 @@ pub async fn create_package(
         let mut index = app_state.index.lock().unwrap();
         let config = index.config()?;
 
-        for (dependency, _) in manifest.dependencies().iter() {
+        for (dependency, _) in manifest.dependencies() {
             match dependency {
                 DependencySpecifier::Git(_) => {
                     if !config.git_allowed {
@@ -93,12 +94,24 @@ pub async fn create_package(
                     }
                 }
                 DependencySpecifier::Registry(registry) => {
-                    if index.package(&registry.name).unwrap().is_none() {
+                    if index
+                        .package(&registry.name.clone().into())
+                        .unwrap()
+                        .is_none()
+                    {
                         return Ok(HttpResponse::BadRequest().json(errors::ErrorResponse {
                             error: format!("Dependency {} not found", registry.name),
                         }));
                     }
+
+                    if registry.index != DEFAULT_INDEX_NAME && !config.custom_registry_allowed {
+                        return Ok(HttpResponse::BadRequest().json(errors::ErrorResponse {
+                            error: "Custom registries are not allowed on this registry".to_string(),
+                        }));
+                    }
                 }
+                #[allow(unreachable_patterns)]
+                _ => {}
             };
         }
 
@@ -166,12 +179,12 @@ pub async fn get_package_version(
 ) -> Result<impl Responder, errors::Errors> {
     let (scope, name, mut version) = path.into_inner();
 
-    let package_name = PackageName::new(&scope, &name)?;
+    let package_name = StandardPackageName::new(&scope, &name)?;
 
     {
         let index = app_state.index.lock().unwrap();
 
-        match index.package(&package_name)? {
+        match index.package(&package_name.clone().into())? {
             Some(package) => {
                 if version == "latest" {
                     version = package.last().map(|v| v.version.to_string()).unwrap();
@@ -223,12 +236,12 @@ pub async fn get_package_versions(
 ) -> Result<impl Responder, errors::Errors> {
     let (scope, name) = path.into_inner();
 
-    let package_name = PackageName::new(&scope, &name)?;
+    let package_name = StandardPackageName::new(&scope, &name)?;
 
     {
         let index = app_state.index.lock().unwrap();
 
-        match index.package(&package_name)? {
+        match index.package(&package_name.into())? {
             Some(package) => {
                 let versions = package
                     .iter()

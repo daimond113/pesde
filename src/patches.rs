@@ -9,8 +9,10 @@ use semver::Version;
 use thiserror::Error;
 
 use crate::{
-    dependencies::resolution::ResolvedVersionsMap, index::Index, package_name::PackageName,
-    project::Project, PATCHES_FOLDER,
+    dependencies::resolution::ResolvedVersionsMap,
+    package_name::{FromEscapedStrPackageNameError, PackageName},
+    project::Project,
+    PATCHES_FOLDER,
 };
 
 fn make_signature<'a>() -> Result<Signature<'a>, git2::Error> {
@@ -106,11 +108,11 @@ pub enum ApplyPatchesError {
 
     /// An error that occurred because a patch name was malformed
     #[error("malformed patch name {0}")]
-    MalformedPatch(String),
+    MalformedPatchName(String),
 
     /// An error that occurred while parsing a package name
     #[error("failed to parse package name {0}")]
-    PackageNameParse(#[from] crate::package_name::EscapedPackageNameError),
+    PackageNameParse(#[from] FromEscapedStrPackageNameError),
 
     /// An error that occurred while getting a file stem
     #[error("failed to get file stem")]
@@ -137,7 +139,7 @@ pub enum ApplyPatchesError {
     StripPrefixFail(#[from] std::path::StripPrefixError),
 }
 
-impl<I: Index> Project<I> {
+impl Project {
     /// Applies patches for the project
     pub fn apply_patches(&self, map: &ResolvedVersionsMap) -> Result<(), ApplyPatchesError> {
         let patches_dir = self.path().join(PATCHES_FOLDER);
@@ -153,27 +155,28 @@ impl<I: Index> Project<I> {
 
             let path = file.path();
 
-            let dir_name = path
+            let file_name = path
                 .file_name()
                 .ok_or_else(|| ApplyPatchesError::FileNameFail(path.clone()))?;
-            let dir_name = dir_name.to_str().ok_or(ApplyPatchesError::ToStringFail)?;
+            let file_name = file_name.to_str().ok_or(ApplyPatchesError::ToStringFail)?;
 
-            let (package_name, version) = dir_name
+            let (package_name, version) = file_name
                 .strip_suffix(".patch")
-                .unwrap_or(dir_name)
+                .unwrap_or(file_name)
                 .split_once('@')
-                .ok_or_else(|| ApplyPatchesError::MalformedPatch(dir_name.to_string()))?;
+                .ok_or_else(|| ApplyPatchesError::MalformedPatchName(file_name.to_string()))?;
 
-            let package_name = PackageName::from_escaped(package_name)?;
+            let package_name = PackageName::from_escaped_str(package_name)?;
+
             let version = Version::parse(version)?;
 
-            let versions = map
+            let resolved_pkg = map
                 .get(&package_name)
-                .ok_or_else(|| ApplyPatchesError::PackageNotFound(package_name.clone()))?;
-
-            let resolved_pkg = versions.get(&version).ok_or_else(|| {
-                ApplyPatchesError::VersionNotFound(version.clone(), package_name.clone())
-            })?;
+                .ok_or_else(|| ApplyPatchesError::PackageNotFound(package_name.clone()))?
+                .get(&version)
+                .ok_or_else(|| {
+                    ApplyPatchesError::VersionNotFound(version.clone(), package_name.clone())
+                })?;
 
             debug!("resolved package {package_name}@{version} to {resolved_pkg}");
 

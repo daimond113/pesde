@@ -1,26 +1,33 @@
 use std::path::Path;
 
 use log::{debug, error};
-use reqwest::header::{AUTHORIZATION, USER_AGENT as USER_AGENT_HEADER};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use url::Url;
 
 use crate::{
-    index::Index, manifest::Realm, package_name::PackageName, project::Project, USER_AGENT,
+    dependencies::maybe_authenticated_request,
+    manifest::Realm,
+    package_name::StandardPackageName,
+    project::{get_index_by_url, Indices, DEFAULT_INDEX_NAME},
 };
+
+fn default_index_name() -> String {
+    DEFAULT_INDEX_NAME.to_string()
+}
 
 /// A dependency of a package that can be downloaded from a registry
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct RegistryDependencySpecifier {
     /// The name of the package
-    pub name: PackageName,
+    pub name: StandardPackageName,
     /// The version requirement of the package
     pub version: VersionReq,
-    // TODO: support per-package registries
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub registry: Option<String>,
+    /// The name of the index to use
+    #[serde(default = "default_index_name")]
+    pub index: String,
     /// The realm of the package
     #[serde(skip_serializing_if = "Option::is_none")]
     pub realm: Option<Realm>,
@@ -31,12 +38,11 @@ pub struct RegistryDependencySpecifier {
 #[serde(deny_unknown_fields)]
 pub struct RegistryPackageRef {
     /// The name of the package
-    pub name: PackageName,
+    pub name: StandardPackageName,
     /// The version of the package
     pub version: Version,
-    // TODO: support per-package registries
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub index_url: Option<String>,
+    /// The index URL of the package
+    pub index_url: Url,
 }
 
 /// An error that occurred while downloading a package from a registry
@@ -56,48 +62,64 @@ pub enum RegistryDownloadError {
 
     /// The package was not found on the registry
     #[error("package {0} not found on the registry, but found in the index")]
-    NotFound(PackageName),
+    NotFound(StandardPackageName),
 
     /// The user is unauthorized to download the package
     #[error("unauthorized to download package {0}")]
-    Unauthorized(PackageName),
+    Unauthorized(StandardPackageName),
 
     /// An HTTP error occurred
     #[error("http error {0}: the server responded with {1}")]
     Http(reqwest::StatusCode, String),
+
+    /// An error occurred while parsing the api URL
+    #[error("error parsing the API URL")]
+    UrlParse(#[from] url::ParseError),
+}
+
+/// An error that occurred while resolving the url of a registry package
+#[derive(Debug, Error)]
+pub enum RegistryUrlResolveError {
+    /// An error that occurred while reading the index config
+    #[error("error with the index config")]
+    IndexConfig(#[from] crate::index::ConfigError),
+
+    /// An error occurred while parsing the api URL
+    #[error("error parsing the API URL")]
+    UrlParse(#[from] url::ParseError),
 }
 
 impl RegistryPackageRef {
-    /// Downloads the package to the specified destination
-    pub fn download<P: AsRef<Path>, I: Index>(
-        &self,
-        project: &Project<I>,
-        dest: P,
-    ) -> Result<(), RegistryDownloadError> {
-        let url = project
-            .index()
-            .config()?
+    /// Resolves the download URL of the package
+    pub fn resolve_url(&self, indices: &Indices) -> Result<Url, RegistryUrlResolveError> {
+        let index = get_index_by_url(indices, &self.index_url);
+        let config = index.config()?;
+
+        let url = config
             .download()
             .replace("{PACKAGE_AUTHOR}", self.name.scope())
             .replace("{PACKAGE_NAME}", self.name.name())
             .replace("{PACKAGE_VERSION}", &self.version.to_string());
 
+        Ok(Url::parse(&url)?)
+    }
+
+    /// Downloads the package to the specified destination
+    pub fn download<P: AsRef<Path>>(
+        &self,
+        reqwest_client: &reqwest::blocking::Client,
+        url: &Url,
+        registry_auth_token: Option<String>,
+        dest: P,
+    ) -> Result<(), RegistryDownloadError> {
         debug!(
             "downloading registry package {}@{} from {}",
             self.name, self.version, url
         );
 
-        let client = reqwest::blocking::Client::new();
-        let response = {
-            let mut builder = client.get(&url).header(USER_AGENT_HEADER, USER_AGENT);
-            if let Some(token) = project.registry_auth_token() {
-                let visible_tokens = token.chars().take(8).collect::<String>();
-                let hidden_tokens = "*".repeat(token.len() - 8);
-                debug!("using registry token {visible_tokens}{hidden_tokens}");
-                builder = builder.header(AUTHORIZATION, format!("Bearer {}", token));
-            }
-            builder.send()?
-        };
+        let response =
+            maybe_authenticated_request(reqwest_client, url.as_str(), registry_auth_token)
+                .send()?;
 
         if !response.status().is_success() {
             return match response.status() {

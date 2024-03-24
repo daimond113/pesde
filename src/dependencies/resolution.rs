@@ -9,16 +9,18 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+#[cfg(feature = "wally")]
+use crate::index::Index;
 use crate::{
     dependencies::{
         git::{GitDownloadError, GitPackageRef},
-        registry::{RegistryDependencySpecifier, RegistryPackageRef},
+        registry::RegistryPackageRef,
         DependencySpecifier, PackageRef,
     },
-    index::{Index, IndexPackageError},
+    index::IndexPackageError,
     manifest::{DependencyType, Manifest, Realm},
     package_name::PackageName,
-    project::{Project, ReadLockfileError},
+    project::{get_index, get_index_by_url, Project, ReadLockfileError},
     DEV_PACKAGES_FOLDER, INDEX_FOLDER, PACKAGES_FOLDER, SERVER_PACKAGES_FOLDER,
 };
 
@@ -135,15 +137,15 @@ pub enum ResolveError {
 
     /// An error that occurred because a registry dependency conflicts with a git dependency
     #[error("registry dependency {0}@{1} conflicts with git dependency")]
-    RegistryConflict(PackageName, Version),
+    RegistryConflict(String, Version),
 
     /// An error that occurred because a git dependency conflicts with a registry dependency
     #[error("git dependency {0}@{1} conflicts with registry dependency")]
-    GitConflict(PackageName, Version),
+    GitConflict(String, Version),
 
     /// An error that occurred because no satisfying version was found for a dependency
     #[error("no satisfying version found for dependency {0:?}")]
-    NoSatisfyingVersion(RegistryDependencySpecifier),
+    NoSatisfyingVersion(Box<DependencySpecifier>),
 
     /// An error that occurred while downloading a package from a git repository
     #[error("error downloading git package")]
@@ -151,11 +153,11 @@ pub enum ResolveError {
 
     /// An error that occurred because a package was not found in the index
     #[error("package {0} not found in index")]
-    PackageNotFound(PackageName),
+    PackageNotFound(String),
 
     /// An error that occurred while getting a package from the index
     #[error("failed to get package {1} from index")]
-    IndexPackage(#[source] IndexPackageError, PackageName),
+    IndexPackage(#[source] IndexPackageError, String),
 
     /// An error that occurred while reading the lockfile
     #[error("failed to read lockfile")]
@@ -167,18 +169,27 @@ pub enum ResolveError {
 
     /// An error that occurred because two realms are incompatible
     #[error("incompatible realms for package {0} (package specified {1}, user specified {2})")]
-    IncompatibleRealms(PackageName, Realm, Realm),
+    IncompatibleRealms(String, Realm, Realm),
 
     /// An error that occurred because a peer dependency is not installed
     #[error("peer dependency {0}@{1} is not installed")]
-    PeerNotInstalled(PackageName, Version),
+    PeerNotInstalled(String, Version),
+
+    /// An error that occurred while cloning a wally index
+    #[cfg(feature = "wally")]
+    #[error("error cloning wally index")]
+    CloneWallyIndex(#[from] crate::dependencies::wally::CloneWallyIndexError),
+
+    /// An error that occurred while parsing a URL
+    #[error("error parsing URL")]
+    UrlParse(#[from] url::ParseError),
 }
 
 impl Manifest {
     /// Resolves the dependency tree for the project
-    pub fn dependency_tree<I: Index>(
+    pub fn dependency_tree(
         &self,
-        project: &Project<I>,
+        project: &mut Project,
         locked: bool,
     ) -> Result<ResolvedVersionsMap, ResolveError> {
         debug!("resolving dependency tree for project {}", self.name);
@@ -253,19 +264,23 @@ impl Manifest {
         while let Some(((specifier, dep_type), dependant)) = queue.pop_front() {
             let (pkg_ref, default_realm, dependencies) = match &specifier {
                 DependencySpecifier::Registry(registry_dependency) => {
-                    let index_entries = project
-                        .index()
-                        .package(&registry_dependency.name)
+                    let index = if dependant.is_none() {
+                        get_index(project.indices(), Some(&registry_dependency.index))
+                    } else {
+                        get_index_by_url(project.indices(), &registry_dependency.index.parse()?)
+                    };
+                    let pkg_name: PackageName = registry_dependency.name.clone().into();
+
+                    let index_entries = index
+                        .package(&pkg_name)
                         .map_err(|e| {
-                            ResolveError::IndexPackage(e, registry_dependency.name.clone())
+                            ResolveError::IndexPackage(e, registry_dependency.name.to_string())
                         })?
                         .ok_or_else(|| {
-                            ResolveError::PackageNotFound(registry_dependency.name.clone())
+                            ResolveError::PackageNotFound(registry_dependency.name.to_string())
                         })?;
 
-                    let resolved_versions = resolved_versions_map
-                        .entry(registry_dependency.name.clone())
-                        .or_default();
+                    let resolved_versions = resolved_versions_map.entry(pkg_name).or_default();
 
                     // try to find the highest already downloaded version that satisfies the requirement, otherwise find the highest satisfying version in the index
                     let Some(version) =
@@ -278,9 +293,9 @@ impl Manifest {
                             },
                         )
                     else {
-                        return Err(ResolveError::NoSatisfyingVersion(
-                            registry_dependency.clone(),
-                        ));
+                        return Err(ResolveError::NoSatisfyingVersion(Box::new(
+                            specifier.clone(),
+                        )));
                     };
 
                     let entry = index_entries
@@ -297,13 +312,15 @@ impl Manifest {
                         PackageRef::Registry(RegistryPackageRef {
                             name: registry_dependency.name.clone(),
                             version: version.clone(),
+                            index_url: index.url().clone(),
                         }),
                         entry.realm,
                         entry.dependencies,
                     )
                 }
                 DependencySpecifier::Git(git_dependency) => {
-                    let (manifest, url, rev) = git_dependency.resolve(project)?;
+                    let (manifest, url, rev) =
+                        git_dependency.resolve(project.cache_dir(), project.indices())?;
 
                     debug!(
                         "resolved git dependency {} to {url}#{rev}",
@@ -319,6 +336,61 @@ impl Manifest {
                         }),
                         manifest.realm,
                         manifest.dependencies(),
+                    )
+                }
+                #[cfg(feature = "wally")]
+                DependencySpecifier::Wally(wally_dependency) => {
+                    let cache_dir = project.cache_dir().to_path_buf();
+                    let index = crate::dependencies::wally::clone_wally_index(
+                        &cache_dir,
+                        project.indices_mut(),
+                        &wally_dependency.index_url,
+                    )?;
+                    let pkg_name = wally_dependency.name.clone().into();
+
+                    let index_entries = index
+                        .package(&pkg_name)
+                        .map_err(|e| {
+                            ResolveError::IndexPackage(e, wally_dependency.name.to_string())
+                        })?
+                        .ok_or_else(|| {
+                            ResolveError::PackageNotFound(wally_dependency.name.to_string())
+                        })?;
+
+                    let resolved_versions = resolved_versions_map.entry(pkg_name).or_default();
+
+                    // try to find the highest already downloaded version that satisfies the requirement, otherwise find the highest satisfying version in the index
+                    let Some(version) = find_highest!(resolved_versions.keys(), wally_dependency)
+                        .or_else(|| {
+                            find_highest!(
+                                index_entries.iter().map(|v| &v.version),
+                                wally_dependency
+                            )
+                        })
+                    else {
+                        return Err(ResolveError::NoSatisfyingVersion(Box::new(
+                            specifier.clone(),
+                        )));
+                    };
+
+                    let entry = index_entries
+                        .into_iter()
+                        .find(|e| e.version.eq(&version))
+                        .unwrap();
+
+                    debug!(
+                        "resolved registry dependency {} to {}",
+                        wally_dependency.name, version
+                    );
+
+                    (
+                        PackageRef::Wally(crate::dependencies::wally::WallyPackageRef {
+                            name: wally_dependency.name.clone(),
+                            version: version.clone(),
+                            index_url: index.url().clone(),
+                        }),
+                        entry.realm,
+                        entry.dependencies,
                     )
                 }
             };
@@ -337,7 +409,7 @@ impl Manifest {
                     .and_then(|v| v.get_mut(&dependant_version))
                     .unwrap()
                     .dependencies
-                    .insert((pkg_ref.name().clone(), pkg_ref.version().clone()));
+                    .insert((pkg_ref.name(), pkg_ref.version().clone()));
             }
 
             let resolved_versions = resolved_versions_map
@@ -348,12 +420,15 @@ impl Manifest {
                 match (&pkg_ref, &previously_resolved.pkg_ref) {
                     (PackageRef::Registry(r), PackageRef::Git(_g)) => {
                         return Err(ResolveError::RegistryConflict(
-                            r.name.clone(),
+                            r.name.to_string(),
                             r.version.clone(),
                         ));
                     }
                     (PackageRef::Git(g), PackageRef::Registry(_r)) => {
-                        return Err(ResolveError::GitConflict(g.name.clone(), g.version.clone()));
+                        return Err(ResolveError::GitConflict(
+                            g.name.to_string(),
+                            g.version.clone(),
+                        ));
                     }
                     _ => (),
                 }
@@ -374,7 +449,7 @@ impl Manifest {
                 && default_realm.is_some_and(|realm| realm == Realm::Server)
             {
                 return Err(ResolveError::IncompatibleRealms(
-                    pkg_ref.name().clone(),
+                    pkg_ref.name().to_string(),
                     default_realm.unwrap(),
                     *specifier.realm().unwrap(),
                 ));
@@ -410,7 +485,7 @@ impl Manifest {
             for (version, resolved_package) in versions {
                 if resolved_package.dep_type == DependencyType::Peer {
                     return Err(ResolveError::PeerNotInstalled(
-                        resolved_package.pkg_ref.name().clone(),
+                        resolved_package.pkg_ref.name().to_string(),
                         resolved_package.pkg_ref.version().clone(),
                     ));
                 }

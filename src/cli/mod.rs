@@ -6,7 +6,12 @@ use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
 use log::error;
 use once_cell::sync::Lazy;
-use pesde::{index::GitIndex, manifest::Realm, package_name::PackageName};
+use pesde::{
+    index::{GitIndex, Index},
+    manifest::{Manifest, Realm},
+    package_name::{PackageName, StandardPackageName},
+    project::DEFAULT_INDEX_NAME,
+};
 use pretty_env_logger::env_logger::Env;
 use reqwest::{
     blocking::{RequestBuilder, Response},
@@ -84,7 +89,7 @@ pub enum Command {
     Run {
         /// The package to run
         #[clap(value_name = "PACKAGE")]
-        package: PackageName,
+        package: StandardPackageName,
 
         /// The arguments to pass to the package
         #[clap(last = true)]
@@ -102,6 +107,7 @@ pub enum Command {
     Publish,
 
     /// Converts a `wally.toml` file to a `pesde.yaml` file
+    #[cfg(feature = "wally")]
     Convert,
 
     /// Begins a new patch
@@ -141,19 +147,9 @@ pub struct Cli {
     pub directory: Option<PathBuf>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct CliConfig {
-    pub index_repo_url: String,
     pub cache_dir: Option<PathBuf>,
-}
-
-impl Default for CliConfig {
-    fn default() -> Self {
-        Self {
-            index_repo_url: "https://github.com/daimond113/pesde-index".to_string(),
-            cache_dir: None,
-        }
-    }
 }
 
 impl CliConfig {
@@ -201,39 +197,11 @@ pub fn send_request(request_builder: RequestBuilder) -> anyhow::Result<Response>
 pub static CLI: Lazy<Cli> = Lazy::new(Cli::parse);
 
 pub static DIRS: Lazy<ProjectDirs> = Lazy::new(|| {
-    ProjectDirs::from("com", env!("CARGO_BIN_NAME"), env!("CARGO_BIN_NAME"))
+    ProjectDirs::from("com", env!("CARGO_PKG_NAME"), env!("CARGO_BIN_NAME"))
         .expect("couldn't get home directory")
 });
 
 pub static CLI_CONFIG: Lazy<CliConfig> = Lazy::new(|| CliConfig::open().unwrap());
-
-pub static INDEX_DIR: Lazy<PathBuf> = Lazy::new(|| {
-    let mut hasher = DefaultHasher::new();
-    CLI_CONFIG.index_repo_url.hash(&mut hasher);
-    let hash = hasher.finish().to_string();
-
-    CLI_CONFIG.cache_dir().join("indices").join(hash)
-});
-
-pub static INDEX: Lazy<GitIndex> = Lazy::new(|| {
-    let index = GitIndex::new(
-        INDEX_DIR.join("index"),
-        &CLI_CONFIG.index_repo_url,
-        Some(Box::new(|| {
-            Box::new(|a, b, c| {
-                let git_authenticator = GitAuthenticator::new();
-                let config = git2::Config::open_default().unwrap();
-                let mut cred = git_authenticator.credentials(&config);
-
-                cred(a, b, c)
-            })
-        })),
-    );
-
-    index.refresh().unwrap();
-
-    index
-});
 
 pub static CWD: Lazy<PathBuf> = Lazy::new(|| {
     CLI.directory
@@ -275,3 +243,50 @@ pub static MULTI: Lazy<MultiProgress> = Lazy::new(|| {
 
     multi
 });
+
+pub const DEFAULT_INDEX_URL: &str = "https://github.com/daimond113/pesde-index";
+#[cfg(feature = "wally")]
+pub const DEFAULT_WALLY_INDEX_URL: &str = "https://github.com/UpliftGames/wally-index";
+
+pub fn index_dir(url: &str) -> PathBuf {
+    let mut hasher = DefaultHasher::new();
+    url.hash(&mut hasher);
+    let hash = hasher.finish().to_string();
+
+    CLI_CONFIG
+        .cache_dir()
+        .join("indices")
+        .join(hash)
+        .join("index")
+}
+
+pub fn clone_index(url: &str) -> GitIndex {
+    let index = GitIndex::new(
+        index_dir(url),
+        &url.parse().unwrap(),
+        Some(Box::new(|| {
+            Box::new(|a, b, c| {
+                let git_authenticator = GitAuthenticator::new();
+                let config = git2::Config::open_default().unwrap();
+                let mut cred = git_authenticator.credentials(&config);
+
+                cred(a, b, c)
+            })
+        })),
+        API_TOKEN_SOURCE.get_api_token().unwrap(),
+    );
+
+    index.refresh().unwrap();
+
+    index
+}
+
+pub static DEFAULT_INDEX_DATA: Lazy<(PathBuf, String)> = Lazy::new(|| {
+    let manifest = Manifest::from_path(CWD.to_path_buf())
+        .map(|m| m.indices.get(DEFAULT_INDEX_NAME).unwrap().clone());
+    let url = &manifest.unwrap_or(DEFAULT_INDEX_URL.to_string());
+
+    (index_dir(url), url.clone())
+});
+
+pub static DEFAULT_INDEX: Lazy<GitIndex> = Lazy::new(|| clone_index(&DEFAULT_INDEX_DATA.1));

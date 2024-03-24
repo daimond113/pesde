@@ -1,5 +1,6 @@
 use actix_web::{HttpResponse, ResponseError};
 use log::error;
+use pesde::index::CreatePackageVersionError;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -20,13 +21,13 @@ pub enum Errors {
     Reqwest(#[from] reqwest::Error),
 
     #[error("package name invalid")]
-    PackageName(#[from] pesde::package_name::PackageNameValidationError),
+    PackageName(#[from] pesde::package_name::StandardPackageNameValidationError),
 
     #[error("config error")]
     Config(#[from] pesde::index::ConfigError),
 
     #[error("create package version error")]
-    CreatePackageVersion(#[from] pesde::index::CreatePackageVersionError),
+    CreatePackageVersion(#[from] CreatePackageVersionError),
 
     #[error("commit and push error")]
     CommitAndPush(#[from] pesde::index::CommitAndPushError),
@@ -43,9 +44,14 @@ impl ResponseError for Errors {
         match self {
             Errors::UserYaml(_) | Errors::PackageName(_) | Errors::QueryParser(_) => {}
             Errors::CreatePackageVersion(err) => match err {
-                pesde::index::CreatePackageVersionError::MissingScopeOwnership => {
+                CreatePackageVersionError::MissingScopeOwnership => {
                     return HttpResponse::Unauthorized().json(ErrorResponse {
                         error: "You do not have permission to publish this scope".to_string(),
+                    });
+                }
+                CreatePackageVersionError::FromManifestIndexFileEntry(err) => {
+                    return HttpResponse::BadRequest().json(ErrorResponse {
+                        error: format!("Error in manifest: {err:?}"),
                     });
                 }
                 _ => error!("{err:?}"),

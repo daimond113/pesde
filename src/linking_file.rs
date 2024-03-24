@@ -1,8 +1,7 @@
 use std::{
-    fs::{read, write},
+    fs::{read_to_string, write},
     iter,
     path::{Component, Path, PathBuf},
-    str::from_utf8,
 };
 
 use full_moon::{
@@ -16,7 +15,6 @@ use thiserror::Error;
 
 use crate::{
     dependencies::resolution::{packages_folder, ResolvedPackage, ResolvedVersionsMap},
-    index::Index,
     manifest::{Manifest, ManifestReadError, PathStyle, Realm},
     package_name::PackageName,
     project::Project,
@@ -124,8 +122,8 @@ pub enum LinkingError {
     InvalidLuau(#[from] full_moon::Error),
 }
 
-pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>, I: Index>(
-    project: &Project<I>,
+pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
+    project: &Project,
     resolved_pkg: &ResolvedPackage,
     destination_dir: P,
     parent_dependency_packages_dir: Q,
@@ -133,18 +131,19 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>, I: Index>(
     let (_, source_dir) = resolved_pkg.directory(project.path());
     let file = Manifest::from_path(&source_dir)?;
 
-    let Some(lib_export) = file.exports.lib else {
+    let Some(relative_lib_export) = file.exports.lib else {
         return Ok(());
     };
 
-    let lib_export = lib_export.to_path(&source_dir);
+    let lib_export = relative_lib_export.to_path(&source_dir);
 
     let path_style = &project.manifest().path_style;
     let PathStyle::Roblox { place } = &path_style;
 
     debug!("linking {resolved_pkg} using `{}` path style", path_style);
 
-    let name = resolved_pkg.pkg_ref.name().name();
+    let pkg_name = resolved_pkg.pkg_ref.name();
+    let name = pkg_name.name();
 
     let destination_dir = if resolved_pkg.is_root {
         project.path().join(packages_folder(
@@ -154,7 +153,7 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>, I: Index>(
         destination_dir.as_ref().to_path_buf()
     };
 
-    let destination_file = destination_dir.join(format!("{name}.lua"));
+    let destination_file = destination_dir.join(format!("{}{}.lua", pkg_name.prefix(), name));
 
     let realm_folder = project.path().join(resolved_pkg.packages_folder());
     let in_different_folders = realm_folder != parent_dependency_packages_dir.as_ref();
@@ -199,10 +198,12 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>, I: Index>(
         destination_file.display()
     );
 
-    let raw_file_contents = read(lib_export)?;
-    let file_contents = from_utf8(&raw_file_contents)?;
+    let file_contents = match relative_lib_export.as_str() {
+        "true" => "".to_string(),
+        _ => read_to_string(lib_export)?,
+    };
 
-    let linking_file_contents = linking_file(file_contents, &path)?;
+    let linking_file_contents = linking_file(&file_contents, &path)?;
 
     write(&destination_file, linking_file_contents)?;
 
@@ -220,7 +221,7 @@ pub struct LinkingDependenciesError(
     Version,
 );
 
-impl<I: Index> Project<I> {
+impl Project {
     /// Links the dependencies of the project
     pub fn link_dependencies(
         &self,

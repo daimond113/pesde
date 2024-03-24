@@ -2,7 +2,7 @@ use clap::Subcommand;
 use pesde::index::Index;
 use reqwest::{header::AUTHORIZATION, Url};
 
-use crate::cli::{api_token::API_TOKEN_SOURCE, send_request, INDEX, REQWEST_CLIENT};
+use crate::cli::{api_token::API_TOKEN_SOURCE, send_request, DEFAULT_INDEX, REQWEST_CLIENT};
 
 #[derive(Subcommand, Clone)]
 pub enum AuthCommand {
@@ -15,7 +15,7 @@ pub enum AuthCommand {
 pub fn auth_command(cmd: AuthCommand) -> anyhow::Result<()> {
     match cmd {
         AuthCommand::Login => {
-            let github_oauth_client_id = INDEX.config()?.github_oauth_client_id;
+            let github_oauth_client_id = DEFAULT_INDEX.config()?.github_oauth_client_id;
 
             let response = send_request(REQWEST_CLIENT.post(Url::parse_with_params(
                 "https://github.com/login/device/code",

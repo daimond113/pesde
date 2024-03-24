@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tantivy::{query::AllQuery, DateTime, DocAddress, Order};
 
-use pesde::{index::Index, package_name::PackageName};
+use pesde::{index::Index, package_name::StandardPackageName};
 
 use crate::{errors, AppState};
 
@@ -50,7 +50,7 @@ pub async fn search_packages(
                 .into_iter()
                 .map(|(published_at, doc_address)| {
                     let retrieved_doc = searcher.doc(doc_address).unwrap();
-                    let name: PackageName = retrieved_doc
+                    let name: StandardPackageName = retrieved_doc
                         .get_first(name)
                         .and_then(|v| v.as_text())
                         .and_then(|v| v.parse().ok())
@@ -63,7 +63,7 @@ pub async fn search_packages(
                         .unwrap();
 
                     let entry = index
-                        .package(&name)
+                        .package(&name.clone().into())
                         .unwrap()
                         .and_then(|v| v.into_iter().find(|v| v.version == version))
                         .unwrap();

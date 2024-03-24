@@ -1,7 +1,9 @@
 use std::{
+    any::Any,
     collections::{BTreeSet, HashMap},
     sync::Arc,
 };
+use url::Url;
 
 use pesde::{
     index::{
@@ -13,9 +15,19 @@ use pesde::{
 };
 
 /// An in-memory implementation of the [`Index`] trait. Used for testing.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct InMemoryIndex {
     packages: HashMap<String, (BTreeSet<u64>, IndexFile)>,
+    url: Url,
+}
+
+impl Default for InMemoryIndex {
+    fn default() -> Self {
+        Self {
+            packages: HashMap::new(),
+            url: Url::parse("https://example.com").unwrap(),
+        }
+    }
 }
 
 impl InMemoryIndex {
@@ -78,7 +90,7 @@ impl Index for InMemoryIndex {
 
         let package = self.packages.get_mut(scope).unwrap();
 
-        let entry: IndexFileEntry = manifest.clone().into();
+        let entry: IndexFileEntry = manifest.clone().try_into()?;
         package.1.insert(entry.clone());
 
         Ok(Some(entry))
@@ -87,7 +99,7 @@ impl Index for InMemoryIndex {
     fn config(&self) -> Result<IndexConfig, ConfigError> {
         Ok(IndexConfig {
             download: None,
-            api: "http://127.0.0.1:8080".to_string(),
+            api: "http://127.0.0.1:8080".parse().unwrap(),
             github_oauth_client_id: "".to_string(),
             custom_registry_allowed: false,
             git_allowed: false,
@@ -96,5 +108,13 @@ impl Index for InMemoryIndex {
 
     fn credentials_fn(&self) -> Option<&Arc<CredentialsFn>> {
         None
+    }
+
+    fn url(&self) -> &Url {
+        &self.url
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
