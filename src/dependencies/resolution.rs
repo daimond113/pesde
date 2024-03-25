@@ -1,45 +1,68 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     fmt::Display,
     path::{Path, PathBuf},
 };
 
 use log::debug;
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[cfg(feature = "wally")]
-use crate::index::Index;
 use crate::{
     dependencies::{
         git::{GitDownloadError, GitPackageRef},
         registry::RegistryPackageRef,
         DependencySpecifier, PackageRef,
     },
-    index::IndexPackageError,
+    index::{Index, IndexFileEntry, IndexPackageError},
     manifest::{DependencyType, Manifest, Realm},
     package_name::PackageName,
     project::{get_index, get_index_by_url, Project, ReadLockfileError},
     DEV_PACKAGES_FOLDER, INDEX_FOLDER, PACKAGES_FOLDER, SERVER_PACKAGES_FOLDER,
 };
 
-/// A node in the dependency tree
+/// A mapping of packages to something
+pub type PackageMap<T> = BTreeMap<PackageName, BTreeMap<Version, T>>;
+
+/// The root node of the dependency graph
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[serde(deny_unknown_fields)]
+pub struct RootLockfileNode {
+    /// The specifiers of the root packages
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub specifiers: PackageMap<DependencySpecifier>,
+
+    /// All nodes in the dependency graph
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub children: PackageMap<ResolvedPackage>,
+}
+
+impl RootLockfileNode {
+    /// Returns the specifier of the root package
+    pub fn root_specifier(
+        &self,
+        resolved_package: &ResolvedPackage,
+    ) -> Option<&DependencySpecifier> {
+        self.specifiers
+            .get(&resolved_package.pkg_ref.name())
+            .and_then(|versions| versions.get(resolved_package.pkg_ref.version()))
+    }
+}
+
+/// A node in the dependency graph
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct ResolvedPackage {
     /// The reference to the package
     pub pkg_ref: PackageRef,
-    /// The specifier that resolved to this package
-    pub specifier: DependencySpecifier,
     /// The dependencies of the package
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub dependencies: BTreeSet<(PackageName, Version)>,
-    /// Whether the package is a root package (top-level dependency)
-    pub is_root: bool,
     /// The realm of the package
     pub realm: Realm,
     /// The type of the dependency
+    #[serde(default, skip_serializing_if = "crate::is_default")]
     pub dep_type: DependencyType,
 }
 
@@ -49,7 +72,7 @@ impl Display for ResolvedPackage {
     }
 }
 
-pub(crate) fn packages_folder(realm: &Realm) -> &str {
+pub(crate) fn packages_folder<'a>(realm: Realm) -> &'a str {
     match realm {
         Realm::Shared => PACKAGES_FOLDER,
         Realm::Server => SERVER_PACKAGES_FOLDER,
@@ -59,7 +82,7 @@ pub(crate) fn packages_folder(realm: &Realm) -> &str {
 
 impl ResolvedPackage {
     pub(crate) fn packages_folder(&self) -> &str {
-        packages_folder(&self.realm)
+        packages_folder(self.realm)
     }
 
     /// Returns the directory of the package in the project, and the parent of the directory
@@ -76,16 +99,42 @@ impl ResolvedPackage {
     }
 }
 
-/// A flat resolved map, a map of package names to versions to resolved packages
-pub type ResolvedVersionsMap = BTreeMap<PackageName, BTreeMap<Version, ResolvedPackage>>;
-
 macro_rules! find_highest {
-    ($iter:expr, $dep:expr) => {
+    ($iter:expr, $version:expr) => {
         $iter
-            .filter(|v| $dep.version.matches(v))
+            .filter(|v| $version.matches(v))
             .max_by(|a, b| a.cmp(&b))
             .cloned()
     };
+}
+
+fn find_version_from_index(
+    root: &mut RootLockfileNode,
+    index: &dyn Index,
+    specifier: &DependencySpecifier,
+    name: PackageName,
+    version_req: &VersionReq,
+) -> Result<IndexFileEntry, ResolveError> {
+    let index_entries = index
+        .package(&name)
+        .map_err(|e| ResolveError::IndexPackage(e, name.to_string()))?
+        .ok_or_else(|| ResolveError::PackageNotFound(name.to_string()))?;
+
+    let resolved_versions = root.children.entry(name).or_default();
+
+    // try to find the highest already downloaded version that satisfies the requirement, otherwise find the highest satisfying version in the index
+    let Some(version) = find_highest!(resolved_versions.keys(), version_req)
+        .or_else(|| find_highest!(index_entries.iter().map(|v| &v.version), version_req))
+    else {
+        return Err(ResolveError::NoSatisfyingVersion(Box::new(
+            specifier.clone(),
+        )));
+    };
+
+    Ok(index_entries
+        .into_iter()
+        .find(|e| e.version.eq(&version))
+        .unwrap())
 }
 
 fn find_realm(a: &Realm, b: &Realm) -> Realm {
@@ -94,38 +143,6 @@ fn find_realm(a: &Realm, b: &Realm) -> Realm {
     }
 
     Realm::Shared
-}
-
-fn add_to_map(
-    map: &mut ResolvedVersionsMap,
-    name: &PackageName,
-    version: &Version,
-    resolved_package: &ResolvedPackage,
-    lockfile: &ResolvedVersionsMap,
-    depth: usize,
-) -> Result<(), ResolveError> {
-    debug!(
-        "{}resolved {resolved_package} from lockfile",
-        "\t".repeat(depth)
-    );
-
-    map.entry(name.clone())
-        .or_default()
-        .insert(version.clone(), resolved_package.clone());
-
-    for (dep_name, dep_version) in &resolved_package.dependencies {
-        if map.get(dep_name).and_then(|v| v.get(dep_version)).is_none() {
-            let dep = lockfile.get(dep_name).and_then(|v| v.get(dep_version));
-
-            match dep {
-                Some(dep) => add_to_map(map, dep_name, dep_version, dep, lockfile, depth + 1)?,
-                // the lockfile is malformed
-                None => return Err(ResolveError::OutOfDateLockfile),
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /// An error that occurred while resolving dependencies
@@ -186,63 +203,95 @@ pub enum ResolveError {
 }
 
 impl Manifest {
-    /// Resolves the dependency tree for the project
-    pub fn dependency_tree(
+    /// Resolves the dependency graph for the project
+    pub fn dependency_graph(
         &self,
         project: &mut Project,
         locked: bool,
-    ) -> Result<ResolvedVersionsMap, ResolveError> {
-        debug!("resolving dependency tree for project {}", self.name);
+    ) -> Result<RootLockfileNode, ResolveError> {
+        debug!("resolving dependency graph for project {}", self.name);
         // try to reuse versions (according to semver specifiers) to decrease the amount of downloads and storage
-        let mut resolved_versions_map: ResolvedVersionsMap = BTreeMap::new();
+        let mut root = RootLockfileNode::default();
 
-        let tree = if let Some(lockfile) = project.lockfile()? {
+        let graph = if let Some(old_root) = project.lockfile()? {
             debug!("lockfile found, resolving dependencies from it");
             let mut missing = Vec::new();
 
-            // resolve all root dependencies (and their dependencies) from the lockfile
-            for (name, versions) in &lockfile {
+            let current_dependencies = self.dependencies();
+            let current_specifiers = current_dependencies
+                .iter()
+                .map(|(d, _)| d)
+                .collect::<HashSet<_>>();
+
+            // populate the new lockfile with all root dependencies (and their dependencies) from the old lockfile
+            for (name, versions) in &old_root.children {
                 for (version, resolved_package) in versions {
-                    if !resolved_package.is_root
-                        || !self
-                            .dependencies()
-                            .into_iter()
-                            .any(|(spec, _)| spec == resolved_package.specifier)
-                    {
+                    let specifier = old_root.root_specifier(resolved_package);
+
+                    if !specifier.is_some_and(|specifier| current_specifiers.contains(specifier)) {
                         continue;
                     }
 
-                    add_to_map(
-                        &mut resolved_versions_map,
-                        name,
-                        version,
-                        resolved_package,
-                        &lockfile,
-                        1,
-                    )?;
+                    root.specifiers
+                        .entry(name.clone())
+                        .or_default()
+                        .insert(version.clone(), specifier.unwrap().clone());
+
+                    let mut queue = VecDeque::from([resolved_package]);
+
+                    while let Some(resolved_package) = queue.pop_front() {
+                        debug!("resolved {resolved_package} from lockfile");
+
+                        root.children
+                            .entry(name.clone())
+                            .or_default()
+                            .insert(version.clone(), resolved_package.clone());
+
+                        for (dep_name, dep_version) in &resolved_package.dependencies {
+                            if root
+                                .children
+                                .get(dep_name)
+                                .and_then(|v| v.get(dep_version))
+                                .is_none()
+                            {
+                                let dep = old_root
+                                    .children
+                                    .get(dep_name)
+                                    .and_then(|v| v.get(dep_version));
+
+                                match dep {
+                                    Some(dep) => queue.push_back(dep),
+                                    // the lockfile is out of date
+                                    None => return Err(ResolveError::OutOfDateLockfile),
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            // resolve new, or modified, dependencies from the lockfile
-            'outer: for (dep, dep_type) in self.dependencies() {
-                for versions in resolved_versions_map.values() {
-                    for resolved_package in versions.values() {
-                        if resolved_package.specifier == dep && resolved_package.is_root {
-                            continue 'outer;
-                        }
-                    }
+            let old_specifiers = old_root
+                .specifiers
+                .values()
+                .flat_map(|v| v.values())
+                .collect::<HashSet<_>>();
+
+            // resolve new, or modified, dependencies from the manifest
+            for (specifier, dep_type) in current_dependencies {
+                if old_specifiers.contains(&specifier) {
+                    continue;
                 }
 
                 if locked {
                     return Err(ResolveError::OutOfDateLockfile);
                 }
 
-                missing.push((dep.clone(), dep_type));
+                missing.push((specifier.clone(), dep_type));
             }
 
             debug!(
                 "resolved {} dependencies from lockfile. new dependencies: {}",
-                resolved_versions_map.len(),
+                old_root.children.len(),
                 missing.len()
             );
 
@@ -252,16 +301,19 @@ impl Manifest {
             self.dependencies()
         };
 
-        if tree.is_empty() {
+        if graph.is_empty() {
             debug!("no dependencies left to resolve, finishing...");
-            return Ok(resolved_versions_map);
+            return Ok(root);
         }
 
-        debug!("resolving {} dependencies from index", tree.len());
+        debug!("resolving {} dependencies from index", graph.len());
 
-        let mut queue = VecDeque::from_iter(self.dependencies().into_iter().map(|d| (d, None)));
+        let mut queue = graph
+            .into_iter()
+            .map(|(specifier, dep_type)| (specifier, dep_type, None))
+            .collect::<VecDeque<_>>();
 
-        while let Some(((specifier, dep_type), dependant)) = queue.pop_front() {
+        while let Some((specifier, dep_type, dependant)) = queue.pop_front() {
             let (pkg_ref, default_realm, dependencies) = match &specifier {
                 DependencySpecifier::Registry(registry_dependency) => {
                     let index = if dependant.is_none() {
@@ -269,49 +321,24 @@ impl Manifest {
                     } else {
                         get_index_by_url(project.indices(), &registry_dependency.index.parse()?)
                     };
-                    let pkg_name: PackageName = registry_dependency.name.clone().into();
 
-                    let index_entries = index
-                        .package(&pkg_name)
-                        .map_err(|e| {
-                            ResolveError::IndexPackage(e, registry_dependency.name.to_string())
-                        })?
-                        .ok_or_else(|| {
-                            ResolveError::PackageNotFound(registry_dependency.name.to_string())
-                        })?;
-
-                    let resolved_versions = resolved_versions_map.entry(pkg_name).or_default();
-
-                    // try to find the highest already downloaded version that satisfies the requirement, otherwise find the highest satisfying version in the index
-                    let Some(version) =
-                        find_highest!(resolved_versions.keys(), registry_dependency).or_else(
-                            || {
-                                find_highest!(
-                                    index_entries.iter().map(|v| &v.version),
-                                    registry_dependency
-                                )
-                            },
-                        )
-                    else {
-                        return Err(ResolveError::NoSatisfyingVersion(Box::new(
-                            specifier.clone(),
-                        )));
-                    };
-
-                    let entry = index_entries
-                        .into_iter()
-                        .find(|e| e.version.eq(&version))
-                        .unwrap();
+                    let entry = find_version_from_index(
+                        &mut root,
+                        index,
+                        &specifier,
+                        registry_dependency.name.clone().into(),
+                        &registry_dependency.version,
+                    )?;
 
                     debug!(
                         "resolved registry dependency {} to {}",
-                        registry_dependency.name, version
+                        registry_dependency.name, entry.version
                     );
 
                     (
                         PackageRef::Registry(RegistryPackageRef {
                             name: registry_dependency.name.clone(),
-                            version: version.clone(),
+                            version: entry.version,
                             index_url: index.url().clone(),
                         }),
                         entry.realm,
@@ -346,47 +373,24 @@ impl Manifest {
                         project.indices_mut(),
                         &wally_dependency.index_url,
                     )?;
-                    let pkg_name = wally_dependency.name.clone().into();
 
-                    let index_entries = index
-                        .package(&pkg_name)
-                        .map_err(|e| {
-                            ResolveError::IndexPackage(e, wally_dependency.name.to_string())
-                        })?
-                        .ok_or_else(|| {
-                            ResolveError::PackageNotFound(wally_dependency.name.to_string())
-                        })?;
-
-                    let resolved_versions = resolved_versions_map.entry(pkg_name).or_default();
-
-                    // try to find the highest already downloaded version that satisfies the requirement, otherwise find the highest satisfying version in the index
-                    let Some(version) = find_highest!(resolved_versions.keys(), wally_dependency)
-                        .or_else(|| {
-                            find_highest!(
-                                index_entries.iter().map(|v| &v.version),
-                                wally_dependency
-                            )
-                        })
-                    else {
-                        return Err(ResolveError::NoSatisfyingVersion(Box::new(
-                            specifier.clone(),
-                        )));
-                    };
-
-                    let entry = index_entries
-                        .into_iter()
-                        .find(|e| e.version.eq(&version))
-                        .unwrap();
+                    let entry = find_version_from_index(
+                        &mut root,
+                        &index,
+                        &specifier,
+                        wally_dependency.name.clone().into(),
+                        &wally_dependency.version,
+                    )?;
 
                     debug!(
-                        "resolved registry dependency {} to {}",
-                        wally_dependency.name, version
+                        "resolved wally dependency {} to {}",
+                        wally_dependency.name, entry.version
                     );
 
                     (
                         PackageRef::Wally(crate::dependencies::wally::WallyPackageRef {
                             name: wally_dependency.name.clone(),
-                            version: version.clone(),
+                            version: entry.version,
                             index_url: index.url().clone(),
                         }),
                         entry.realm,
@@ -395,26 +399,30 @@ impl Manifest {
                 }
             };
 
-            let is_root = dependant.is_none();
             // if the dependency is a root dependency, it can be thought of as a normal dependency
-            let dep_type = if is_root {
-                DependencyType::Normal
-            } else {
+            let dep_type = if dependant.is_some() {
                 dep_type
+            } else {
+                DependencyType::Normal
             };
 
+            let specifier_realm = specifier.realm().copied();
+
             if let Some((dependant_name, dependant_version)) = dependant {
-                resolved_versions_map
+                root.children
                     .get_mut(&dependant_name)
                     .and_then(|v| v.get_mut(&dependant_version))
                     .unwrap()
                     .dependencies
                     .insert((pkg_ref.name(), pkg_ref.version().clone()));
+            } else {
+                root.specifiers
+                    .entry(pkg_ref.name())
+                    .or_default()
+                    .insert(pkg_ref.version().clone(), specifier);
             }
 
-            let resolved_versions = resolved_versions_map
-                .entry(pkg_ref.name().clone())
-                .or_default();
+            let resolved_versions = root.children.entry(pkg_ref.name()).or_default();
 
             if let Some(previously_resolved) = resolved_versions.get_mut(pkg_ref.version()) {
                 match (&pkg_ref, &previously_resolved.pkg_ref) {
@@ -443,15 +451,13 @@ impl Manifest {
                 continue;
             }
 
-            if specifier
-                .realm()
-                .is_some_and(|realm| realm == &Realm::Shared)
+            if specifier_realm.is_some_and(|realm| realm == Realm::Shared)
                 && default_realm.is_some_and(|realm| realm == Realm::Server)
             {
                 return Err(ResolveError::IncompatibleRealms(
                     pkg_ref.name().to_string(),
                     default_realm.unwrap(),
-                    *specifier.realm().unwrap(),
+                    specifier_realm.unwrap(),
                 ));
             }
 
@@ -459,29 +465,26 @@ impl Manifest {
                 pkg_ref.version().clone(),
                 ResolvedPackage {
                     pkg_ref: pkg_ref.clone(),
-                    specifier: specifier.clone(),
                     dependencies: BTreeSet::new(),
-                    is_root,
-                    realm: *specifier
-                        .realm()
-                        .copied()
+                    realm: specifier_realm
                         .unwrap_or_default()
-                        .or(&default_realm.unwrap_or_default()),
+                        .or(default_realm.unwrap_or_default()),
                     dep_type,
                 },
             );
 
-            for dependency in dependencies {
+            for (specifier, ty) in dependencies {
                 queue.push_back((
-                    dependency,
-                    Some((pkg_ref.name().clone(), pkg_ref.version().clone())),
+                    specifier,
+                    ty,
+                    Some((pkg_ref.name(), pkg_ref.version().clone())),
                 ));
             }
         }
 
         debug!("resolving realms and peer dependencies...");
 
-        for (name, versions) in resolved_versions_map.clone() {
+        for (name, versions) in root.children.clone() {
             for (version, resolved_package) in versions {
                 if resolved_package.dep_type == DependencyType::Peer {
                     return Err(ResolveError::PeerNotInstalled(
@@ -493,16 +496,14 @@ impl Manifest {
                 let mut realm = resolved_package.realm;
 
                 for (dep_name, dep_version) in &resolved_package.dependencies {
-                    let dep = resolved_versions_map
-                        .get(dep_name)
-                        .and_then(|v| v.get(dep_version));
+                    let dep = root.children.get(dep_name).and_then(|v| v.get(dep_version));
 
                     if let Some(dep) = dep {
                         realm = find_realm(&realm, &dep.realm);
                     }
                 }
 
-                resolved_versions_map
+                root.children
                     .get_mut(&name)
                     .and_then(|v| v.get_mut(&version))
                     .unwrap()
@@ -510,8 +511,8 @@ impl Manifest {
             }
         }
 
-        debug!("finished resolving dependency tree");
+        debug!("finished resolving dependency graph");
 
-        Ok(resolved_versions_map)
+        Ok(root)
     }
 }

@@ -45,3 +45,7 @@ pub const IGNORED_FOLDERS: &[&str] = &[
     SERVER_PACKAGES_FOLDER,
     ".git",
 ];
+
+pub(crate) fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+    t == &Default::default()
+}

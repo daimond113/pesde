@@ -72,7 +72,7 @@ pub enum Realm {
 
 impl Realm {
     /// Returns the most restrictive realm
-    pub fn or<'a>(&'a self, other: &'a Self) -> &'a Self {
+    pub fn or(self, other: Self) -> Self {
         match self {
             Realm::Shared => other,
             _ => self,
@@ -115,6 +115,18 @@ pub struct Manifest {
     pub name: StandardPackageName,
     /// The version of the package. Must be [semver](https://semver.org) compatible. The registry will not accept non-semver versions and the CLI will not handle such packages
     pub version: Version,
+    /// A short description of the package
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// The license of the package
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+    /// The authors of the package
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authors: Option<Vec<String>>,
+    /// The repository of the package
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
     /// The files exported by the package
     #[serde(default)]
     pub exports: Exports,
@@ -139,19 +151,6 @@ pub struct Manifest {
     /// The peer dependencies of the package
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub peer_dependencies: Vec<DependencySpecifier>,
-
-    /// A short description of the package
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// The license of the package
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub license: Option<String>,
-    /// The authors of the package
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub authors: Option<Vec<String>>,
-    /// The repository of the package
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub repository: Option<String>,
 }
 
 /// An error that occurred while reading the manifest

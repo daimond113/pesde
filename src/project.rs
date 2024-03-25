@@ -10,7 +10,7 @@ use thiserror::Error;
 use url::Url;
 
 use crate::{
-    dependencies::{resolution::ResolvedVersionsMap, DownloadError, UrlResolveError},
+    dependencies::{resolution::RootLockfileNode, DownloadError, UrlResolveError},
     index::Index,
     linking_file::LinkingDependenciesError,
     manifest::{Manifest, ManifestReadError},
@@ -34,7 +34,7 @@ pub struct Project {
 pub struct InstallOptions {
     locked: bool,
     auto_download: bool,
-    resolved_versions_map: Option<ResolvedVersionsMap>,
+    lockfile: Option<RootLockfileNode>,
 }
 
 impl Default for InstallOptions {
@@ -42,7 +42,7 @@ impl Default for InstallOptions {
         Self {
             locked: false,
             auto_download: true,
-            resolved_versions_map: None,
+            lockfile: None,
         }
     }
 }
@@ -57,7 +57,7 @@ impl InstallOptions {
     pub fn locked(&self, locked: bool) -> Self {
         Self {
             locked,
-            resolved_versions_map: self.resolved_versions_map.clone(),
+            lockfile: self.lockfile.clone(),
             ..*self
         }
     }
@@ -67,16 +67,16 @@ impl InstallOptions {
     pub fn auto_download(&self, auto_download: bool) -> Self {
         Self {
             auto_download,
-            resolved_versions_map: self.resolved_versions_map.clone(),
+            lockfile: self.lockfile.clone(),
             ..*self
         }
     }
 
-    /// Makes the installation to use the given resolved versions map
+    /// Makes the installation to use the given lockfile
     /// Having this set to Some is only useful if you're using auto_download = false
-    pub fn resolved_versions_map(&self, resolved_versions_map: ResolvedVersionsMap) -> Self {
+    pub fn lockfile(&self, lockfile: RootLockfileNode) -> Self {
         Self {
-            resolved_versions_map: Some(resolved_versions_map),
+            lockfile: Some(lockfile),
             ..*self
         }
     }
@@ -97,9 +97,9 @@ pub enum ReadLockfileError {
 /// An error that occurred while downloading a project
 #[derive(Debug, Error)]
 pub enum InstallProjectError {
-    /// An error that occurred while resolving the dependency tree
-    #[error("failed to resolve dependency tree")]
-    ResolveTree(#[from] crate::dependencies::resolution::ResolveError),
+    /// An error that occurred while resolving the dependency graph
+    #[error("failed to resolve dependency graph")]
+    ResolveGraph(#[from] crate::dependencies::resolution::ResolveError),
 
     /// An error that occurred while downloading a package
     #[error("failed to download package")]
@@ -273,12 +273,12 @@ impl Project {
     }
 
     /// Returns the lockfile of the project
-    pub fn lockfile(&self) -> Result<Option<ResolvedVersionsMap>, ReadLockfileError> {
+    pub fn lockfile(&self) -> Result<Option<RootLockfileNode>, ReadLockfileError> {
         let lockfile_path = self.path.join(LOCKFILE_FILE_NAME);
 
         Ok(if lockfile_path.exists() {
             let lockfile_contents = read(&lockfile_path)?;
-            let lockfile: ResolvedVersionsMap = serde_yaml::from_slice(&lockfile_contents)
+            let lockfile: RootLockfileNode = serde_yaml::from_slice(&lockfile_contents)
                 .map_err(ReadLockfileError::LockfileDeser)?;
 
             Some(lockfile)
@@ -289,25 +289,25 @@ impl Project {
 
     /// Downloads the project's dependencies, applies patches, and links the dependencies
     pub fn install(&mut self, install_options: InstallOptions) -> Result<(), InstallProjectError> {
-        let map = match install_options.resolved_versions_map {
+        let lockfile = match install_options.lockfile {
             Some(map) => map,
             None => {
                 let manifest = self.manifest.clone();
 
-                manifest.dependency_tree(self, install_options.locked)?
+                manifest.dependency_graph(self, install_options.locked)?
             }
         };
 
         if install_options.auto_download {
-            self.download(map.clone())?.wait()?;
+            self.download(&lockfile)?.wait()?;
         }
 
-        self.apply_patches(&map)?;
+        self.apply_patches(&lockfile)?;
 
-        self.link_dependencies(&map)?;
+        self.link_dependencies(&lockfile)?;
 
         if !install_options.locked {
-            serde_yaml::to_writer(File::create(self.path.join(LOCKFILE_FILE_NAME))?, &map)
+            serde_yaml::to_writer(File::create(self.path.join(LOCKFILE_FILE_NAME))?, &lockfile)
                 .map_err(InstallProjectError::LockfileSer)?;
         }
 

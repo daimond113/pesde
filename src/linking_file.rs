@@ -14,7 +14,7 @@ use semver::Version;
 use thiserror::Error;
 
 use crate::{
-    dependencies::resolution::{packages_folder, ResolvedPackage, ResolvedVersionsMap},
+    dependencies::resolution::{packages_folder, ResolvedPackage, RootLockfileNode},
     manifest::{Manifest, ManifestReadError, PathStyle, Realm},
     package_name::PackageName,
     project::Project,
@@ -125,6 +125,7 @@ pub enum LinkingError {
 pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
     project: &Project,
     resolved_pkg: &ResolvedPackage,
+    lockfile: &RootLockfileNode,
     destination_dir: P,
     parent_dependency_packages_dir: Q,
     only_name: bool,
@@ -146,12 +147,15 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
     let pkg_name = resolved_pkg.pkg_ref.name();
     let name = pkg_name.name();
 
-    let destination_dir = if resolved_pkg.is_root {
-        project.path().join(packages_folder(
-            &resolved_pkg.specifier.realm().cloned().unwrap_or_default(),
-        ))
-    } else {
-        destination_dir.as_ref().to_path_buf()
+    let destination_dir = match lockfile
+        .specifiers
+        .get(&pkg_name)
+        .and_then(|v| v.get(resolved_pkg.pkg_ref.version()))
+    {
+        Some(specifier) => project.path().join(packages_folder(
+            specifier.realm().copied().unwrap_or_default(),
+        )),
+        None => destination_dir.as_ref().to_path_buf(),
     };
 
     let destination_file = destination_dir.join(format!(
@@ -230,19 +234,26 @@ pub struct LinkingDependenciesError(
     Version,
 );
 
+fn is_duplicate_in<T: PartialEq>(item: T, items: &[T]) -> bool {
+    let mut count = 0u8;
+    items.iter().any(|i| {
+        if i == &item {
+            count += 1;
+        }
+        count > 1
+    })
+}
+
 impl Project {
     /// Links the dependencies of the project
     pub fn link_dependencies(
         &self,
-        map: &ResolvedVersionsMap,
+        lockfile: &RootLockfileNode,
     ) -> Result<(), LinkingDependenciesError> {
-        let root_deps: HashSet<String> = HashSet::from_iter(
-            map.iter()
-                .flat_map(|(_, v)| v)
-                .filter_map(|(_, v)| v.is_root.then_some(v.pkg_ref.name().name().to_string())),
-        );
+        let root_deps = lockfile.specifiers.keys().collect::<HashSet<_>>();
+        let root_dep_names = root_deps.iter().map(|n| n.name()).collect::<Vec<_>>();
 
-        for (name, versions) in map {
+        for (name, versions) in &lockfile.children {
             for (version, resolved_pkg) in versions {
                 let (container_dir, _) = resolved_pkg.directory(self.path());
 
@@ -251,8 +262,15 @@ impl Project {
                     container_dir.display()
                 );
 
+                let resolved_pkg_dep_names = resolved_pkg
+                    .dependencies
+                    .iter()
+                    .map(|(n, _)| n.name())
+                    .collect::<Vec<_>>();
+
                 for (dep_name, dep_version) in &resolved_pkg.dependencies {
-                    let dep = map
+                    let dep = lockfile
+                        .children
                         .get(dep_name)
                         .and_then(|versions| versions.get(dep_version))
                         .unwrap();
@@ -260,12 +278,10 @@ impl Project {
                     link(
                         self,
                         dep,
+                        lockfile,
                         &container_dir,
                         &self.path().join(resolved_pkg.packages_folder()),
-                        resolved_pkg
-                            .dependencies
-                            .iter()
-                            .any(|(n, _)| n.name() == dep_name.name()),
+                        !is_duplicate_in(dep_name.name(), &resolved_pkg_dep_names),
                     )
                     .map_err(|e| {
                         LinkingDependenciesError(
@@ -278,7 +294,7 @@ impl Project {
                     })?;
                 }
 
-                if resolved_pkg.is_root {
+                if root_deps.contains(&name) {
                     let linking_dir = &self.path().join(resolved_pkg.packages_folder());
 
                     debug!(
@@ -289,9 +305,10 @@ impl Project {
                     link(
                         self,
                         resolved_pkg,
+                        lockfile,
                         linking_dir,
                         linking_dir,
-                        root_deps.contains(name.name()),
+                        !is_duplicate_in(name.name(), &root_dep_names),
                     )
                     .map_err(|e| {
                         LinkingDependenciesError(

@@ -80,15 +80,10 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
             .indices
             .clone()
             .into_iter()
-            .map(|(k, v)| (k, Box::new(clone_index(&v)) as Box<dyn Index>));
+            .map(|(k, v)| (k, Box::new(clone_index(&v)) as Box<dyn Index>))
+            .collect::<HashMap<_, _>>();
 
-        Project::new(
-            CWD.to_path_buf(),
-            CLI_CONFIG.cache_dir(),
-            HashMap::from_iter(indices),
-            manifest,
-        )
-        .unwrap()
+        Project::new(CWD.to_path_buf(), CLI_CONFIG.cache_dir(), indices, manifest).unwrap()
     });
 
     match cmd {
@@ -104,18 +99,18 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
             }
 
             let manifest = project.manifest().clone();
-            let resolved_versions_map = manifest.dependency_tree(&mut project, locked)?;
+            let lockfile = manifest.dependency_graph(&mut project, locked)?;
 
-            let download_job = project.download(resolved_versions_map.clone())?;
+            let download_job = project.download(&lockfile)?;
 
             multithreaded_bar(
                 download_job,
-                resolved_versions_map.len() as u64,
+                lockfile.children.len() as u64,
                 "Downloading packages".to_string(),
             )?;
 
             #[allow(unused_variables)]
-            project.convert_manifests(&resolved_versions_map, |path| {
+            project.convert_manifests(&lockfile, |path| {
                 cfg_if! {
                     if #[cfg(feature = "wally")] {
                         if let Some(sourcemap_generator) = &manifest.sourcemap_generator {
@@ -145,7 +140,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 InstallOptions::new()
                     .locked(locked)
                     .auto_download(false)
-                    .resolved_versions_map(resolved_versions_map),
+                    .lockfile(lockfile),
             )?;
         }
         Command::Run { package, args } => {
@@ -153,16 +148,17 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 .lockfile()?
                 .ok_or(anyhow::anyhow!("lockfile not found"))?;
 
-            let (_, resolved_pkg) = lockfile
+            let resolved_pkg = lockfile
+                .children
                 .get(&package.into())
-                .and_then(|versions| versions.iter().find(|(_, pkg_ref)| pkg_ref.is_root))
+                .and_then(|versions| {
+                    versions
+                        .values()
+                        .find(|pkg_ref| lockfile.root_specifier(pkg_ref).is_some())
+                })
                 .ok_or(anyhow::anyhow!(
                     "package not found in lockfile (or isn't root)"
                 ))?;
-
-            if !resolved_pkg.is_root {
-                anyhow::bail!("package is not a root package");
-            }
 
             let pkg_path = resolved_pkg.directory(project.path()).1;
             let manifest = Manifest::from_path(&pkg_path)?;
@@ -278,6 +274,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 .ok_or(anyhow::anyhow!("lockfile not found"))?;
 
             let resolved_pkg = lockfile
+                .children
                 .get(&package.0)
                 .and_then(|versions| versions.get(&package.1))
                 .ok_or(anyhow::anyhow!("package not found in lockfile"))?;
@@ -509,15 +506,15 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
             let project = Lazy::force_mut(&mut project);
 
             let manifest = project.manifest().clone();
-            let dependency_tree = manifest.dependency_tree(project, false)?;
+            let lockfile = manifest.dependency_graph(project, false)?;
 
-            for (name, versions) in dependency_tree {
+            for (name, versions) in &lockfile.children {
                 for (version, resolved_pkg) in versions {
-                    if !resolved_pkg.is_root {
+                    if lockfile.root_specifier(resolved_pkg).is_none() {
                         continue;
                     }
 
-                    if let PackageRef::Registry(ref registry) = resolved_pkg.pkg_ref {
+                    if let PackageRef::Registry(registry) = &resolved_pkg.pkg_ref {
                         let latest_version = send_request(REQWEST_CLIENT.get(format!(
                             "{}/v0/packages/{}/{}/versions",
                             resolved_pkg.pkg_ref.get_index(project).config()?.api(),
@@ -533,7 +530,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                             "failed to get latest version of {name}@{version}"
                         ))?;
 
-                        if latest_version > version {
+                        if &latest_version > version {
                             println!(
                                 "{name}@{version} is outdated. latest version: {latest_version}"
                             );

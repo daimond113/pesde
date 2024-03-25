@@ -707,13 +707,13 @@ impl Index for WallyIndex {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| IndexPackageError::Other(Box::new(e)))?;
 
-        Ok(Some(BTreeSet::from_iter(
+        Ok(Some(
             manifest_stream
                 .into_iter()
                 .map(|m| m.try_into())
-                .collect::<Result<Vec<_>, _>>()
+                .collect::<Result<BTreeSet<_>, _>>()
                 .map_err(|e| IndexPackageError::Other(Box::new(e)))?,
-        )))
+        ))
     }
 
     fn create_package_version(

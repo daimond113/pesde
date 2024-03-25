@@ -104,9 +104,9 @@ fn test_resolves_package() {
     .unwrap();
 
     let manifest = project.manifest().clone();
-    let tree = manifest.dependency_tree(&mut project, false).unwrap();
-    assert_eq!(tree.len(), 1);
-    let versions = tree.get(&pkg_name.clone().into()).unwrap();
+    let graph = manifest.dependency_graph(&mut project, false).unwrap();
+    assert_eq!(graph.children.len(), 1);
+    let versions = graph.children.get(&pkg_name.clone().into()).unwrap();
     assert_eq!(versions.len(), 2);
     let resolved_pkg = versions.get(&version).unwrap();
     assert_eq!(
@@ -117,9 +117,7 @@ fn test_resolves_package() {
                 version: version.clone(),
                 index_url: index.url().clone(),
             }),
-            specifier,
             dependencies: Default::default(),
-            is_root: true,
             realm: Realm::Shared,
             dep_type: DependencyType::Normal,
         }
@@ -133,9 +131,7 @@ fn test_resolves_package() {
                 version: version_2.clone(),
                 index_url: index.url().clone(),
             }),
-            specifier: specifier_2,
             dependencies: Default::default(),
-            is_root: true,
             realm: Realm::Shared,
             dep_type: DependencyType::Normal,
         }

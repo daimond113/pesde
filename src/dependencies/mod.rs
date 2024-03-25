@@ -18,7 +18,7 @@ use crate::{
     dependencies::{
         git::{GitDependencySpecifier, GitPackageRef},
         registry::{RegistryDependencySpecifier, RegistryPackageRef},
-        resolution::ResolvedVersionsMap,
+        resolution::RootLockfileNode,
     },
     index::{CredentialsFn, Index},
     manifest::{Manifest, Realm},
@@ -274,11 +274,11 @@ impl Project {
     /// Downloads the project's dependencies
     pub fn download(
         &mut self,
-        map: ResolvedVersionsMap,
+        lockfile: &RootLockfileNode,
     ) -> Result<MultithreadedJob<DownloadError>, InstallProjectError> {
         let (job, tx) = MultithreadedJob::new();
 
-        for (name, versions) in map.clone() {
+        for (name, versions) in lockfile.children.clone() {
             for (version, resolved_package) in versions {
                 let (_, source) = resolved_package.directory(self.path());
 
@@ -319,7 +319,7 @@ impl Project {
     #[cfg(feature = "wally")]
     pub fn convert_manifests<F: Fn(PathBuf)>(
         &self,
-        map: &ResolvedVersionsMap,
+        lockfile: &RootLockfileNode,
         generate_sourcemap: F,
     ) -> Result<(), ConvertManifestsError> {
         #[derive(Deserialize)]
@@ -329,7 +329,7 @@ impl Project {
             file_paths: Vec<relative_path::RelativePathBuf>,
         }
 
-        for versions in map.values() {
+        for versions in lockfile.children.values() {
             for resolved_package in versions.values() {
                 let source = match &resolved_package.pkg_ref {
                     PackageRef::Wally(_) | PackageRef::Git(_) => {
@@ -373,10 +373,10 @@ impl Project {
     #[cfg(not(feature = "wally"))]
     pub fn convert_manifests<F: Fn(PathBuf)>(
         &self,
-        map: &ResolvedVersionsMap,
+        lockfile: &RootLockfileNode,
         _generate_sourcemap: F,
     ) -> Result<(), ConvertManifestsError> {
-        for versions in map.values() {
+        for versions in lockfile.children.values() {
             for resolved_package in versions.values() {
                 let source = match &resolved_package.pkg_ref {
                     PackageRef::Git(_) => resolved_package.directory(self.path()).1,

@@ -9,7 +9,7 @@ use semver::Version;
 use thiserror::Error;
 
 use crate::{
-    dependencies::resolution::ResolvedVersionsMap,
+    dependencies::resolution::RootLockfileNode,
     package_name::{FromEscapedStrPackageNameError, PackageName},
     project::Project,
     PATCHES_FOLDER,
@@ -141,7 +141,7 @@ pub enum ApplyPatchesError {
 
 impl Project {
     /// Applies patches for the project
-    pub fn apply_patches(&self, map: &ResolvedVersionsMap) -> Result<(), ApplyPatchesError> {
+    pub fn apply_patches(&self, lockfile: &RootLockfileNode) -> Result<(), ApplyPatchesError> {
         let patches_dir = self.path().join(PATCHES_FOLDER);
         if !patches_dir.exists() {
             return Ok(());
@@ -170,7 +170,8 @@ impl Project {
 
             let version = Version::parse(version)?;
 
-            let resolved_pkg = map
+            let resolved_pkg = lockfile
+                .children
                 .get(&package_name)
                 .ok_or_else(|| ApplyPatchesError::PackageNotFound(package_name.clone()))?
                 .get(&version)
