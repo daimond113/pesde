@@ -129,6 +129,7 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
     destination_dir: P,
     parent_dependency_packages_dir: Q,
     only_name: bool,
+    as_root: bool,
 ) -> Result<(), LinkingError> {
     let (_, source_dir) = resolved_pkg.directory(project.path());
     let file = Manifest::from_path(&source_dir)?;
@@ -152,10 +153,10 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
         .get(&pkg_name)
         .and_then(|v| v.get(resolved_pkg.pkg_ref.version()))
     {
-        Some(specifier) => project.path().join(packages_folder(
+        Some(specifier) if as_root => project.path().join(packages_folder(
             specifier.realm().copied().unwrap_or_default(),
         )),
-        None => destination_dir.as_ref().to_path_buf(),
+        _ => destination_dir.as_ref().to_path_buf(),
     };
 
     let destination_file = destination_dir.join(format!(
@@ -282,6 +283,7 @@ impl Project {
                         &container_dir,
                         &self.path().join(resolved_pkg.packages_folder()),
                         !is_duplicate_in(dep_name.name(), &resolved_pkg_dep_names),
+                        false,
                     )
                     .map_err(|e| {
                         LinkingDependenciesError(
@@ -295,7 +297,8 @@ impl Project {
                 }
 
                 if root_deps.contains(&name) {
-                    let linking_dir = &self.path().join(resolved_pkg.packages_folder());
+                    let specifier = lockfile.root_specifier(resolved_pkg).unwrap();
+                    let linking_dir = &self.path().join(packages_folder(specifier.realm().copied().unwrap_or_default()));
 
                     debug!(
                         "linking root package {name}@{version} to directory {}",
@@ -307,8 +310,9 @@ impl Project {
                         resolved_pkg,
                         lockfile,
                         linking_dir,
-                        linking_dir,
+                        self.path().join(resolved_pkg.packages_folder()),
                         !is_duplicate_in(name.name(), &root_dep_names),
+                        true,
                     )
                     .map_err(|e| {
                         LinkingDependenciesError(
