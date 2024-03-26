@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     fmt::Display,
     path::{Path, PathBuf},
 };
@@ -16,7 +16,7 @@ use crate::{
         DependencySpecifier, PackageRef,
     },
     index::{Index, IndexFileEntry, IndexPackageError},
-    manifest::{DependencyType, Manifest, Realm},
+    manifest::{DependencyType, Manifest, OverrideKey, Realm},
     package_name::PackageName,
     project::{get_index, get_index_by_url, Project, ReadLockfileError},
     DEV_PACKAGES_FOLDER, INDEX_FOLDER, PACKAGES_FOLDER, SERVER_PACKAGES_FOLDER,
@@ -29,6 +29,10 @@ pub type PackageMap<T> = BTreeMap<PackageName, BTreeMap<Version, T>>;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[serde(deny_unknown_fields)]
 pub struct RootLockfileNode {
+    /// Dependency overrides
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub overrides: BTreeMap<OverrideKey, DependencySpecifier>,
+
     /// The specifiers of the root packages
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub specifiers: PackageMap<DependencySpecifier>,
@@ -203,17 +207,19 @@ pub enum ResolveError {
 }
 
 impl Manifest {
-    /// Resolves the dependency graph for the project
-    pub fn dependency_graph(
+    fn missing_dependencies(
         &self,
-        project: &mut Project,
+        root: &mut RootLockfileNode,
         locked: bool,
-    ) -> Result<RootLockfileNode, ResolveError> {
-        debug!("resolving dependency graph for project {}", self.name);
-        // try to reuse versions (according to semver specifiers) to decrease the amount of downloads and storage
-        let mut root = RootLockfileNode::default();
+        project: &Project,
+    ) -> Result<Vec<(DependencySpecifier, DependencyType)>, ResolveError> {
+        Ok(if let Some(old_root) = project.lockfile()? {
+            if self.overrides != old_root.overrides {
+                // TODO: resolve only the changed dependencies (will this be worth it?)
+                debug!("overrides have changed, resolving all dependencies");
+                return Ok(self.dependencies());
+            }
 
-        let graph = if let Some(old_root) = project.lockfile()? {
             debug!("lockfile found, resolving dependencies from it");
             let mut missing = Vec::new();
 
@@ -237,10 +243,13 @@ impl Manifest {
                         .or_default()
                         .insert(version.clone(), specifier.unwrap().clone());
 
-                    let mut queue = VecDeque::from([resolved_package]);
+                    let mut queue = VecDeque::from([(resolved_package, 0usize)]);
 
-                    while let Some(resolved_package) = queue.pop_front() {
-                        debug!("resolved {resolved_package} from lockfile");
+                    while let Some((resolved_package, depth)) = queue.pop_front() {
+                        debug!(
+                            "{}resolved {resolved_package} from lockfile",
+                            "\t".repeat(depth)
+                        );
 
                         root.children
                             .entry(name.clone())
@@ -260,7 +269,7 @@ impl Manifest {
                                     .and_then(|v| v.get(dep_version));
 
                                 match dep {
-                                    Some(dep) => queue.push_back(dep),
+                                    Some(dep) => queue.push_back((dep, depth + 1)),
                                     // the lockfile is out of date
                                     None => return Err(ResolveError::OutOfDateLockfile),
                                 }
@@ -299,21 +308,45 @@ impl Manifest {
         } else {
             debug!("no lockfile found, resolving all dependencies");
             self.dependencies()
+        })
+    }
+
+    /// Resolves the dependency graph for the project
+    pub fn dependency_graph(
+        &self,
+        project: &mut Project,
+        locked: bool,
+    ) -> Result<RootLockfileNode, ResolveError> {
+        debug!("resolving dependency graph for project {}", self.name);
+        // try to reuse versions (according to semver specifiers) to decrease the amount of downloads and storage
+        let mut root = RootLockfileNode {
+            overrides: self.overrides.clone(),
+            ..Default::default()
         };
 
-        if graph.is_empty() {
+        let missing_dependencies = self.missing_dependencies(&mut root, locked, project)?;
+
+        if missing_dependencies.is_empty() {
             debug!("no dependencies left to resolve, finishing...");
             return Ok(root);
         }
 
-        debug!("resolving {} dependencies from index", graph.len());
+        let overrides = self
+            .overrides
+            .iter()
+            .flat_map(|(k, spec)| k.0.iter().map(|path| (path, spec.clone())))
+            .collect::<HashMap<_, _>>();
 
-        let mut queue = graph
+        debug!("resolving {} dependencies", missing_dependencies.len());
+
+        let mut queue = missing_dependencies
             .into_iter()
-            .map(|(specifier, dep_type)| (specifier, dep_type, None))
+            .map(|(specifier, dep_type)| (specifier, dep_type, None, vec![]))
             .collect::<VecDeque<_>>();
 
-        while let Some((specifier, dep_type, dependant)) = queue.pop_front() {
+        while let Some((specifier, dep_type, dependant, mut path)) = queue.pop_front() {
+            let depth = path.len();
+
             let (pkg_ref, default_realm, dependencies) = match &specifier {
                 DependencySpecifier::Registry(registry_dependency) => {
                     let index = if dependant.is_none() {
@@ -331,8 +364,10 @@ impl Manifest {
                     )?;
 
                     debug!(
-                        "resolved registry dependency {} to {}",
-                        registry_dependency.name, entry.version
+                        "{}resolved registry dependency {} to {}",
+                        "\t".repeat(depth),
+                        registry_dependency.name,
+                        entry.version
                     );
 
                     (
@@ -350,7 +385,8 @@ impl Manifest {
                         git_dependency.resolve(project.cache_dir(), project.indices())?;
 
                     debug!(
-                        "resolved git dependency {} to {url}#{rev}",
+                        "{}resolved git dependency {} to {url}#{rev}",
+                        "\t".repeat(depth),
                         git_dependency.repo
                     );
 
@@ -383,8 +419,10 @@ impl Manifest {
                     )?;
 
                     debug!(
-                        "resolved wally dependency {} to {}",
-                        wally_dependency.name, entry.version
+                        "{}resolved wally dependency {} to {}",
+                        "\t".repeat(depth),
+                        wally_dependency.name,
+                        entry.version
                     );
 
                     (
@@ -473,11 +511,20 @@ impl Manifest {
                 },
             );
 
+            path.push(pkg_ref.name().to_string());
+
             for (specifier, ty) in dependencies {
+                let overridden = overrides.iter().find_map(|(k_path, spec)| {
+                    (&path == &k_path[..k_path.len() - 1]
+                        && k_path.get(k_path.len() - 1) == Some(&specifier.name()))
+                    .then_some(spec)
+                });
+
                 queue.push_back((
-                    specifier,
+                    overridden.cloned().unwrap_or(specifier),
                     ty,
                     Some((pkg_ref.name(), pkg_ref.version().clone())),
+                    path.clone(),
                 ));
             }
         }

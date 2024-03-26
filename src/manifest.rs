@@ -1,6 +1,6 @@
-use cfg_if::cfg_if;
 use std::{collections::BTreeMap, fmt::Display, fs::read, str::FromStr};
 
+use cfg_if::cfg_if;
 use relative_path::RelativePathBuf;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -108,6 +108,46 @@ impl FromStr for Realm {
     }
 }
 
+/// A key to override dependencies
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct OverrideKey(pub Vec<Vec<String>>);
+
+impl Serialize for OverrideKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(
+            &self
+                .0
+                .iter()
+                .map(|overrides| {
+                    overrides
+                        .iter()
+                        .map(String::to_string)
+                        .collect::<Vec<_>>()
+                        .join(">")
+                })
+                .collect::<Vec<_>>()
+                .join(","),
+        )
+    }
+}
+
+impl<'de> Deserialize<'de> for OverrideKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let mut key = Vec::new();
+        for overrides in s.split(',') {
+            key.push(
+                overrides
+                    .split('>')
+                    .map(|s| String::from_str(s).map_err(serde::de::Error::custom))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+        }
+
+        Ok(OverrideKey(key))
+    }
+}
+
 /// The manifest of a package
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Manifest {
@@ -144,6 +184,9 @@ pub struct Manifest {
     #[cfg(feature = "wally")]
     #[serde(default)]
     pub sourcemap_generator: Option<String>,
+    /// Dependency overrides
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub overrides: BTreeMap<OverrideKey, DependencySpecifier>,
 
     /// The dependencies of the package
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -292,6 +335,7 @@ impl Manifest {
                     "".to_string(),
                 )]),
                 sourcemap_generator: None,
+                overrides: BTreeMap::new(),
 
                 dependencies,
                 peer_dependencies: Vec::new(),

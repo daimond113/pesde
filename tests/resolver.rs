@@ -43,6 +43,7 @@ fn test_resolves_package() {
         indices: Default::default(),
         #[cfg(feature = "wally")]
         sourcemap_generator: None,
+        overrides: Default::default(),
 
         dependencies: vec![],
         peer_dependencies: vec![],
@@ -83,6 +84,7 @@ fn test_resolves_package() {
         indices: Default::default(),
         #[cfg(feature = "wally")]
         sourcemap_generator: None,
+        overrides: Default::default(),
 
         dependencies: vec![specifier.clone()],
         peer_dependencies: vec![specifier_2.clone()],

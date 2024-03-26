@@ -130,7 +130,7 @@ const SEPARATOR: char = '/';
 const ESCAPED_SEPARATOR: char = '+';
 
 macro_rules! name_impl {
-    ($Name:ident, $Error:ident, $Visitor:ident, $validate:expr, $prefix:expr) => {
+    ($Name:ident, $Error:ident, $validate:expr, $prefix:expr) => {
         impl $Name {
             /// Creates a new package name
             pub fn new(scope: &str, name: &str) -> Result<Self, $Error> {
@@ -209,35 +209,33 @@ macro_rules! name_impl {
             }
         }
 
-        impl<'de> Visitor<'de> for $Visitor {
-            type Value = $Name;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(
-                    formatter,
-                    "a string in the format `{}scope{SEPARATOR}name`",
-                    $prefix
-                )
-            }
-
-            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
-                v.parse().map_err(|e| E::custom(e))
-            }
-        }
-
         impl<'de> Deserialize<'de> for $Name {
             fn deserialize<D: serde::Deserializer<'de>>(
                 deserializer: D,
             ) -> Result<$Name, D::Error> {
-                deserializer.deserialize_str($Visitor)
+                struct NameVisitor;
+
+                impl<'de> Visitor<'de> for NameVisitor {
+                    type Value = $Name;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        write!(
+                            formatter,
+                            "a string in the format `{}scope{SEPARATOR}name`",
+                            $prefix
+                        )
+                    }
+
+                    fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                        v.parse().map_err(E::custom)
+                    }
+                }
+
+                deserializer.deserialize_str(NameVisitor)
             }
         }
     };
 }
-
-struct StandardPackageNameVisitor;
-#[cfg(feature = "wally")]
-struct WallyPackageNameVisitor;
 
 /// A package name
 #[derive(Serialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -323,7 +321,6 @@ impl From<WallyPackageName> for PackageName {
 name_impl!(
     StandardPackageName,
     StandardPackageNameValidationError,
-    StandardPackageNameVisitor,
     validate_part,
     ""
 );
@@ -332,7 +329,6 @@ name_impl!(
 name_impl!(
     WallyPackageName,
     WallyPackageNameValidationError,
-    WallyPackageNameVisitor,
     validate_wally_part,
     "wally#"
 );

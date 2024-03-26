@@ -417,6 +417,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 )]),
                 #[cfg(feature = "wally")]
                 sourcemap_generator: None,
+                overrides: Default::default(),
 
                 dependencies: Default::default(),
                 peer_dependencies: Default::default(),
