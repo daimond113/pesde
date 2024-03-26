@@ -515,9 +515,8 @@ impl Manifest {
 
             for (specifier, ty) in dependencies {
                 let overridden = overrides.iter().find_map(|(k_path, spec)| {
-                    (&path == &k_path[..k_path.len() - 1]
-                        && k_path.get(k_path.len() - 1) == Some(&specifier.name()))
-                    .then_some(spec)
+                    (path == k_path[..k_path.len() - 1] && k_path.last() == Some(&specifier.name()))
+                        .then_some(spec)
                 });
 
                 queue.push_back((

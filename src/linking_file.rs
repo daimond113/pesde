@@ -298,7 +298,9 @@ impl Project {
 
                 if root_deps.contains(&name) {
                     let specifier = lockfile.root_specifier(resolved_pkg).unwrap();
-                    let linking_dir = &self.path().join(packages_folder(specifier.realm().copied().unwrap_or_default()));
+                    let linking_dir = &self.path().join(packages_folder(
+                        specifier.realm().copied().unwrap_or_default(),
+                    ));
 
                     debug!(
                         "linking root package {name}@{version} to directory {}",
