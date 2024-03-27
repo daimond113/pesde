@@ -436,7 +436,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
         } => {
             let mut manifest = project.manifest().clone();
 
-            let specifier = match package.0 {
+            let specifier = match package.0.clone() {
                 PackageName::Standard(name) => {
                     DependencySpecifier::Registry(RegistryDependencySpecifier {
                         name,
@@ -456,10 +456,32 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 ),
             };
 
+            fn insert_into(
+                deps: &mut BTreeMap<String, DependencySpecifier>,
+                specifier: DependencySpecifier,
+                name: PackageName,
+            ) {
+                macro_rules! not_taken {
+                    ($key:expr) => {
+                        (!deps.contains_key(&$key)).then_some($key)
+                    };
+                }
+
+                let key = not_taken!(name.name().to_string())
+                    .or_else(|| not_taken!(format!("{}/{}", name.scope(), name.name())))
+                    .or_else(|| not_taken!(name.to_string()))
+                    .unwrap();
+                deps.insert(key, specifier);
+            }
+
             if peer {
-                manifest.peer_dependencies.push(specifier);
+                insert_into(
+                    &mut manifest.peer_dependencies,
+                    specifier,
+                    package.0.clone(),
+                );
             } else {
-                manifest.dependencies.push(specifier);
+                insert_into(&mut manifest.dependencies, specifier, package.0.clone());
             }
 
             serde_yaml::to_writer(
@@ -471,7 +493,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
             let mut manifest = project.manifest().clone();
 
             for dependencies in [&mut manifest.dependencies, &mut manifest.peer_dependencies] {
-                dependencies.retain(|d| {
+                dependencies.retain(|_, d| {
                     if let DependencySpecifier::Registry(registry) = d {
                         match &package {
                             PackageName::Standard(name) => &registry.name != name,

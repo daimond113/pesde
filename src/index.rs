@@ -1,6 +1,6 @@
 use std::{
     any::Any,
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     fs::create_dir_all,
     hash::Hash,
@@ -578,8 +578,8 @@ pub struct IndexFileEntry {
     pub description: Option<String>,
 
     /// The dependencies of the package
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub dependencies: Vec<(DependencySpecifier, DependencyType)>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dependencies: BTreeMap<String, (DependencySpecifier, DependencyType)>,
 }
 
 /// An error that occurred while converting a manifest to an index file entry
@@ -606,21 +606,24 @@ impl TryFrom<Manifest> for IndexFileEntry {
 
             dependencies: dependencies
                 .into_iter()
-                .map(|(dep, ty)| {
-                    Ok(match dep {
-                        DependencySpecifier::Registry(mut registry) => {
-                            registry.index = indices
-                                .get(&registry.index)
-                                .ok_or_else(|| {
-                                    FromManifestIndexFileEntry::IndexNotSpecified(
-                                        registry.index.clone(),
-                                    )
-                                })?
-                                .clone();
-                            (DependencySpecifier::Registry(registry), ty)
-                        }
-                        d => (d, ty),
-                    })
+                .map(|(desired_name, (dep, ty))| {
+                    Ok((
+                        desired_name,
+                        match dep {
+                            DependencySpecifier::Registry(mut registry) => {
+                                registry.index = indices
+                                    .get(&registry.index)
+                                    .ok_or_else(|| {
+                                        FromManifestIndexFileEntry::IndexNotSpecified(
+                                            registry.index.clone(),
+                                        )
+                                    })?
+                                    .clone();
+                                (DependencySpecifier::Registry(registry), ty)
+                            }
+                            d => (d, ty),
+                        },
+                    ))
                 })
                 .collect::<Result<_, _>>()?,
         })

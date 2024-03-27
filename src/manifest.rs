@@ -189,11 +189,11 @@ pub struct Manifest {
     pub overrides: BTreeMap<OverrideKey, DependencySpecifier>,
 
     /// The dependencies of the package
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub dependencies: Vec<DependencySpecifier>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dependencies: BTreeMap<String, DependencySpecifier>,
     /// The peer dependencies of the package
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub peer_dependencies: Vec<DependencySpecifier>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub peer_dependencies: BTreeMap<String, DependencySpecifier>,
 }
 
 /// An error that occurred while reading the manifest
@@ -338,7 +338,7 @@ impl Manifest {
                 overrides: BTreeMap::new(),
 
                 dependencies,
-                peer_dependencies: Vec::new(),
+                peer_dependencies: Default::default(),
                 description: wally_manifest.package.description,
                 license: wally_manifest.package.license,
                 authors: wally_manifest.package.authors,
@@ -361,14 +361,24 @@ impl Manifest {
     }
 
     /// Returns all dependencies
-    pub fn dependencies(&self) -> Vec<(DependencySpecifier, DependencyType)> {
+    pub fn dependencies(&self) -> BTreeMap<String, (DependencySpecifier, DependencyType)> {
         self.dependencies
             .iter()
-            .map(|dep| (dep.clone(), DependencyType::Normal))
+            .map(|(desired_name, specifier)| {
+                (
+                    desired_name.clone(),
+                    (specifier.clone(), DependencyType::Normal),
+                )
+            })
             .chain(
                 self.peer_dependencies
                     .iter()
-                    .map(|dep| (dep.clone(), DependencyType::Peer)),
+                    .map(|(desired_name, specifier)| {
+                        (
+                            desired_name.clone(),
+                            (specifier.clone(), DependencyType::Peer),
+                        )
+                    }),
             )
             .collect()
     }

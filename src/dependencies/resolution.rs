@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fmt::Display,
     path::{Path, PathBuf},
 };
@@ -35,7 +35,7 @@ pub struct RootLockfileNode {
 
     /// The specifiers of the root packages
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub specifiers: PackageMap<DependencySpecifier>,
+    pub specifiers: PackageMap<(DependencySpecifier, String)>,
 
     /// All nodes in the dependency graph
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -47,7 +47,7 @@ impl RootLockfileNode {
     pub fn root_specifier(
         &self,
         resolved_package: &ResolvedPackage,
-    ) -> Option<&DependencySpecifier> {
+    ) -> Option<&(DependencySpecifier, String)> {
         self.specifiers
             .get(&resolved_package.pkg_ref.name())
             .and_then(|versions| versions.get(resolved_package.pkg_ref.version()))
@@ -61,8 +61,8 @@ pub struct ResolvedPackage {
     /// The reference to the package
     pub pkg_ref: PackageRef,
     /// The dependencies of the package
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub dependencies: BTreeSet<(PackageName, Version)>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dependencies: BTreeMap<PackageName, (Version, String)>,
     /// The realm of the package
     pub realm: Realm,
     /// The type of the dependency
@@ -212,7 +212,7 @@ impl Manifest {
         root: &mut RootLockfileNode,
         locked: bool,
         project: &Project,
-    ) -> Result<Vec<(DependencySpecifier, DependencyType)>, ResolveError> {
+    ) -> Result<BTreeMap<String, (DependencySpecifier, DependencyType)>, ResolveError> {
         Ok(if let Some(old_root) = project.lockfile()? {
             if self.overrides != old_root.overrides {
                 // TODO: resolve only the changed dependencies (will this be worth it?)
@@ -221,12 +221,12 @@ impl Manifest {
             }
 
             debug!("lockfile found, resolving dependencies from it");
-            let mut missing = Vec::new();
+            let mut missing = BTreeMap::new();
 
             let current_dependencies = self.dependencies();
             let current_specifiers = current_dependencies
-                .iter()
-                .map(|(d, _)| d)
+                .values()
+                .map(|(specifier, _)| specifier)
                 .collect::<HashSet<_>>();
 
             // populate the new lockfile with all root dependencies (and their dependencies) from the old lockfile
@@ -234,7 +234,9 @@ impl Manifest {
                 for (version, resolved_package) in versions {
                     let specifier = old_root.root_specifier(resolved_package);
 
-                    if !specifier.is_some_and(|specifier| current_specifiers.contains(specifier)) {
+                    if !specifier
+                        .is_some_and(|(specifier, _)| current_specifiers.contains(specifier))
+                    {
                         continue;
                     }
 
@@ -256,7 +258,7 @@ impl Manifest {
                             .or_default()
                             .insert(version.clone(), resolved_package.clone());
 
-                        for (dep_name, dep_version) in &resolved_package.dependencies {
+                        for (dep_name, (dep_version, _)) in &resolved_package.dependencies {
                             if root
                                 .children
                                 .get(dep_name)
@@ -283,10 +285,11 @@ impl Manifest {
                 .specifiers
                 .values()
                 .flat_map(|v| v.values())
+                .map(|(specifier, _)| specifier)
                 .collect::<HashSet<_>>();
 
             // resolve new, or modified, dependencies from the manifest
-            for (specifier, dep_type) in current_dependencies {
+            for (desired_name, (specifier, dep_type)) in current_dependencies {
                 if old_specifiers.contains(&specifier) {
                     continue;
                 }
@@ -295,7 +298,7 @@ impl Manifest {
                     return Err(ResolveError::OutOfDateLockfile);
                 }
 
-                missing.push((specifier.clone(), dep_type));
+                missing.insert(desired_name, (specifier.clone(), dep_type));
             }
 
             debug!(
@@ -341,10 +344,13 @@ impl Manifest {
 
         let mut queue = missing_dependencies
             .into_iter()
-            .map(|(specifier, dep_type)| (specifier, dep_type, None, vec![]))
+            .map(|(desired_name, (specifier, dep_type))| {
+                (desired_name, specifier, dep_type, None, vec![])
+            })
             .collect::<VecDeque<_>>();
 
-        while let Some((specifier, dep_type, dependant, mut path)) = queue.pop_front() {
+        while let Some((desired_name, specifier, dep_type, dependant, mut path)) = queue.pop_front()
+        {
             let depth = path.len();
 
             let (pkg_ref, default_realm, dependencies) = match &specifier {
@@ -452,12 +458,15 @@ impl Manifest {
                     .and_then(|v| v.get_mut(&dependant_version))
                     .unwrap()
                     .dependencies
-                    .insert((pkg_ref.name(), pkg_ref.version().clone()));
+                    .insert(
+                        pkg_ref.name(),
+                        (pkg_ref.version().clone(), desired_name.clone()),
+                    );
             } else {
                 root.specifiers
                     .entry(pkg_ref.name())
                     .or_default()
-                    .insert(pkg_ref.version().clone(), specifier);
+                    .insert(pkg_ref.version().clone(), (specifier, desired_name.clone()));
             }
 
             let resolved_versions = root.children.entry(pkg_ref.name()).or_default();
@@ -503,7 +512,7 @@ impl Manifest {
                 pkg_ref.version().clone(),
                 ResolvedPackage {
                     pkg_ref: pkg_ref.clone(),
-                    dependencies: BTreeSet::new(),
+                    dependencies: Default::default(),
                     realm: specifier_realm
                         .unwrap_or_default()
                         .or(default_realm.unwrap_or_default()),
@@ -511,15 +520,16 @@ impl Manifest {
                 },
             );
 
-            path.push(pkg_ref.name().to_string());
+            path.push(desired_name);
 
-            for (specifier, ty) in dependencies {
+            for (desired_name, (specifier, ty)) in dependencies {
                 let overridden = overrides.iter().find_map(|(k_path, spec)| {
-                    (path == k_path[..k_path.len() - 1] && k_path.last() == Some(&specifier.name()))
+                    (path == k_path[..k_path.len() - 1] && k_path.last() == Some(&desired_name))
                         .then_some(spec)
                 });
 
                 queue.push_back((
+                    desired_name,
                     overridden.cloned().unwrap_or(specifier),
                     ty,
                     Some((pkg_ref.name(), pkg_ref.version().clone())),
@@ -541,7 +551,7 @@ impl Manifest {
 
                 let mut realm = resolved_package.realm;
 
-                for (dep_name, dep_version) in &resolved_package.dependencies {
+                for (dep_name, (dep_version, _)) in &resolved_package.dependencies {
                     let dep = root.children.get(dep_name).and_then(|v| v.get(dep_version));
 
                     if let Some(dep) = dep {

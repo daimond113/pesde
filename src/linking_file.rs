@@ -128,7 +128,7 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
     lockfile: &RootLockfileNode,
     destination_dir: P,
     parent_dependency_packages_dir: Q,
-    only_name: bool,
+    desired_name: &str,
     as_root: bool,
 ) -> Result<(), LinkingError> {
     let (_, source_dir) = resolved_pkg.directory(project.path());
@@ -153,17 +153,13 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
         .get(&pkg_name)
         .and_then(|v| v.get(resolved_pkg.pkg_ref.version()))
     {
-        Some(specifier) if as_root => project.path().join(packages_folder(
+        Some((specifier, _)) if as_root => project.path().join(packages_folder(
             specifier.realm().copied().unwrap_or_default(),
         )),
         _ => destination_dir.as_ref().to_path_buf(),
     };
 
-    let destination_file = destination_dir.join(format!(
-        "{}{}.lua",
-        if only_name { "" } else { pkg_name.prefix() },
-        name
-    ));
+    let destination_file = destination_dir.join(desired_name.to_string() + ".lua");
 
     let realm_folder = project.path().join(resolved_pkg.packages_folder());
     let in_different_folders = realm_folder != parent_dependency_packages_dir.as_ref();
@@ -235,16 +231,6 @@ pub struct LinkingDependenciesError(
     Version,
 );
 
-fn is_duplicate_in<T: PartialEq>(item: T, items: &[T]) -> bool {
-    let mut count = 0u8;
-    items.iter().any(|i| {
-        if i == &item {
-            count += 1;
-        }
-        count > 1
-    })
-}
-
 impl Project {
     /// Links the dependencies of the project
     pub fn link_dependencies(
@@ -252,7 +238,6 @@ impl Project {
         lockfile: &RootLockfileNode,
     ) -> Result<(), LinkingDependenciesError> {
         let root_deps = lockfile.specifiers.keys().collect::<HashSet<_>>();
-        let root_dep_names = root_deps.iter().map(|n| n.name()).collect::<Vec<_>>();
 
         for (name, versions) in &lockfile.children {
             for (version, resolved_pkg) in versions {
@@ -263,13 +248,7 @@ impl Project {
                     container_dir.display()
                 );
 
-                let resolved_pkg_dep_names = resolved_pkg
-                    .dependencies
-                    .iter()
-                    .map(|(n, _)| n.name())
-                    .collect::<Vec<_>>();
-
-                for (dep_name, dep_version) in &resolved_pkg.dependencies {
+                for (dep_name, (dep_version, desired_name)) in &resolved_pkg.dependencies {
                     let dep = lockfile
                         .children
                         .get(dep_name)
@@ -282,7 +261,7 @@ impl Project {
                         lockfile,
                         &container_dir,
                         &self.path().join(resolved_pkg.packages_folder()),
-                        !is_duplicate_in(dep_name.name(), &resolved_pkg_dep_names),
+                        desired_name,
                         false,
                     )
                     .map_err(|e| {
@@ -297,7 +276,7 @@ impl Project {
                 }
 
                 if root_deps.contains(&name) {
-                    let specifier = lockfile.root_specifier(resolved_pkg).unwrap();
+                    let (specifier, desired_name) = lockfile.root_specifier(resolved_pkg).unwrap();
                     let linking_dir = &self.path().join(packages_folder(
                         specifier.realm().copied().unwrap_or_default(),
                     ));
@@ -313,7 +292,7 @@ impl Project {
                         lockfile,
                         linking_dir,
                         self.path().join(resolved_pkg.packages_folder()),
-                        !is_duplicate_in(name.name(), &root_dep_names),
+                        desired_name,
                         true,
                     )
                     .map_err(|e| {

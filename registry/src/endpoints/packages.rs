@@ -84,7 +84,7 @@ pub async fn create_package(
         let mut index = app_state.index.lock().unwrap();
         let config = index.config()?;
 
-        for (dependency, _) in manifest.dependencies() {
+        for (dependency, _) in manifest.dependencies().into_values() {
             match dependency {
                 DependencySpecifier::Git(_) => {
                     if !config.git_allowed {

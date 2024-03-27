@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use semver::Version;
 use tempfile::tempdir;
@@ -45,8 +45,8 @@ fn test_resolves_package() {
         sourcemap_generator: None,
         overrides: Default::default(),
 
-        dependencies: vec![],
-        peer_dependencies: vec![],
+        dependencies: Default::default(),
+        peer_dependencies: Default::default(),
         description: Some(description.to_string()),
         license: None,
         authors: None,
@@ -86,8 +86,8 @@ fn test_resolves_package() {
         sourcemap_generator: None,
         overrides: Default::default(),
 
-        dependencies: vec![specifier.clone()],
-        peer_dependencies: vec![specifier_2.clone()],
+        dependencies: BTreeMap::from([("test".to_string(), specifier.clone())]),
+        peer_dependencies: BTreeMap::from([("test2".to_string(), specifier_2.clone())]),
         description: Some(description.to_string()),
         license: None,
         authors: None,

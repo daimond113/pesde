@@ -314,7 +314,7 @@ pub enum WallyManifestDependencyError {
 
 pub(crate) fn parse_wally_dependencies(
     manifest: WallyManifest,
-) -> Result<Vec<DependencySpecifier>, WallyManifestDependencyError> {
+) -> Result<BTreeMap<String, DependencySpecifier>, WallyManifestDependencyError> {
     [
         (manifest.dependencies, Realm::Shared),
         (manifest.server_dependencies, Realm::Server),
@@ -322,22 +322,25 @@ pub(crate) fn parse_wally_dependencies(
     ]
     .into_iter()
     .flat_map(|(deps, realm)| {
-        deps.into_values()
-            .map(|specifier| {
+        deps.into_iter()
+            .map(move |(desired_name, specifier)| (desired_name, specifier, realm))
+            .map(|(desired_name, specifier, realm)| {
                 let (name, req) = specifier.split_once('@').ok_or_else(|| {
                     WallyManifestDependencyError::InvalidDependencySpecifier(specifier.clone())
                 })?;
                 let name: WallyPackageName = name.parse()?;
                 let req: VersionReq = req.parse()?;
 
-                Ok(DependencySpecifier::Wally(WallyDependencySpecifier {
-                    name,
-                    version: req,
-                    index_url: manifest.package.registry.clone(),
-                    realm: Some(realm),
-                }))
+                Ok((
+                    desired_name,
+                    DependencySpecifier::Wally(WallyDependencySpecifier {
+                        name,
+                        version: req,
+                        index_url: manifest.package.registry.clone(),
+                        realm: Some(realm),
+                    }),
+                ))
             })
-            .collect::<Vec<_>>()
     })
     .collect()
 }
@@ -348,7 +351,7 @@ impl TryFrom<WallyManifest> for IndexFileEntry {
     fn try_from(value: WallyManifest) -> Result<Self, Self::Error> {
         let dependencies = parse_wally_dependencies(value.clone())?
             .into_iter()
-            .map(|d| (d, DependencyType::Normal))
+            .map(|(desired_name, specifier)| (desired_name, (specifier, DependencyType::Normal)))
             .collect();
 
         Ok(IndexFileEntry {
