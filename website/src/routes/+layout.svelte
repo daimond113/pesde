@@ -74,6 +74,7 @@
 				>
 					<a href="https://github.com/daimond113/pesde" class="w-max">GitHub Repository</a>
 					<a href="/policies">Policies</a>
+					<a href="/docs">Documentation</a>
 				</div>
 			</div>
 		</div>
