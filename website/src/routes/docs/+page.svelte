@@ -3,6 +3,13 @@
 	import Note from './Note.svelte';
 </script>
 
+<svelte:head>
+	<title>pesde documentation</title>
+	<meta content="pesde documentation" property="og:title" />
+	<meta content="Documentation about using pesde" name="description" />
+	<meta content="Documentation about using pesde" property="og:description" />
+</svelte:head>
+
 <div class="max-w-prose">
 	<h1>Using pesde</h1>
 
