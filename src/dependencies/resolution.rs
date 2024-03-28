@@ -225,25 +225,29 @@ impl Manifest {
 
             let current_dependencies = self.dependencies();
             let current_specifiers = current_dependencies
-                .values()
-                .map(|(specifier, _)| specifier)
-                .collect::<HashSet<_>>();
+                .clone()
+                .into_iter()
+                .map(|(desired_name, (specifier, _))| (specifier, desired_name))
+                .collect::<HashMap<_, _>>();
 
             // populate the new lockfile with all root dependencies (and their dependencies) from the old lockfile
             for (name, versions) in &old_root.children {
                 for (version, resolved_package) in versions {
-                    let specifier = old_root.root_specifier(resolved_package);
-
-                    if !specifier
-                        .is_some_and(|(specifier, _)| current_specifiers.contains(specifier))
-                    {
+                    let Some((old_specifier, desired_name)) = old_root
+                        .root_specifier(resolved_package)
+                        .and_then(|(old_specifier, _)| {
+                            current_specifiers
+                                .get(old_specifier)
+                                .map(|desired_name| (old_specifier, desired_name))
+                        })
+                    else {
                         continue;
-                    }
+                    };
 
-                    root.specifiers
-                        .entry(name.clone())
-                        .or_default()
-                        .insert(version.clone(), specifier.unwrap().clone());
+                    root.specifiers.entry(name.clone()).or_default().insert(
+                        version.clone(),
+                        (old_specifier.clone(), desired_name.clone()),
+                    );
 
                     let mut queue = VecDeque::from([(resolved_package, 0usize)]);
 
@@ -254,28 +258,32 @@ impl Manifest {
                         );
 
                         root.children
-                            .entry(name.clone())
+                            .entry(resolved_package.pkg_ref.name())
                             .or_default()
-                            .insert(version.clone(), resolved_package.clone());
+                            .insert(
+                                resolved_package.pkg_ref.version().clone(),
+                                resolved_package.clone(),
+                            );
 
                         for (dep_name, (dep_version, _)) in &resolved_package.dependencies {
                             if root
                                 .children
                                 .get(dep_name)
                                 .and_then(|v| v.get(dep_version))
-                                .is_none()
+                                .is_some()
                             {
-                                let dep = old_root
-                                    .children
-                                    .get(dep_name)
-                                    .and_then(|v| v.get(dep_version));
-
-                                match dep {
-                                    Some(dep) => queue.push_back((dep, depth + 1)),
-                                    // the lockfile is out of date
-                                    None => return Err(ResolveError::OutOfDateLockfile),
-                                }
+                                continue;
                             }
+
+                            let Some(dep) = old_root
+                                .children
+                                .get(dep_name)
+                                .and_then(|v| v.get(dep_version))
+                            else {
+                                return Err(ResolveError::OutOfDateLockfile);
+                            };
+
+                            queue.push_back((dep, depth + 1));
                         }
                     }
                 }
