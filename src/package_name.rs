@@ -110,7 +110,7 @@ pub enum EscapedPackageNameError<E> {
     Invalid(String),
 
     /// The package name is invalid
-    #[error("invalid package name")]
+    #[error(transparent)]
     InvalidName(#[from] E),
 }
 
@@ -122,7 +122,7 @@ pub enum FromStrPackageNameParseError<E> {
     Invalid(String),
 
     /// The package name is invalid
-    #[error("invalid name part")]
+    #[error(transparent)]
     InvalidPart(#[from] E),
 }
 

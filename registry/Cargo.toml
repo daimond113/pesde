@@ -30,4 +30,4 @@ sentry-log = "0.32.2"
 sentry-actix = "0.32.2"
 
 # zstd-sys v2.0.10 is broken: https://github.com/gyscos/zstd-rs/issues/268
-zstd-sys = "=2.0.9+zstd.1.5.5"
+zstd-sys = "=2.0.9"

@@ -20,6 +20,7 @@ use reqwest::{
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::{
+    fs::create_dir_all,
     hash::{DefaultHasher, Hash, Hasher},
     path::PathBuf,
     str::FromStr,
@@ -173,9 +174,10 @@ impl CliConfig {
     }
 
     pub fn write(&self) -> anyhow::Result<()> {
-        let cli_config_path = DIRS.config_dir().join("config.yaml");
+        let folder = DIRS.config_dir();
+        create_dir_all(folder)?;
         serde_yaml::to_writer(
-            &mut std::fs::File::create(cli_config_path.as_path())?,
+            &mut std::fs::File::create(folder.join("config.yaml"))?,
             &self,
         )?;
 
