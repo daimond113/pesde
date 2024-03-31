@@ -237,7 +237,11 @@ impl Project {
         &self,
         lockfile: &RootLockfileNode,
     ) -> Result<(), LinkingDependenciesError> {
-        let root_deps = lockfile.specifiers.keys().collect::<HashSet<_>>();
+        let root_deps = lockfile
+            .specifiers
+            .iter()
+            .flat_map(|(name, versions)| versions.keys().map(|version| (name.clone(), version)))
+            .collect::<HashSet<_>>();
 
         for (name, versions) in &lockfile.children {
             for (version, resolved_pkg) in versions {
@@ -275,7 +279,7 @@ impl Project {
                     })?;
                 }
 
-                if root_deps.contains(&name) {
+                if root_deps.contains(&(name.clone(), version)) {
                     let (specifier, desired_name) = lockfile.root_specifier(resolved_pkg).unwrap();
                     let linking_dir = &self.path().join(packages_folder(
                         specifier.realm().copied().unwrap_or_default(),
