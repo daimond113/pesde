@@ -18,7 +18,7 @@ use crate::{
     index::{Index, IndexFileEntry, IndexPackageError},
     manifest::{DependencyType, Manifest, OverrideKey, Realm},
     package_name::{PackageName, StandardPackageName},
-    project::{get_index, get_index_by_url, Project, ReadLockfileError},
+    project::{get_index, get_index_by_url, Indices, Project, ReadLockfileError},
     DEV_PACKAGES_FOLDER, INDEX_FOLDER, PACKAGES_FOLDER, SERVER_PACKAGES_FOLDER,
 };
 
@@ -209,6 +209,14 @@ pub enum ResolveError {
     UrlParse(#[from] url::ParseError),
 }
 
+fn get_by_maybe_url<'a>(indices: &'a Indices, maybe_url: &'a str) -> &'a dyn Index {
+    if let Ok(url) = maybe_url.parse() {
+        get_index_by_url(indices, &url)
+    } else {
+        get_index(indices, Some(maybe_url))
+    }
+}
+
 impl Manifest {
     fn missing_dependencies(
         &self,
@@ -372,11 +380,8 @@ impl Manifest {
 
             let (pkg_ref, default_realm, dependencies) = match &specifier {
                 DependencySpecifier::Registry(registry_dependency) => {
-                    let index = if dependant.is_none() {
-                        get_index(project.indices(), Some(&registry_dependency.index))
-                    } else {
-                        get_index_by_url(project.indices(), &registry_dependency.index.parse()?)
-                    };
+                    // needed because of overrides, which are expected to use the project's indices rather than URLs
+                    let index = get_by_maybe_url(project.indices(), &registry_dependency.index);
 
                     let entry = find_version_from_index(
                         &mut root,
