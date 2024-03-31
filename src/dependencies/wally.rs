@@ -258,11 +258,11 @@ impl WallyPackageRef {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct WallyPackage {
-    pub(crate) name: String,
+    pub(crate) name: WallyPackageName,
     pub(crate) version: Version,
     pub(crate) registry: Url,
     #[serde(default)]
-    pub(crate) realm: Option<String>,
+    pub(crate) realm: Option<Realm>,
     #[serde(default)]
     pub(crate) description: Option<String>,
     #[serde(default)]
@@ -356,10 +356,7 @@ impl TryFrom<WallyManifest> for IndexFileEntry {
 
         Ok(IndexFileEntry {
             version: value.package.version,
-            realm: value
-                .package
-                .realm
-                .map(|r| r.parse().unwrap_or(Realm::Shared)),
+            realm: value.package.realm,
             published_at: Default::default(),
             description: value.package.description,
             dependencies,

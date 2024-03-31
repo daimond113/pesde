@@ -318,6 +318,18 @@ impl From<WallyPackageName> for PackageName {
     }
 }
 
+#[cfg(feature = "wally")]
+impl From<WallyPackageName> for StandardPackageName {
+    fn from(name: WallyPackageName) -> Self {
+        let (scope, name) = name.parts();
+
+        StandardPackageName(
+            scope[..scope.len().min(24)].replace('-', "_"),
+            name[..name.len().min(24)].replace('-', "_"),
+        )
+    }
+}
+
 name_impl!(
     StandardPackageName,
     StandardPackageNameValidationError,
