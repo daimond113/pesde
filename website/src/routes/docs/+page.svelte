@@ -146,6 +146,10 @@ pesde patch-commit DIRECTORY"
 			ignored.</Note
 		>
 		<Codeblock code="pesde publish" />
+		<p>
+			Please look at the <a href="#cheatsheet">manifest format cheat sheet</a> for more information about
+			the pesde.yaml file before publishing.
+		</p>
 	</section>
 
 	<section>
@@ -158,7 +162,7 @@ pesde patch-commit DIRECTORY"
 	</section>
 
 	<section>
-		<h2>Manifest format cheat sheet</h2>
+		<h2 id="cheatsheet">Manifest format cheat sheet</h2>
 		<p>
 			Here is a cheat sheet for the manifest format. This is the format of the pesde.yaml file. The
 			`name` and `version` fields are required. All other fields are optional.
@@ -185,7 +189,7 @@ pesde patch-commit DIRECTORY"
 					lang="yaml"
 					code="name: STANDARD_PACKAGE_NAME
 version: VERSION_REQ
-# OPTIONAL (name in the `indices` field)
+# OPTIONAL (name in the `indices` field) - defaults to `default`
 index: STRING"
 				/>
 			</li>
@@ -234,6 +238,14 @@ overrides:
 dependencies: DEPENDENCY_SPECIFIER[]
 peer_dependencies: DEPENDENCY_SPECIFIER[]"
 		/>
+		<p>The exports field is used to specify the paths of the package's exports:</p>
+		<ul>
+			<li>
+				The `lib` field is a path to the file which will become the ModuleScript of the package.
+				This is only used for reading the types of the package.
+			</li>
+			<li>The `bin` field is a path to the file which will be ran with the `run` command.</li>
+		</ul>
 		<p>
 			If the realm field is not specified, it will default to `shared`. If it is another value, and
 			the package is to be installed in a different realm, pesde will error.
