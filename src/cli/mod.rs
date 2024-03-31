@@ -90,7 +90,7 @@ pub enum Command {
     Run {
         /// The package to run
         #[clap(value_name = "PACKAGE")]
-        package: StandardPackageName,
+        package: Option<StandardPackageName>,
 
         /// The arguments to pass to the package
         #[clap(last = true)]

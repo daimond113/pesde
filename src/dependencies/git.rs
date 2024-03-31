@@ -1,4 +1,9 @@
-use std::{fs::create_dir_all, path::Path, sync::Arc};
+use std::{
+    fs::create_dir_all,
+    hash::{DefaultHasher, Hash, Hasher},
+    path::Path,
+    sync::Arc,
+};
 
 use git2::{build::RepoBuilder, Repository};
 use log::{debug, error, warn};
@@ -9,7 +14,7 @@ use url::Url;
 
 use crate::{
     index::{remote_callbacks, CredentialsFn},
-    manifest::{Manifest, ManifestConvertError, Realm},
+    manifest::{update_sync_tool_files, Manifest, ManifestConvertError, Realm},
     package_name::StandardPackageName,
     project::{get_index, Indices},
 };
@@ -60,10 +65,87 @@ pub enum GitDownloadError {
     #[error("invalid URL")]
     InvalidUrl(#[from] url::ParseError),
 
-    /// An error that occurred because the manifest is not present in the git repository, and the wally feature is not enabled
-    #[cfg(not(feature = "wally"))]
-    #[error("wally feature is not enabled, but the manifest is not present in the git repository")]
-    ManifestNotPresent,
+    /// An error that occurred while resolving a git dependency's manifest
+    #[error("error resolving git dependency manifest")]
+    Resolve(#[from] GitManifestResolveError),
+}
+
+/// An error that occurred while resolving a git dependency's manifest
+#[derive(Debug, Error)]
+pub enum GitManifestResolveError {
+    /// An error that occurred because the scope and name could not be extracted from the URL
+    #[error("could not extract scope and name from URL: {0}")]
+    ScopeAndNameFromUrl(Url),
+
+    /// An error that occurred because the package name is invalid
+    #[error("invalid package name")]
+    InvalidPackageName(#[from] crate::package_name::StandardPackageNameValidationError),
+
+    /// An error that occurred while interacting with the file system
+    #[error("error interacting with the file system")]
+    Io(#[from] std::io::Error),
+}
+
+fn to_snake_case(s: &str) -> String {
+    s.chars()
+        .enumerate()
+        .map(|(i, c)| {
+            if c.is_uppercase() {
+                format!("{}{}", if i == 0 { "" } else { "_" }, c.to_lowercase())
+            } else if c == '-' {
+                "_".to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn manifest(path: &Path, url: &Url) -> Result<Manifest, GitManifestResolveError> {
+    Manifest::from_path_or_convert(path).or_else(|_| {
+        let (scope, name) = url
+            .path_segments()
+            .and_then(|mut s| {
+                let scope = s.next();
+                let name = s.next();
+
+                if let (Some(scope), Some(name)) = (scope, name) {
+                    Some((scope.to_string(), name.to_string()))
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| GitManifestResolveError::ScopeAndNameFromUrl(url.clone()))?;
+
+        let manifest = Manifest {
+            name: StandardPackageName::new(
+                &to_snake_case(&scope),
+                &to_snake_case(name.trim_end_matches(".git")),
+            )?,
+            version: Version::new(0, 1, 0),
+            description: None,
+            license: None,
+            authors: None,
+            repository: None,
+            exports: Default::default(),
+            path_style: Default::default(),
+            private: true,
+            realm: None,
+            indices: Default::default(),
+            #[cfg(feature = "wally")]
+            sourcemap_generator: None,
+            overrides: Default::default(),
+
+            dependencies: Default::default(),
+            peer_dependencies: Default::default(),
+        };
+
+        manifest.write(path).unwrap();
+
+        update_sync_tool_files(path, manifest.name.name().to_string())?;
+
+        Ok(manifest)
+    })
 }
 
 impl GitDependencySpecifier {
@@ -75,41 +157,22 @@ impl GitDependencySpecifier {
         debug!("resolving git dependency {}", self.repo);
 
         // should also work with ssh urls
-        let is_url = self.repo.contains(':');
-
-        let repo_name = if !is_url {
-            self.repo.to_string()
-        } else {
-            let parts: Vec<&str> = self.repo.split('/').collect();
-            format!(
-                "{}/{}",
-                parts[parts.len() - 2],
-                parts[parts.len() - 1].trim_end_matches(".git")
-            )
-        };
-
-        if is_url {
-            debug!("resolved git repository name to: {}", &repo_name);
-        } else {
-            debug!("assuming git repository is a name: {}", &repo_name);
-        }
-
-        let repo_url = if !is_url {
-            Url::parse(&format!("https://github.com/{}.git", &self.repo))
-        } else {
+        let repo_url = if self.repo.contains(':') {
+            debug!("resolved git repository name to: {}", self.repo);
             Url::parse(&self.repo)
+        } else {
+            debug!("assuming git repository is a name: {}", self.repo);
+            Url::parse(&format!("https://github.com/{}.git", &self.repo))
         }?;
 
-        if is_url {
-            debug!("assuming git repository is a url: {}", &repo_url);
-        } else {
-            debug!("resolved git repository url to: {}", &repo_url);
-        }
+        debug!("resolved git repository url to: {}", &repo_url);
 
-        let dest = cache_dir
-            .join("git")
-            .join(repo_name.replace('/', "_"))
-            .join(&self.rev);
+        let mut hasher = DefaultHasher::new();
+        repo_url.hash(&mut hasher);
+        self.rev.hash(&mut hasher);
+        let repo_hash = hasher.finish();
+
+        let dest = cache_dir.join("git").join(repo_hash.to_string());
 
         let repo = if !dest.exists() {
             create_dir_all(&dest)?;
@@ -129,11 +192,7 @@ impl GitDependencySpecifier {
 
         repo.reset(&obj, git2::ResetType::Hard, None)?;
 
-        Ok((
-            Manifest::from_path_or_convert(dest)?,
-            repo_url,
-            obj.id().to_string(),
-        ))
+        Ok((manifest(&dest, &repo_url)?, repo_url, obj.id().to_string()))
     }
 }
 

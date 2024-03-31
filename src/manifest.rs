@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Display, fs::read, str::FromStr};
+use std::{collections::BTreeMap, fmt::Display, fs::read, path::Path, str::FromStr};
 
 use cfg_if::cfg_if;
 use relative_path::RelativePathBuf;
@@ -177,12 +177,13 @@ pub struct Manifest {
     #[serde(default)]
     pub private: bool,
     /// The realm of the package
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub realm: Option<Realm>,
     /// Indices of the package
     pub indices: BTreeMap<String, String>,
     /// The command to generate a `sourcemap.json`
     #[cfg(feature = "wally")]
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sourcemap_generator: Option<String>,
     /// Dependency overrides
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -229,18 +230,9 @@ cfg_if! {
             #[error("error interacting with the file system")]
             Io(#[from] std::io::Error),
 
-            /// An error that occurred while making a package name from a string
-            #[error("error making a package name from a string")]
-            PackageName(
-                #[from]
-                crate::package_name::FromStrPackageNameParseError<
-                    crate::package_name::StandardPackageNameValidationError,
-                >,
-            ),
-
             /// An error that occurred while writing the manifest
             #[error("error writing the manifest")]
-            ManifestWrite(#[from] serde_yaml::Error),
+            ManifestWrite(#[from] crate::manifest::ManifestWriteError),
 
             /// An error that occurred while parsing the dependencies
             #[error("error parsing the dependencies")]
@@ -252,6 +244,18 @@ cfg_if! {
     }
 }
 
+/// An error that occurred while writing the manifest
+#[derive(Debug, Error)]
+pub enum ManifestWriteError {
+    /// An error that occurred while interacting with the file system
+    #[error("error interacting with the file system")]
+    Io(#[from] std::io::Error),
+
+    /// An error that occurred while serializing the manifest
+    #[error("error serializing manifest")]
+    ManifestSer(#[from] serde_yaml::Error),
+}
+
 /// The type of dependency
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
@@ -261,6 +265,25 @@ pub enum DependencyType {
     Normal,
     /// A peer dependency
     Peer,
+}
+
+pub(crate) fn update_sync_tool_files(project_path: &Path, name: String) -> std::io::Result<()> {
+    if let Ok(file) = std::fs::File::open(project_path.join("default.project.json")) {
+        let mut project: serde_json::Value = serde_json::from_reader(file)?;
+
+        if project["name"].as_str() == Some(&name) {
+            return Ok(());
+        }
+
+        project["name"] = serde_json::Value::String(name);
+
+        serde_json::to_writer_pretty(
+            std::fs::File::create(project_path.join("default.project.json"))?,
+            &project,
+        )?;
+    }
+
+    Ok(())
 }
 
 impl Manifest {
@@ -318,7 +341,7 @@ impl Manifest {
             }
 
             let manifest = Self {
-                name: wally_manifest.package.name.replace('-', "_").parse()?,
+                name: wally_manifest.package.name.into(),
                 version: wally_manifest.package.version,
                 exports: Exports {
                     lib: Some(RelativePathBuf::from("true")),
@@ -326,10 +349,7 @@ impl Manifest {
                 },
                 path_style: PathStyle::Roblox { place },
                 private: wally_manifest.package.private.unwrap_or(false),
-                realm: wally_manifest
-                    .package
-                    .realm
-                    .map(|r| r.parse().unwrap_or(Realm::Shared)),
+                realm: wally_manifest.package.realm,
                 indices: BTreeMap::from([(
                     crate::project::DEFAULT_INDEX_NAME.to_string(),
                     "".to_string(),
@@ -345,8 +365,9 @@ impl Manifest {
                 repository: None,
             };
 
-            let manifest_path = dir_path.join(MANIFEST_FILE_NAME);
-            serde_yaml::to_writer(std::fs::File::create(manifest_path)?, &manifest)?;
+            manifest.write(&dir_path)?;
+
+            update_sync_tool_files(&dir_path, manifest.name.name().to_string())?;
 
             Ok(manifest)
         })
@@ -381,5 +402,14 @@ impl Manifest {
                     }),
             )
             .collect()
+    }
+
+    /// Writes the manifest to a path
+    pub fn write<P: AsRef<std::path::Path>>(&self, to: P) -> Result<(), ManifestWriteError> {
+        let manifest_path = to.as_ref().join(MANIFEST_FILE_NAME);
+
+        serde_yaml::to_writer(std::fs::File::create(manifest_path)?, self)?;
+
+        Ok(())
     }
 }

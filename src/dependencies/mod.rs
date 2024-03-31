@@ -21,7 +21,7 @@ use crate::{
         resolution::RootLockfileNode,
     },
     index::{CredentialsFn, Index},
-    manifest::{Manifest, Realm},
+    manifest::{ManifestWriteError, Realm},
     multithread::MultithreadedJob,
     package_name::PackageName,
     project::{get_index, get_index_by_url, InstallProjectError, Project},
@@ -251,6 +251,10 @@ pub enum ConvertManifestsError {
     #[error("error converting the manifest")]
     Manifest(#[from] crate::manifest::ManifestConvertError),
 
+    /// An error that occurred while converting a git dependency's manifest
+    #[error("error converting a git dependency's manifest")]
+    Git(#[from] crate::dependencies::git::GitManifestResolveError),
+
     /// An error that occurred while reading the sourcemap
     #[error("error reading the sourcemap")]
     Sourcemap(#[from] std::io::Error),
@@ -262,7 +266,7 @@ pub enum ConvertManifestsError {
 
     /// An error that occurred while writing the manifest
     #[error("error writing the manifest")]
-    Write(#[from] serde_yaml::Error),
+    Write(#[from] ManifestWriteError),
 
     /// A manifest is not present in a dependency, and the wally feature is not enabled
     #[cfg(not(feature = "wally"))]
@@ -338,7 +342,12 @@ impl Project {
                     _ => continue,
                 };
 
-                let mut manifest = Manifest::from_path_or_convert(&source)?;
+                let mut manifest = match &resolved_package.pkg_ref {
+                    PackageRef::Git(git) => {
+                        crate::dependencies::git::manifest(&source, &git.repo_url)?
+                    }
+                    _ => crate::manifest::Manifest::from_path_or_convert(&source)?,
+                };
 
                 generate_sourcemap(source.to_path_buf());
 
@@ -359,10 +368,7 @@ impl Project {
                     })
                     .or_else(|| Some(relative_path::RelativePathBuf::from("true")));
 
-                serde_yaml::to_writer(
-                    &std::fs::File::create(&source.join(crate::MANIFEST_FILE_NAME))?,
-                    &manifest,
-                )?;
+                manifest.write(&source)?;
             }
         }
 
@@ -383,7 +389,12 @@ impl Project {
                     _ => continue,
                 };
 
-                if Manifest::from_path_or_convert(&source).is_err() {
+                if match &resolved_package.pkg_ref {
+                    PackageRef::Git(git) => {
+                        crate::dependencies::git::manifest(&source, &git.repo_url).is_err()
+                    }
+                    _ => crate::manifest::Manifest::from_path_or_convert(&source).is_err(),
+                } {
                     return Err(ConvertManifestsError::ManifestNotPresent);
                 }
             }

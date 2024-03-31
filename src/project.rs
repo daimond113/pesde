@@ -13,7 +13,7 @@ use crate::{
     dependencies::{resolution::RootLockfileNode, DownloadError, UrlResolveError},
     index::Index,
     linking_file::LinkingDependenciesError,
-    manifest::{Manifest, ManifestReadError},
+    manifest::{update_sync_tool_files, Manifest, ManifestReadError},
     LOCKFILE_FILE_NAME,
 };
 
@@ -124,6 +124,10 @@ pub enum InstallProjectError {
     /// An error that occurred while resolving the url of a package
     #[error("failed to resolve package URL")]
     UrlResolve(#[from] UrlResolveError),
+
+    /// An error that occurred while reading the lockfile
+    #[error("failed to read lockfile")]
+    ReadLockfile(#[from] ReadLockfileError),
 }
 
 /// The name of the default index to use
@@ -289,6 +293,8 @@ impl Project {
 
     /// Downloads the project's dependencies, applies patches, and links the dependencies
     pub fn install(&mut self, install_options: InstallOptions) -> Result<(), InstallProjectError> {
+        let old_lockfile = self.lockfile()?;
+
         let lockfile = match install_options.lockfile {
             Some(map) => map,
             None => {
@@ -309,6 +315,10 @@ impl Project {
         if !install_options.locked {
             serde_yaml::to_writer(File::create(self.path.join(LOCKFILE_FILE_NAME))?, &lockfile)
                 .map_err(InstallProjectError::LockfileSer)?;
+        }
+
+        if !old_lockfile.is_some_and(|old| old.name == lockfile.name) {
+            update_sync_tool_files(self.path(), lockfile.name.name().to_string())?;
         }
 
         Ok(())

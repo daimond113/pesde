@@ -2,7 +2,7 @@ use cfg_if::cfg_if;
 use chrono::Utc;
 use std::{
     collections::{BTreeMap, HashMap},
-    fs::{create_dir_all, read, remove_dir_all, write, File},
+    fs::{create_dir_all, read, remove_dir_all, write},
     str::FromStr,
     time::Duration,
 };
@@ -105,7 +105,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
 
             multithreaded_bar(
                 download_job,
-                lockfile.children.len() as u64,
+                lockfile.children.values().map(|v| v.len() as u64).sum(),
                 "Downloading packages".to_string(),
             )?;
 
@@ -144,36 +144,47 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
             )?;
         }
         Command::Run { package, args } => {
-            let lockfile = project
-                .lockfile()?
-                .ok_or(anyhow::anyhow!("lockfile not found"))?;
+            let bin_path = if let Some(package) = package {
+                let lockfile = project
+                    .lockfile()?
+                    .ok_or(anyhow::anyhow!("lockfile not found"))?;
 
-            let resolved_pkg = lockfile
-                .children
-                .get(&package.into())
-                .and_then(|versions| {
-                    versions
-                        .values()
-                        .find(|pkg_ref| lockfile.root_specifier(pkg_ref).is_some())
-                })
-                .ok_or(anyhow::anyhow!(
-                    "package not found in lockfile (or isn't root)"
-                ))?;
+                let resolved_pkg = lockfile
+                    .children
+                    .get(&package.clone().into())
+                    .and_then(|versions| {
+                        versions
+                            .values()
+                            .find(|pkg_ref| lockfile.root_specifier(pkg_ref).is_some())
+                    })
+                    .ok_or(anyhow::anyhow!(
+                        "package not found in lockfile (or isn't root)"
+                    ))?;
 
-            let pkg_path = resolved_pkg.directory(project.path()).1;
-            let manifest = Manifest::from_path(&pkg_path)?;
+                let pkg_path = resolved_pkg.directory(project.path()).1;
+                let manifest = Manifest::from_path(&pkg_path)?;
 
-            let Some(bin_path) = manifest.exports.bin else {
-                anyhow::bail!("no bin found in package");
+                let Some(bin_path) = manifest.exports.bin else {
+                    anyhow::bail!("no bin found in package");
+                };
+
+                bin_path.to_path(pkg_path)
+            } else {
+                let manifest = project.manifest();
+                let bin_path = manifest
+                    .exports
+                    .bin
+                    .clone()
+                    .ok_or(anyhow::anyhow!("no bin found in package"))?;
+
+                bin_path.to_path(project.path())
             };
-
-            let absolute_bin_path = bin_path.to_path(pkg_path);
 
             let mut runtime = Runtime::new().with_args(args);
 
             block_on(runtime.run(
-                resolved_pkg.pkg_ref.name().to_string(),
-                &read(absolute_bin_path)?,
+                bin_path.with_extension("").display().to_string(),
+                &read(bin_path)?,
             ))?;
         }
         Command::Search { query } => {
@@ -347,9 +358,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
             );
         }
         Command::Init => {
-            let manifest_path = CWD.join(MANIFEST_FILE_NAME);
-
-            if manifest_path.exists() {
+            if CWD.join(MANIFEST_FILE_NAME).exists() {
                 anyhow::bail!("manifest already exists");
             }
 
@@ -427,7 +436,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 repository: none_if_empty!(repository),
             };
 
-            serde_yaml::to_writer(File::create(manifest_path)?, &manifest)?;
+            manifest.write(CWD.to_path_buf())?;
         }
         Command::Add {
             package,
@@ -484,10 +493,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 insert_into(&mut manifest.dependencies, specifier, package.0.clone());
             }
 
-            serde_yaml::to_writer(
-                File::create(project.path().join(MANIFEST_FILE_NAME))?,
-                &manifest,
-            )?;
+            manifest.write(CWD.to_path_buf())?
         }
         Command::Remove { package } => {
             let mut manifest = project.manifest().clone();
@@ -520,10 +526,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 });
             }
 
-            serde_yaml::to_writer(
-                File::create(project.path().join(MANIFEST_FILE_NAME))?,
-                &manifest,
-            )?;
+            manifest.write(project.path())?
         }
         Command::Outdated => {
             let project = Lazy::force_mut(&mut project);

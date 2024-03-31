@@ -10,8 +10,8 @@ repository = "https://github.com/daimond113/pesde"
 include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [features]
-bin = ["clap", "directories", "keyring", "anyhow", "ignore", "pretty_env_logger", "serde_json", "reqwest/json", "reqwest/multipart", "lune", "futures-executor", "indicatif", "auth-git2", "indicatif-log-bridge", "inquire", "once_cell"]
-wally = ["toml", "zip", "serde_json"]
+bin = ["clap", "directories", "keyring", "anyhow", "ignore", "pretty_env_logger", "reqwest/json", "reqwest/multipart", "lune", "futures-executor", "indicatif", "auth-git2", "indicatif-log-bridge", "inquire", "once_cell"]
+wally = ["toml", "zip"]
 
 [[bin]]
 name = "pesde"
@@ -21,6 +21,7 @@ required-features = ["bin"]
 [dependencies]
 serde = { version = "1.0.197", features = ["derive"] }
 serde_yaml = "0.9.33"
+serde_json = "1.0.114"
 git2 = "0.18.3"
 semver = { version = "1.0.22", features = ["serde"] }
 reqwest = { version = "0.12.1", default-features = false, features = ["rustls-tls", "blocking"] }
@@ -47,7 +48,6 @@ keyring = { version = "2.3.2", optional = true }
 anyhow = { version = "1.0.81", optional = true }
 ignore = { version = "0.4.22", optional = true }
 pretty_env_logger = { version = "0.5.0", optional = true }
-serde_json = { version = "1.0.114", optional = true }
 lune = { version = "0.8.2", optional = true }
 futures-executor = { version = "0.3.30", optional = true }
 indicatif = { version = "0.17.8", optional = true }

@@ -17,7 +17,7 @@ use crate::{
     },
     index::{Index, IndexFileEntry, IndexPackageError},
     manifest::{DependencyType, Manifest, OverrideKey, Realm},
-    package_name::PackageName,
+    package_name::{PackageName, StandardPackageName},
     project::{get_index, get_index_by_url, Project, ReadLockfileError},
     DEV_PACKAGES_FOLDER, INDEX_FOLDER, PACKAGES_FOLDER, SERVER_PACKAGES_FOLDER,
 };
@@ -26,9 +26,12 @@ use crate::{
 pub type PackageMap<T> = BTreeMap<PackageName, BTreeMap<Version, T>>;
 
 /// The root node of the dependency graph
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct RootLockfileNode {
+    /// The name of the package
+    pub name: StandardPackageName,
+
     /// Dependency overrides
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<OverrideKey, DependencySpecifier>,
@@ -214,6 +217,10 @@ impl Manifest {
         project: &Project,
     ) -> Result<BTreeMap<String, (DependencySpecifier, DependencyType)>, ResolveError> {
         Ok(if let Some(old_root) = project.lockfile()? {
+            if self.name != old_root.name && locked {
+                return Err(ResolveError::OutOfDateLockfile);
+            }
+
             if self.overrides != old_root.overrides {
                 // TODO: resolve only the changed dependencies (will this be worth it?)
                 debug!("overrides have changed, resolving all dependencies");
@@ -331,8 +338,10 @@ impl Manifest {
         debug!("resolving dependency graph for project {}", self.name);
         // try to reuse versions (according to semver specifiers) to decrease the amount of downloads and storage
         let mut root = RootLockfileNode {
+            name: self.name.clone(),
             overrides: self.overrides.clone(),
-            ..Default::default()
+            specifiers: Default::default(),
+            children: Default::default(),
         };
 
         let missing_dependencies = self.missing_dependencies(&mut root, locked, project)?;
