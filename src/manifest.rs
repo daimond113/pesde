@@ -341,7 +341,7 @@ impl Manifest {
             }
 
             let manifest = Self {
-                name: wally_manifest.package.name.into(),
+                name: wally_manifest.package.name.clone().into(),
                 version: wally_manifest.package.version,
                 exports: Exports {
                     lib: Some(RelativePathBuf::from("true")),
@@ -367,7 +367,7 @@ impl Manifest {
 
             manifest.write(&dir_path)?;
 
-            update_sync_tool_files(&dir_path, manifest.name.name().to_string())?;
+            update_sync_tool_files(&dir_path, wally_manifest.package.name.name().to_string())?;
 
             Ok(manifest)
         })
