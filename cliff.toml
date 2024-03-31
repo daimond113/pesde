@@ -64,7 +64,7 @@ trim = true
 
 [git]
 conventional_commits = true
-filter_unconventional = true
+filter_unconventional = false
 split_commits = false
 commit_parsers = [
     { message = "^feat", group = "Features" },
@@ -76,10 +76,13 @@ commit_parsers = [
     { message = "^test", group = "Testing" },
     { message = "^chore\\(release\\): prepare for", skip = true },
     { message = "^chore", group = "Miscellaneous Tasks" },
+    { message = "^ci", group = "Continuous Integration" },
+    { message = "^style", group = "Styling" },
     { body = ".*security", group = "Security" },
+    { message = ".*", group = "Miscellaneous Tasks" }
 ]
-protect_breaking_commits = true
-filter_commits = true
+protect_breaking_commits = false
+filter_commits = false
 tag_pattern = "v[0-9].*"
 ignore_tags = ""
 topo_order = true

@@ -5,10 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2024-03-31
+### Details
+#### Bug Fixes
+- Ensure version is root
+
+#### Documentation
+- Document exports field of manifest
+
+#### Features
+- Support manifest-less repos & running local package bin export
+
+#### Miscellaneous Tasks
+- Merge pull request #1 from Foorack/repo-patch
+
+Update repository field in Cargo.toml by @daimond113 in [#1](https://github.com/daimond113/pesde/pull/1)
+- Update repository field in Cargo.toml by @Foorack
+
+#### Refactor
+- Improve manifest parsing
+
+## New Contributors
+* @Foorack made their first contribution
 ## [0.4.2] - 2024-03-29
 ### Details
 #### Bug Fixes
-- Create folder for config
+- Create folder for config by @daimond113
 
 #### Features
 - Add documentation meta tags by @daimond113
@@ -18,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Details
 #### Bug Fixes
 - :bug: correctly insert packages from lockfile by @daimond113
+
+#### Continuous Integration
+- :triangular_flag_on_post: remove macos aarch64 due to costs by @daimond113
 
 #### Miscellaneous Tasks
 - :alien: fix compilation due to zstd-sys by @daimond113
@@ -58,6 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2024-03-17
 ### Details
+#### Continuous Integration
+- :white_check_mark: run clippy on all workspace members by @daimond113
+
 #### Features
 - :children_crossing: add wally conversion by @daimond113
 - :sparkles: add embed metadata by @daimond113
@@ -103,6 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Features
 - :tada: initial commit by @daimond113
 
+[0.4.3]: https://github.com/daimond113/pesde/compare/v0.4.2..v0.4.3
 [0.4.2]: https://github.com/daimond113/pesde/compare/v0.4.1..v0.4.2
 [0.4.1]: https://github.com/daimond113/pesde/compare/v0.4.0..v0.4.1
 [0.4.0]: https://github.com/daimond113/pesde/compare/v0.3.2..v0.4.0
