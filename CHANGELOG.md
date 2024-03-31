@@ -5,16 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2024-03-31
+### Details
+#### Bug Fixes
+- Use project indices in specifier
+- Correctly update sync tool files
+
 ## [0.4.3] - 2024-03-31
 ### Details
 #### Bug Fixes
-- Ensure version is root
+- Ensure version is root by @daimond113
 
 #### Documentation
-- Document exports field of manifest
+- Document exports field of manifest by @daimond113
 
 #### Features
-- Support manifest-less repos & running local package bin export
+- Support manifest-less repos & running local package bin export by @daimond113
 
 #### Miscellaneous Tasks
 - Merge pull request #1 from Foorack/repo-patch
@@ -23,7 +29,7 @@ Update repository field in Cargo.toml by @daimond113 in [#1](https://github.com/
 - Update repository field in Cargo.toml by @Foorack
 
 #### Refactor
-- Improve manifest parsing
+- Improve manifest parsing by @daimond113
 
 ## New Contributors
 * @Foorack made their first contribution
@@ -131,6 +137,7 @@ Update repository field in Cargo.toml by @daimond113 in [#1](https://github.com/
 #### Features
 - :tada: initial commit by @daimond113
 
+[0.4.4]: https://github.com/daimond113/pesde/compare/v0.4.3..v0.4.4
 [0.4.3]: https://github.com/daimond113/pesde/compare/v0.4.2..v0.4.3
 [0.4.2]: https://github.com/daimond113/pesde/compare/v0.4.1..v0.4.2
 [0.4.1]: https://github.com/daimond113/pesde/compare/v0.4.0..v0.4.1
