@@ -293,7 +293,7 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
             let dir = DIRS
                 .data_dir()
                 .join("patches")
-                .join(package.0.escaped())
+                .join(format!("{}@{}", package.0.escaped(), package.1))
                 .join(Utc::now().timestamp().to_string());
 
             if dir.exists() {
@@ -334,11 +334,10 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 .and_then(|f| f.to_str())
                 .unwrap();
 
-            let manifest = Manifest::from_path(&dir)?;
             let patch_path = project.path().join(PATCHES_FOLDER);
             create_dir_all(&patch_path)?;
 
-            let patch_path = patch_path.join(format!("{name}@{}.patch", manifest.version));
+            let patch_path = patch_path.join(format!("{name}.patch"));
             if patch_path.exists() {
                 anyhow::bail!(
                     "patch already exists. remove the file {} to create a new patch",
