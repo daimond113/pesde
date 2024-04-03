@@ -213,7 +213,7 @@ index_url: URL"
 		</ul>
 		<Codeblock
 			lang="yaml"
-			code="name: PACKAGE_NAME
+			code="name: STANDARD_PACKAGE_NAME
 version: VERSION
 description: STRING
 license: STRING

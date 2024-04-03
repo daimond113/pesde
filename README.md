@@ -60,6 +60,10 @@ manually to add metadata such as authors, description, and license.
 
 The pesde CLI supports the `.pesdeignore` file, which is similar to `.gitignore`. It can be used to include or exclude files from the package.
 
+## Documentation
+
+For more information, you can check the [documentation](https://pesde.daimond113.com/docs).
+
 ## Registry
 
 The main pesde registry is hosted on [fly.io](https://fly.io). You can find it at https://registry.pesde.daimond113.com.
