@@ -24,7 +24,10 @@
 		<Note>
 			If you are using pesde with the `wally` feature enabled (true on releases from the GitHub
 			repository) then you can use <Codeblock code="pesde convert" /> to convert your wally.toml file
-			to pesde.yaml.
+			to pesde.yaml. This will leave you with an empty default index, so you will need to add a URL (such
+			as the default `<a href="https://github.com/daimond113/pesde-index"
+				>https://github.com/daimond113/pesde-index</a
+			>`) yourself.
 		</Note>
 	</section>
 
