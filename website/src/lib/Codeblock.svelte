@@ -8,7 +8,7 @@
 </script>
 
 {#await codeToHtml(code, { theme: 'vesper', lang, transformers: [{ pre(node) {
-				this.addClassToHast(node, 'not-prose overflow-x-auto');
+				this.addClassToHast(node, 'not-prose overflow-x-auto px-4 py-2 rounded-md');
 			} }] }) then highlightedCode}
 	{@html highlightedCode}
 {/await}

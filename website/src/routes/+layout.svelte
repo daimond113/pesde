@@ -46,7 +46,7 @@
 	});
 </script>
 
-<div class="flex flex-col px-8 lg:px-16 py-4 gap-8 items-center lg:*:max-w-6xl">
+<div class="flex flex-col px-8 lg:px-16 py-4 gap-12 items-center lg:*:max-w-6xl">
 	<header
 		class="flex-0 flex flex-col lg:flex-row relative items-center gap-4 lg:gap-0 min-h-12 w-full"
 	>

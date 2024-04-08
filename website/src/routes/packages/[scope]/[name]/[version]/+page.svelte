@@ -17,6 +17,8 @@
 	import ChevronDown from 'lucide-svelte/icons/chevron-down';
 	import Mail from 'lucide-svelte/icons/mail';
 	import Globe from 'lucide-svelte/icons/globe';
+	import Check from 'lucide-svelte/icons/check';
+	import X from 'lucide-svelte/icons/x';
 
 	export let data: PageData;
 
@@ -38,20 +40,10 @@
 			]
 		});
 
-	const parseAuthor = (author: string) => {
-		const authorRegex =
-			/^(?<name>.+?)(?:\s*<(?<email>.+?)>)?(?:\s*\((?<url>.+?)\))?(?:\s*<(?<email2>.+?)>)?(?:\s*\((?<url2>.+?)\))?$/;
-		const { groups } = author.match(authorRegex) ?? {};
-		return {
-			name: groups?.name ?? author,
-			email: groups?.email ?? groups?.email2,
-			url: groups?.url ?? groups?.url2
-		};
-	};
-
 	$: publishedAt = new Date(
 		(data.versions.find(([version]) => version === data.version)?.[1] ?? 0) * 1000
 	);
+
 	$: allDependencies = [
 		[data.dependencies, 'Dependencies'],
 		[data.peerDependencies, 'Peer Dependencies']
@@ -131,19 +123,18 @@
 					<div class="section-title">Authors</div>
 					<ul class="not-prose">
 						{#each data.authors as author}
-							{@const parsedAuthor = parseAuthor(author)}
 							<li class="flex">
 								<span class="overflow-text pr-2">
-									{parsedAuthor.name}
+									{author.name}
 								</span>
 								<div class="ml-auto flex items-center gap-4">
-									{#if parsedAuthor.email}
-										<a href="mailto:{parsedAuthor.email}" title="Email {parsedAuthor.name}">
+									{#if author.email}
+										<a href="mailto:{author.email}" title="Email {author.name}">
 											<Mail class="size-6" />
 										</a>
 									{/if}
-									{#if parsedAuthor.url}
-										<a href={parsedAuthor.url} title="Website of {parsedAuthor.name}">
+									{#if author.url}
+										<a href={author.url} title="Website of {author.name}">
 											<Globe class="size-6" />
 										</a>
 									{/if}
@@ -160,7 +151,7 @@
 				</section>
 			{/if}
 			{#each allDependencies as [dependencies, title]}
-				{#if dependencies}
+				{#if dependencies && dependencies.length > 0}
 					<section>
 						<div class="section-title">{title}</div>
 						<ul class="not-prose">
@@ -188,6 +179,31 @@
 					</section>
 				{/if}
 			{/each}
+			<section>
+				<div class="section-title">Exports</div>
+				<ul class="not-prose">
+					<li>
+						<div class="flex items-center">
+							Library:
+							{#if data.exports.lib}
+								<Check class="size-6 text-green-500 inline-block ml-auto" />
+							{:else}
+								<X class="size-6 text-red-500 inline-block ml-auto" />
+							{/if}
+						</div>
+					</li>
+					<li>
+						<div class="flex items-center">
+							Binary:
+							{#if data.exports.bin}
+								<Check class="size-6 text-green-500 inline-block ml-auto" />
+							{:else}
+								<X class="size-6 text-red-500 inline-block ml-auto" />
+							{/if}
+						</div>
+					</li>
+				</ul>
+			</section>
 		</div>
 	</div>
 </div>

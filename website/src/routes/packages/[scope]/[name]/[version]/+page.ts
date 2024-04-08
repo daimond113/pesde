@@ -8,6 +8,17 @@ export const ssr = false;
 
 type Dependencies = ({ name: string; version: string } | { repo: string; rev: string })[];
 
+const parseAuthor = (author: string) => {
+	const authorRegex =
+		/^(?<name>.+?)(?:\s*<(?<email>.+?)>)?(?:\s*\((?<url>.+?)\))?(?:\s*<(?<email2>.+?)>)?(?:\s*\((?<url2>.+?)\))?$/;
+	const { groups } = author.match(authorRegex) ?? {};
+	return {
+		name: groups?.name ?? author,
+		email: groups?.email ?? groups?.email2,
+		url: groups?.url ?? groups?.url2
+	};
+};
+
 export const load: PageLoad = async ({ params, fetch }) => {
 	const res = await fetch(
 		`${import.meta.env.VITE_API_URL}/v0/packages/${params.scope}/${params.name}/${params.version}`
@@ -79,6 +90,7 @@ export const load: PageLoad = async ({ params, fetch }) => {
 		realm?: string;
 		dependencies?: Dependencies;
 		peer_dependencies?: Dependencies;
+		exports?: { lib?: string; bin?: string };
 	};
 
 	if (params.version.toLowerCase() === 'latest') {
@@ -102,13 +114,17 @@ export const load: PageLoad = async ({ params, fetch }) => {
 		name: params.name,
 		version: parsed.version,
 		versions,
-		authors: parsed.authors,
+		authors: parsed.authors?.map(parseAuthor),
 		description: parsed.description,
 		license: parsed.license,
 		readme,
 		repository: parsed.repository,
 		realm: parsed.realm,
 		dependencies: parsed.dependencies,
-		peerDependencies: parsed.peer_dependencies
+		peerDependencies: parsed.peer_dependencies,
+		exports: {
+			lib: !!parsed.exports?.lib,
+			bin: !!parsed.exports?.bin
+		}
 	};
 };
