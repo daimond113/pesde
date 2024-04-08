@@ -25,24 +25,8 @@
 	$: markdown =
 		data.readme &&
 		DOMPurify.sanitize($md?.render(data.readme) ?? '', {
-			FORBID_ATTR: ['src'],
-			FORBID_TAGS: [
-				'script',
-				'style',
-				'img',
-				'video',
-				'audio',
-				'iframe',
-				'object',
-				'embed',
-				'canvas',
-				'source'
-			]
+			FORBID_TAGS: ['script', 'style', 'audio', 'iframe', 'object', 'embed', 'canvas']
 		});
-
-	$: publishedAt = new Date(
-		(data.versions.find(([version]) => version === data.version)?.[1] ?? 0) * 1000
-	);
 
 	$: allDependencies = [
 		[data.dependencies, 'Dependencies'],
@@ -84,7 +68,7 @@
 							goto(`/packages/${data.scope}/${data.name}/${event.target?.value}`);
 						}}
 					>
-						{#each data.versions as [version]}
+						{#each data.versions as version}
 							<option value={version} selected={version === data.version}>{version}</option>
 						{/each}
 					</select>
@@ -94,7 +78,7 @@
 			<section>
 				<div class="section-title">Published at</div>
 				<div class="flex items-center gap-2">
-					<time datetime={publishedAt.toISOString()}>{publishedAt.toLocaleString()}</time>
+					<time datetime={data.publishedAt.toISOString()}>{data.publishedAt.toLocaleString()}</time>
 				</div>
 			</section>
 			<section>

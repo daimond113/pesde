@@ -113,7 +113,10 @@ export const load: PageLoad = async ({ params, fetch }) => {
 		scope: params.scope,
 		name: params.name,
 		version: parsed.version,
-		versions,
+		versions: versions.map(([version]) => version),
+		publishedAt: new Date(
+			(versions.find(([version]) => version === parsed.version)?.[1] ?? 0) * 1000
+		),
 		authors: parsed.authors?.map(parseAuthor),
 		description: parsed.description,
 		license: parsed.license,
