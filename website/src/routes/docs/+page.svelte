@@ -232,11 +232,10 @@ indices:
     STRING: URL
 # WALLY FEATURE ONLY
 sourcemap_generator: COMMAND
-overrides:
-    OVERRIDE_KEY: DEPENDENCY_SPECIFIER
+overrides: Map<OVERRIDE_KEY, DEPENDENCY_SPECIFIER>
 
-dependencies: DEPENDENCY_SPECIFIER[]
-peer_dependencies: DEPENDENCY_SPECIFIER[]"
+dependencies: Map<STRING, DEPENDENCY_SPECIFIER>
+peer_dependencies: Map<STRING, DEPENDENCY_SPECIFIER>"
 		/>
 		<p>The exports field is used to specify the paths of the package's exports:</p>
 		<ul>
