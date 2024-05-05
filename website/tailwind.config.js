@@ -30,7 +30,8 @@ export default {
 						'--tw-prose-quote-borders': theme('colors.orange[500]'),
 						'--tw-prose-captions': theme('colors.orange[300]'),
 						'--tw-prose-th-borders': theme('colors.orange[300]'),
-						'--tw-prose-td-borders': theme('colors.orange[300]')
+						'--tw-prose-td-borders': theme('colors.orange[300]'),
+						'--tw-prose-code': theme('colors.orange[300]')
 					}
 				}
 			})
