@@ -5,11 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2024-05-12
+### Details
+#### Features
+- Parallel sourcemap generation
+
 ## [0.4.6] - 2024-05-12
 ### Details
 #### Bug Fixes
-- Create package folders
+- Create package folders by @daimond113
 - Colour single tick codeblocks properly by @daimond113
+
+#### Continuous Integration
+- Update macos x86_64 image (the default is now arm) by @daimond113
 
 #### Documentation
 - Bring back convert index note by @daimond113
@@ -160,6 +168,7 @@ Update repository field in Cargo.toml by @daimond113 in [#1](https://github.com/
 #### Features
 - :tada: initial commit by @daimond113
 
+[0.4.7]: https://github.com/daimond113/pesde/compare/v0.4.6..v0.4.7
 [0.4.6]: https://github.com/daimond113/pesde/compare/v0.4.5..v0.4.6
 [0.4.5]: https://github.com/daimond113/pesde/compare/v0.4.4..v0.4.5
 [0.4.4]: https://github.com/daimond113/pesde/compare/v0.4.3..v0.4.4
