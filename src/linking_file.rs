@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    fs::{read_to_string, write},
+    fs::{create_dir_all, read_to_string, write},
     path::{Component, Path, PathBuf},
 };
 
@@ -158,7 +158,7 @@ pub(crate) fn link<P: AsRef<Path>, Q: AsRef<Path>>(
         )),
         _ => destination_dir.as_ref().to_path_buf(),
     };
-
+    create_dir_all(&destination_dir)?;
     let destination_file = destination_dir.join(desired_name.to_string() + ".lua");
 
     let realm_folder = project.path().join(resolved_pkg.packages_folder());
