@@ -109,14 +109,20 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                 "Downloading packages".to_string(),
             )?;
 
+            cfg_if! {
+                if #[cfg(feature = "wally")] {
+                    let sourcemap_generator = manifest.sourcemap_generator.clone();
+                }
+            }
+
             #[allow(unused_variables)]
-            project.convert_manifests(&lockfile, |path| {
+            let convert_job = project.convert_manifests(&lockfile, move |path| {
                 cfg_if! {
                     if #[cfg(feature = "wally")] {
-                        if let Some(sourcemap_generator) = &manifest.sourcemap_generator {
+                        if let Some(sourcemap_generator) = &sourcemap_generator {
                             cfg_if! {
                                 if #[cfg(target_os = "windows")] {
-                                    std::process::Command::new("pwsh")
+                                    std::process::Command::new("powershell")
                                         .args(["-C", &sourcemap_generator])
                                         .current_dir(path)
                                         .output()
@@ -132,7 +138,19 @@ pub fn root_command(cmd: Command) -> anyhow::Result<()> {
                         }
                     }
                 }
-            })?;
+            });
+
+            cfg_if! {
+                if #[cfg(feature = "wally")] {
+                    multithreaded_bar(
+                        convert_job,
+                        lockfile.children.values().flat_map(|v| v.values()).filter(|v| matches!(v.pkg_ref, PackageRef::Git(_) | PackageRef::Wally(_))).count() as u64,
+                        "Converting manifests".to_string(),
+                    )?;
+                } else {
+                    convert_job?;
+                }
+            }
 
             let project = Lazy::force_mut(&mut project);
 

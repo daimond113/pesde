@@ -321,11 +321,11 @@ impl Project {
 
     /// Converts the manifests of the project's dependencies
     #[cfg(feature = "wally")]
-    pub fn convert_manifests<F: Fn(PathBuf)>(
+    pub fn convert_manifests<F: Fn(PathBuf) + Send + Sync + 'static>(
         &self,
         lockfile: &RootLockfileNode,
         generate_sourcemap: F,
-    ) -> Result<(), ConvertManifestsError> {
+    ) -> MultithreadedJob<ConvertManifestsError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct SourcemapNode {
@@ -333,46 +333,57 @@ impl Project {
             file_paths: Vec<relative_path::RelativePathBuf>,
         }
 
+        let (job, tx) = MultithreadedJob::new();
+
+        let generate_sourcemap = Arc::new(generate_sourcemap);
+
         for versions in lockfile.children.values() {
-            for resolved_package in versions.values() {
-                let source = match &resolved_package.pkg_ref {
-                    PackageRef::Wally(_) | PackageRef::Git(_) => {
-                        resolved_package.directory(self.path()).1
-                    }
-                    _ => continue,
-                };
+            for resolved_package in versions.values().cloned() {
+                let generate_sourcemap = generate_sourcemap.clone();
+                let self_path = self.path().to_path_buf();
 
-                let mut manifest = match &resolved_package.pkg_ref {
-                    PackageRef::Git(git) => {
-                        crate::dependencies::git::manifest(&source, &git.repo_url)?
-                    }
-                    _ => crate::manifest::Manifest::from_path_or_convert(&source)?,
-                };
+                job.execute(&tx, move || {
+                    let source = match &resolved_package.pkg_ref {
+                        PackageRef::Wally(_) | PackageRef::Git(_) => {
+                            resolved_package.directory(self_path).1
+                        }
+                        _ => return Ok(()),
+                    };
 
-                generate_sourcemap(source.to_path_buf());
+                    let mut manifest = match &resolved_package.pkg_ref {
+                        PackageRef::Git(git) => {
+                            crate::dependencies::git::manifest(&source, &git.repo_url)?
+                        }
+                        _ => crate::manifest::Manifest::from_path_or_convert(&source)?,
+                    };
 
-                let sourcemap = source.join("sourcemap.json");
-                let sourcemap: SourcemapNode = if sourcemap.exists() {
-                    serde_json::from_str(&std::fs::read_to_string(&sourcemap)?)?
-                } else {
-                    log::warn!("sourcemap for {resolved_package} not found, skipping...");
-                    continue;
-                };
+                    generate_sourcemap(source.to_path_buf());
 
-                manifest.exports.lib = sourcemap
-                    .file_paths
-                    .into_iter()
-                    .find(|path| {
-                        path.extension()
-                            .is_some_and(|ext| ext == "lua" || ext == "luau")
-                    })
-                    .or_else(|| Some(relative_path::RelativePathBuf::from("true")));
+                    let sourcemap = source.join("sourcemap.json");
+                    let sourcemap: SourcemapNode = if sourcemap.exists() {
+                        serde_json::from_str(&std::fs::read_to_string(&sourcemap)?)?
+                    } else {
+                        log::warn!("sourcemap for {resolved_package} not found, skipping...");
+                        return Ok(());
+                    };
 
-                manifest.write(&source)?;
+                    manifest.exports.lib = sourcemap
+                        .file_paths
+                        .into_iter()
+                        .find(|path| {
+                            path.extension()
+                                .is_some_and(|ext| ext == "lua" || ext == "luau")
+                        })
+                        .or_else(|| Some(relative_path::RelativePathBuf::from("true")));
+
+                    manifest.write(&source)?;
+
+                    Ok(())
+                });
             }
         }
 
-        Ok(())
+        job
     }
 
     /// Errors if dependencies don't have manifests, enable the `wally` feature to convert them
