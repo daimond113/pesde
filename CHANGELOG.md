@@ -5,10 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2024-05-12
+### Details
+#### Bug Fixes
+- Create package folders
+- Colour single tick codeblocks properly by @daimond113
+
+#### Documentation
+- Bring back convert index note by @daimond113
+- Correct manifest dependency format by @daimond113
+- Link documentation in readme by @daimond113
+
+#### Features
+- Allow images in readmes by @daimond113
+- Add exports to sidebar by @daimond113
+
+#### Miscellaneous Tasks
+- Make registry image weigh less by @daimond113
+
 ## [0.4.5] - 2024-04-01
 ### Details
 #### Bug Fixes
-- Remove manifest requirement
+- Remove manifest requirement by @daimond113
 
 ## [0.4.4] - 2024-03-31
 ### Details
@@ -142,6 +160,7 @@ Update repository field in Cargo.toml by @daimond113 in [#1](https://github.com/
 #### Features
 - :tada: initial commit by @daimond113
 
+[0.4.6]: https://github.com/daimond113/pesde/compare/v0.4.5..v0.4.6
 [0.4.5]: https://github.com/daimond113/pesde/compare/v0.4.4..v0.4.5
 [0.4.4]: https://github.com/daimond113/pesde/compare/v0.4.3..v0.4.4
 [0.4.3]: https://github.com/daimond113/pesde/compare/v0.4.2..v0.4.3
