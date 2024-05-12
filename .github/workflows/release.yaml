@@ -28,17 +28,15 @@ jobs:
            arch: x86_64
            target: x86_64-pc-windows-msvc
 
-         - os: macos-latest
+         - os: macos-13
            host: macos
            arch: x86_64
            target: x86_64-apple-darwin
 
-        # not included in free minutes
-        # TODO: find a replacement (can't cross compile for aarch64 on x86_64 due to OpenSSL)
-        #  - os: macos-latest-xlarge
-        #    host: macos
-        #    arch: aarch64
-        #    target: aarch64-apple-darwin
+         - os: macos-latest
+           host: macos
+           arch: aarch64
+           target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     name: Build for ${{ matrix.host }}-${{ matrix.arch }}
     steps:
