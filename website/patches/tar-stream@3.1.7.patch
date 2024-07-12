@@ -1,9 +1,0 @@
-diff --git a/extract.js b/extract.js
-index 0ed9f82bf287aa040dd560eabbe052316223011d..16f26d49a8b0eb554b7e0a79a076027612fb4ce1 100644
---- a/extract.js
-+++ b/extract.js
-@@ -1,3 +1,4 @@
-+const EventEmitter = require('events')
- const { Writable, Readable, getStreamError } = require('streamx')
- const FIFO = require('fast-fifo')
- const b4a = require('b4a')

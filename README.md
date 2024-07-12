@@ -6,6 +6,10 @@
 
 <br>
 
+# Important
+
+> pesde is currently being rewritten, and this new version is not yet ready for use. You can find the stable version in the `master` branch.
+
 pesde is a package manager for Roblox that is designed to be feature-rich and easy to use.
 Currently, pesde is in a very early stage of development, but already supports the following features:
 
@@ -17,7 +21,8 @@ Currently, pesde is in a very early stage of development, but already supports t
 
 ## Installation
 
-pesde can be installed from GitHub Releases. You can find the latest release [here](https://github.com/daimond113/pesde/releases).
+pesde can be installed from GitHub Releases. You can find the latest
+release [here](https://github.com/daimond113/pesde/releases).
 It can also be installed by using [Aftman](https://github.com/LPGhatguy/aftman).
 
 ## Usage
@@ -52,13 +57,16 @@ pesde run daimond113/pesde -- --help
 
 ## Preparing to publish
 
-To publish you must first initialize a new project with `pesde init`. You can then use the other commands to manipulate dependencies, and edit the file
+To publish you must first initialize a new project with `pesde init`. You can then use the other commands to manipulate
+dependencies, and edit the file
 manually to add metadata such as authors, description, and license.
 
 > **Warning**  
-> The pesde CLI respects the `.gitignore` file and will not include files that are ignored. The `.pesdeignore` file has more power over the `.gitignore` file, so you can unignore files by prepending a `!` to the pattern.
+> The pesde CLI respects the `.gitignore` file and will not include files that are ignored. The `.pesdeignore` file has
+> more power over the `.gitignore` file, so you can unignore files by prepending a `!` to the pattern.
 
-The pesde CLI supports the `.pesdeignore` file, which is similar to `.gitignore`. It can be used to include or exclude files from the package.
+The pesde CLI supports the `.pesdeignore` file, which is similar to `.gitignore`. It can be used to include or exclude
+files from the package.
 
 ## Documentation
 
@@ -70,9 +78,11 @@ The main pesde registry is hosted on [fly.io](https://fly.io). You can find it a
 
 ### Self-hosting
 
-You can self-host the registry by using the default implementation in the `registry` folder, or by creating your own implementation. The API
+You can self-host the registry by using the default implementation in the `registry` folder, or by creating your own
+implementation. The API
 must be compatible with the default implementation, which can be found in the `main.rs` file.
 
 ## Previous art
 
-pesde is heavily inspired by [npm](https://www.npmjs.com/), [pnpm](https://pnpm.io/), [Wally](https://wally.run), and [Cargo](https://doc.rust-lang.org/cargo/).
+pesde is heavily inspired by [npm](https://www.npmjs.com/), [pnpm](https://pnpm.io/), [Wally](https://wally.run),
+and [Cargo](https://doc.rust-lang.org/cargo/).
