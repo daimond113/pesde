@@ -1,5 +1,3 @@
-use clap::Subcommand;
-
 use anyhow::Context;
 use keyring::Entry;
 use pesde::Project;
@@ -8,6 +6,9 @@ use std::path::Path;
 
 mod auth;
 mod config;
+mod init;
+mod install;
+mod run;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliConfig {
@@ -124,8 +125,8 @@ pub fn reqwest_client(data_dir: &Path) -> anyhow::Result<reqwest::blocking::Clie
         .build()?)
 }
 
-#[derive(Debug, Subcommand)]
-pub enum SubCommand {
+#[derive(Debug, clap::Subcommand)]
+pub enum Subcommand {
     /// Authentication-related commands
     #[command(subcommand)]
     Auth(auth::AuthCommands),
@@ -133,13 +134,25 @@ pub enum SubCommand {
     /// Configuration-related commands
     #[command(subcommand)]
     Config(config::ConfigCommands),
+
+    /// Initializes a manifest file in the current directory
+    Init(init::InitCommand),
+
+    /// Runs a script, an executable package, or a file with Lune
+    Run(run::RunCommand),
+
+    /// Installs all dependencies for the project
+    Install(install::InstallCommand),
 }
 
-impl SubCommand {
+impl Subcommand {
     pub fn run(self, project: Project) -> anyhow::Result<()> {
         match self {
-            SubCommand::Auth(auth) => auth.run(project),
-            SubCommand::Config(config) => config.run(project),
+            Subcommand::Auth(auth) => auth.run(project),
+            Subcommand::Config(config) => config.run(project),
+            Subcommand::Init(init) => init.run(project),
+            Subcommand::Run(run) => run.run(project),
+            Subcommand::Install(install) => install.run(project),
         }
     }
 }

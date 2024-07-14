@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::Path};
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+    hash::Hash,
+    path::Path,
+};
 
 use gix::remote::Direction;
 use semver::{Version, VersionReq};
@@ -6,9 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     authenticate_conn,
-    manifest::Target,
-    names::PackageName,
-    source::{hash, DependencySpecifier, DependencySpecifiers, PackageRef, PackageSource},
+    manifest::{DependencyType, TargetKind},
+    names::{PackageName, PackageNames},
+    source::{
+        hash, DependencySpecifier, DependencySpecifiers, PackageRef, PackageSource, ResolveResult,
+    },
     Project, REQWEST_CLIENT,
 };
 
@@ -16,17 +23,14 @@ use crate::{
 pub struct PesdeDependencySpecifier {
     pub name: PackageName,
     pub version: VersionReq,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub alias: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<String>,
 }
+impl DependencySpecifier for PesdeDependencySpecifier {}
 
-impl DependencySpecifier for PesdeDependencySpecifier {
-    fn alias(&self) -> &str {
-        self.alias.as_str()
-    }
-
-    fn set_alias(&mut self, alias: String) {
-        self.alias = alias;
+impl Display for PesdeDependencySpecifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}@{}", self.name, self.version)
     }
 }
 
@@ -34,9 +38,14 @@ impl DependencySpecifier for PesdeDependencySpecifier {
 pub struct PesdePackageRef {
     name: PackageName,
     version: Version,
+    index_url: gix::Url,
+    dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
 }
-
-impl PackageRef for PesdePackageRef {}
+impl PackageRef for PesdePackageRef {
+    fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
+        &self.dependencies
+    }
+}
 
 impl Ord for PesdePackageRef {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -50,7 +59,7 @@ impl PartialOrd for PesdePackageRef {
     }
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct PesdePackageSource {
     repo_url: gix::Url,
 }
@@ -326,30 +335,35 @@ impl PackageSource for PesdePackageSource {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-    ) -> Result<BTreeMap<Version, Self::Ref>, Self::ResolveError> {
+    ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (scope, name) = specifier.name.as_str();
         let bytes = match self.read_file([scope, name], project) {
             Ok(Some(bytes)) => bytes,
-            Ok(None) => return Ok(BTreeMap::new()),
+            Ok(None) => return Err(Self::ResolveError::NotFound(specifier.name.to_string())),
             Err(e) => return Err(Self::ResolveError::Read(specifier.name.to_string(), e)),
         };
 
         let entries: Vec<IndexFileEntry> = serde_yaml::from_slice(&bytes)
             .map_err(|e| Self::ResolveError::Parse(specifier.name.to_string(), e))?;
 
-        Ok(entries
-            .into_iter()
-            .filter(|entry| specifier.version.matches(&entry.version))
-            .map(|entry| {
-                (
-                    entry.version.clone(),
-                    PesdePackageRef {
-                        name: specifier.name.clone(),
-                        version: entry.version,
-                    },
-                )
-            })
-            .collect())
+        Ok((
+            PackageNames::Pesde(specifier.name.clone()),
+            entries
+                .into_iter()
+                .filter(|entry| specifier.version.matches(&entry.version))
+                .map(|entry| {
+                    (
+                        entry.version.clone(),
+                        PesdePackageRef {
+                            name: specifier.name.clone(),
+                            version: entry.version,
+                            index_url: self.repo_url.clone(),
+                            dependencies: entry.dependencies,
+                        },
+                    )
+                })
+                .collect(),
+        ))
     }
 
     fn download(
@@ -418,15 +432,15 @@ impl IndexConfig {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct IndexFileEntry {
     pub version: Version,
-    pub target: Target,
+    pub target: TargetKind,
     #[serde(default = "chrono::Utc::now")]
     pub published_at: chrono::DateTime<chrono::Utc>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub dependencies: Vec<DependencySpecifiers>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
 }
 
 impl Ord for IndexFileEntry {
@@ -457,28 +471,28 @@ pub mod errors {
         Io(#[from] std::io::Error),
 
         #[error("error opening repository at {0}")]
-        Open(PathBuf, gix::open::Error),
+        Open(PathBuf, #[source] gix::open::Error),
 
         #[error("no default remote found in repository at {0}")]
         NoDefaultRemote(PathBuf),
 
         #[error("error getting default remote from repository at {0}")]
-        GetDefaultRemote(PathBuf, gix::remote::find::existing::Error),
+        GetDefaultRemote(PathBuf, #[source] gix::remote::find::existing::Error),
 
         #[error("error connecting to remote repository at {0}")]
-        Connect(gix::Url, gix::remote::connect::Error),
+        Connect(gix::Url, #[source] gix::remote::connect::Error),
 
         #[error("error preparing fetch from remote repository at {0}")]
-        PrepareFetch(gix::Url, gix::remote::fetch::prepare::Error),
+        PrepareFetch(gix::Url, #[source] gix::remote::fetch::prepare::Error),
 
         #[error("error reading from remote repository at {0}")]
-        Read(gix::Url, gix::remote::fetch::Error),
+        Read(gix::Url, #[source] gix::remote::fetch::Error),
 
         #[error("error cloning repository from {0}")]
-        Clone(gix::Url, gix::clone::Error),
+        Clone(gix::Url, #[source] gix::clone::Error),
 
         #[error("error fetching repository from {0}")]
-        Fetch(gix::Url, gix::clone::fetch::Error),
+        Fetch(gix::Url, #[source] gix::clone::fetch::Error),
     }
 
     #[derive(Debug, Error)]
@@ -488,13 +502,13 @@ pub mod errors {
         Io(#[from] std::io::Error),
 
         #[error("error opening repository at {0}")]
-        Open(PathBuf, gix::open::Error),
+        Open(PathBuf, #[source] gix::open::Error),
 
         #[error("no default remote found in repository at {0}")]
         NoDefaultRemote(PathBuf),
 
         #[error("error getting default remote from repository at {0}")]
-        GetDefaultRemote(PathBuf, gix::remote::find::existing::Error),
+        GetDefaultRemote(PathBuf, #[source] gix::remote::find::existing::Error),
 
         #[error("no refspecs found in repository at {0}")]
         NoRefSpecs(PathBuf),
@@ -503,29 +517,29 @@ pub mod errors {
         NoLocalRefSpec(PathBuf),
 
         #[error("no reference found for local refspec {0}")]
-        NoReference(String, gix::reference::find::existing::Error),
+        NoReference(String, #[source] gix::reference::find::existing::Error),
 
         #[error("cannot peel reference {0}")]
-        CannotPeel(String, gix::reference::peel::Error),
+        CannotPeel(String, #[source] gix::reference::peel::Error),
 
         #[error("error converting id {0} to object")]
-        CannotConvertToObject(String, gix::object::find::existing::Error),
+        CannotConvertToObject(String, #[source] gix::object::find::existing::Error),
 
         #[error("error peeling object {0} to tree")]
-        CannotPeelToTree(String, gix::object::peel::to_kind::Error),
+        CannotPeelToTree(String, #[source] gix::object::peel::to_kind::Error),
     }
 
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ReadFile {
         #[error("error opening repository at {0}")]
-        Open(PathBuf, gix::open::Error),
+        Open(PathBuf, #[source] gix::open::Error),
 
         #[error("error getting tree from repository at {0}")]
-        Tree(PathBuf, Box<TreeError>),
+        Tree(PathBuf, #[source] Box<TreeError>),
 
         #[error("error looking up entry {0} in tree")]
-        Lookup(String, gix::object::find::existing::Error),
+        Lookup(String, #[source] gix::object::find::existing::Error),
     }
 
     #[derive(Debug, Error)]
@@ -534,11 +548,14 @@ pub mod errors {
         #[error("error interacting with the filesystem")]
         Io(#[from] std::io::Error),
 
+        #[error("package {0} not found")]
+        NotFound(String),
+
         #[error("error reading file for {0}")]
-        Read(String, Box<ReadFile>),
+        Read(String, #[source] Box<ReadFile>),
 
         #[error("error parsing file for {0}")]
-        Parse(String, serde_yaml::Error),
+        Parse(String, #[source] serde_yaml::Error),
     }
 
     #[derive(Debug, Error)]
@@ -558,19 +575,19 @@ pub mod errors {
     #[non_exhaustive]
     pub enum AllPackagesError {
         #[error("error opening repository at {0}")]
-        Open(PathBuf, gix::open::Error),
+        Open(PathBuf, #[source] gix::open::Error),
 
         #[error("error getting tree from repository at {0}")]
-        Tree(PathBuf, Box<TreeError>),
+        Tree(PathBuf, #[source] Box<TreeError>),
 
         #[error("error decoding entry in repository at {0}")]
-        Decode(PathBuf, gix::objs::decode::Error),
+        Decode(PathBuf, #[source] gix::objs::decode::Error),
 
         #[error("error converting entry in repository at {0}")]
-        Convert(PathBuf, gix::object::find::existing::Error),
+        Convert(PathBuf, #[source] gix::object::find::existing::Error),
 
         #[error("error deserializing file {0} in repository at {1}")]
-        Deserialize(String, PathBuf, serde_yaml::Error),
+        Deserialize(String, PathBuf, #[source] serde_yaml::Error),
     }
 
     #[derive(Debug, Error)]

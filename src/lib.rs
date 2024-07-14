@@ -3,16 +3,20 @@
 #[cfg(not(any(feature = "roblox", feature = "lune", feature = "luau")))]
 compile_error!("at least one of the features `roblox`, `lune`, or `luau` must be enabled");
 
+use crate::lockfile::Lockfile;
 use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 
 pub mod lockfile;
 pub mod manifest;
 pub mod names;
+pub mod resolver;
+pub mod scripts;
 pub mod source;
 
 pub const MANIFEST_FILE_NAME: &str = "pesde.yaml";
 pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";
+pub const DEFAULT_INDEX_NAME: &str = "default";
 
 pub(crate) static REQWEST_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(|| {
     reqwest::blocking::Client::builder()
@@ -143,6 +147,17 @@ impl Project {
     pub fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
         std::fs::write(self.path.join(MANIFEST_FILE_NAME), manifest.as_ref())
     }
+
+    pub fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
+        let bytes = std::fs::read(self.path.join(LOCKFILE_FILE_NAME))?;
+        Ok(serde_yaml::from_slice(&bytes)?)
+    }
+
+    pub fn write_lockfile(&self, lockfile: Lockfile) -> Result<(), errors::LockfileWriteError> {
+        let writer = std::fs::File::create(self.path.join(LOCKFILE_FILE_NAME))?;
+        serde_yaml::to_writer(writer, &lockfile)?;
+        Ok(())
+    }
 }
 
 pub mod errors {
@@ -155,6 +170,26 @@ pub mod errors {
         Io(#[from] std::io::Error),
 
         #[error("error deserializing manifest file")]
+        Serde(#[from] serde_yaml::Error),
+    }
+
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum LockfileReadError {
+        #[error("io error reading lockfile file")]
+        Io(#[from] std::io::Error),
+
+        #[error("error deserializing lockfile file")]
+        Serde(#[from] serde_yaml::Error),
+    }
+
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum LockfileWriteError {
+        #[error("io error writing lockfile file")]
+        Io(#[from] std::io::Error),
+
+        #[error("error serializing lockfile file")]
         Serde(#[from] serde_yaml::Error),
     }
 }

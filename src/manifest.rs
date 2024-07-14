@@ -1,7 +1,6 @@
-use crate::{names::PackageName, source::DependencySpecifiers};
 use relative_path::RelativePathBuf;
 use semver::Version;
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
     collections::BTreeMap,
@@ -9,19 +8,11 @@ use std::{
     str::FromStr,
 };
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-#[serde(deny_unknown_fields)]
-pub struct Exports {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lib: Option<RelativePathBuf>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bin: Option<RelativePathBuf>,
-}
+use crate::{names::PackageName, source::DependencySpecifiers};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum Target {
+pub enum TargetKind {
     #[cfg(feature = "roblox")]
     Roblox,
     #[cfg(feature = "lune")]
@@ -30,31 +21,109 @@ pub enum Target {
     Luau,
 }
 
-impl Display for Target {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for TargetKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             #[cfg(feature = "roblox")]
-            Target::Roblox => write!(f, "roblox"),
+            TargetKind::Roblox => write!(f, "roblox"),
             #[cfg(feature = "lune")]
-            Target::Lune => write!(f, "lune"),
+            TargetKind::Lune => write!(f, "lune"),
             #[cfg(feature = "luau")]
-            Target::Luau => write!(f, "luau"),
+            TargetKind::Luau => write!(f, "luau"),
         }
     }
 }
 
-impl Target {
+impl TargetKind {
     // self is the project's target, dependency is the target of the dependency
-    fn is_compatible_with(&self, dependency: &Self) -> bool {
+    pub fn is_compatible_with(&self, dependency: &Self) -> bool {
         if self == dependency {
             return true;
         }
 
         match (self, dependency) {
             #[cfg(all(feature = "lune", feature = "luau"))]
-            (Target::Lune, Target::Luau) => true,
+            (TargetKind::Lune, TargetKind::Luau) => true,
 
             _ => false,
+        }
+    }
+
+    pub fn packages_folder(&self, dependency: &Self) -> String {
+        if self == dependency {
+            return "packages".to_string();
+        }
+
+        format!("{}_packages", dependency)
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case", tag = "environment", remote = "Self")]
+pub enum Target {
+    #[cfg(feature = "roblox")]
+    Roblox { lib: RelativePathBuf },
+    #[cfg(feature = "lune")]
+    Lune {
+        lib: Option<RelativePathBuf>,
+        bin: Option<RelativePathBuf>,
+    },
+    #[cfg(feature = "luau")]
+    Luau {
+        lib: Option<RelativePathBuf>,
+        bin: Option<RelativePathBuf>,
+    },
+}
+
+impl<'de> Deserialize<'de> for Target {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let target = Self::deserialize(deserializer)?;
+
+        match &target {
+            #[cfg(feature = "lune")]
+            Target::Lune { lib, bin } => {
+                if lib.is_none() && bin.is_none() {
+                    return Err(serde::de::Error::custom(
+                        "one of `lib` or `bin` exports must be defined",
+                    ));
+                }
+            }
+
+            #[cfg(feature = "luau")]
+            Target::Luau { lib, bin } => {
+                if lib.is_none() && bin.is_none() {
+                    return Err(serde::de::Error::custom(
+                        "one of `lib` or `bin` exports must be defined",
+                    ));
+                }
+            }
+
+            #[allow(unreachable_patterns)]
+            _ => {}
+        };
+
+        Ok(target)
+    }
+}
+
+impl Display for Target {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.kind())
+    }
+}
+
+impl Target {
+    pub fn kind(&self) -> TargetKind {
+        match self {
+            #[cfg(feature = "roblox")]
+            Target::Roblox { .. } => TargetKind::Roblox,
+            #[cfg(feature = "lune")]
+            Target::Lune { .. } => TargetKind::Lune,
+            #[cfg(feature = "luau")]
+            Target::Luau { .. } => TargetKind::Luau,
         }
     }
 }
@@ -68,11 +137,16 @@ impl FromStr for OverrideKey {
     type Err = errors::OverrideKeyFromStr;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            s.split(',')
-                .map(|overrides| overrides.split('>').map(|s| s.to_string()).collect())
-                .collect(),
-        ))
+        let overrides = s
+            .split(',')
+            .map(|overrides| overrides.split('>').map(|s| s.to_string()).collect())
+            .collect::<Vec<Vec<String>>>();
+
+        if overrides.is_empty() {
+            return Err(errors::OverrideKeyFromStr::Empty);
+        }
+
+        Ok(Self(overrides))
     }
 }
 
@@ -96,40 +170,7 @@ impl Display for OverrideKey {
     }
 }
 
-fn deserialize_dep_specs<'de, D>(
-    deserializer: D,
-) -> Result<BTreeMap<String, DependencySpecifiers>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct SpecsVisitor;
-
-    impl<'de> Visitor<'de> for SpecsVisitor {
-        type Value = BTreeMap<String, DependencySpecifiers>;
-
-        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-            formatter.write_str("a map of dependency specifiers")
-        }
-
-        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: serde::de::MapAccess<'de>,
-        {
-            let mut specs = BTreeMap::new();
-
-            while let Some((key, mut value)) = map.next_entry::<String, DependencySpecifiers>()? {
-                value.set_alias(key.to_string());
-                specs.insert(key, value);
-            }
-
-            Ok(specs)
-        }
-    }
-
-    deserializer.deserialize_map(SpecsVisitor)
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Manifest {
     pub name: PackageName,
     pub version: Version,
@@ -141,28 +182,61 @@ pub struct Manifest {
     pub authors: Option<Vec<String>>,
     #[serde(default)]
     pub repository: Option<String>,
-    #[serde(default)]
-    pub exports: Exports,
     pub target: Target,
     #[serde(default)]
     pub private: bool,
+    #[serde(default)]
+    pub scripts: BTreeMap<String, RelativePathBuf>,
     #[serde(default)]
     pub indices: BTreeMap<String, url::Url>,
     #[cfg(feature = "wally")]
     #[serde(default)]
     pub wally_indices: BTreeMap<String, url::Url>,
-    #[cfg(feature = "wally")]
+    #[cfg(all(feature = "wally", feature = "roblox"))]
     #[serde(default)]
     pub sourcemap_generator: Option<String>,
     #[serde(default)]
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
 
-    #[serde(default, deserialize_with = "deserialize_dep_specs")]
+    #[serde(default)]
     pub dependencies: BTreeMap<String, DependencySpecifiers>,
-    #[serde(default, deserialize_with = "deserialize_dep_specs")]
+    #[serde(default)]
     pub peer_dependencies: BTreeMap<String, DependencySpecifiers>,
-    #[serde(default, deserialize_with = "deserialize_dep_specs")]
+    #[serde(default)]
     pub dev_dependencies: BTreeMap<String, DependencySpecifiers>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum DependencyType {
+    Standard,
+    Dev,
+    Peer,
+}
+
+impl Manifest {
+    pub fn all_dependencies(
+        &self,
+    ) -> Result<
+        BTreeMap<String, (DependencySpecifiers, DependencyType)>,
+        errors::AllDependenciesError,
+    > {
+        let mut all_deps = BTreeMap::new();
+
+        for (deps, ty) in [
+            (&self.dependencies, DependencyType::Standard),
+            (&self.peer_dependencies, DependencyType::Peer),
+            (&self.dev_dependencies, DependencyType::Dev),
+        ] {
+            for (alias, spec) in deps {
+                if all_deps.insert(alias.clone(), (spec.clone(), ty)).is_some() {
+                    return Err(errors::AllDependenciesError::AliasConflict(alias.clone()));
+                }
+            }
+        }
+
+        Ok(all_deps)
+    }
 }
 
 pub mod errors {
@@ -170,5 +244,15 @@ pub mod errors {
 
     #[derive(Debug, Error)]
     #[non_exhaustive]
-    pub enum OverrideKeyFromStr {}
+    pub enum OverrideKeyFromStr {
+        #[error("empty override key")]
+        Empty,
+    }
+
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum AllDependenciesError {
+        #[error("another specifier is already using the alias {0}")]
+        AliasConflict(String),
+    }
 }

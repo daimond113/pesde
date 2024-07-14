@@ -70,6 +70,14 @@ pub enum PackageNames {
     Pesde(PackageName),
 }
 
+impl Display for PackageNames {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PackageNames::Pesde(name) => write!(f, "{}", name),
+        }
+    }
+}
+
 pub mod errors {
     use thiserror::Error;
 

@@ -14,10 +14,12 @@ struct Cli {
     version: (),
 
     #[command(subcommand)]
-    subcommand: cli::SubCommand,
+    subcommand: cli::Subcommand,
 }
 
 fn main() {
+    pretty_env_logger::init();
+
     let project_dirs =
         directories::ProjectDirs::from("com", env!("CARGO_PKG_NAME"), env!("CARGO_BIN_NAME"))
             .expect("couldn't get home directory");
