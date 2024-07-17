@@ -1,11 +1,16 @@
 use crate::{
-    manifest::{DependencyType, OverrideKey},
+    manifest::{DependencyType, OverrideKey, Target, TargetKind},
     names::{PackageName, PackageNames},
-    source::{DependencySpecifiers, PackageRefs},
+    source::{DependencySpecifiers, PackageRef, PackageRefs},
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    path::{Path, PathBuf},
+};
+
+pub type Graph<Node> = BTreeMap<PackageNames, BTreeMap<Version, Node>>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyGraphNode {
@@ -16,7 +21,29 @@ pub struct DependencyGraphNode {
     pub ty: DependencyType,
 }
 
-pub type DependencyGraph = BTreeMap<PackageNames, BTreeMap<Version, DependencyGraphNode>>;
+impl DependencyGraphNode {
+    pub fn base_folder(&self, project_target: TargetKind, is_top_level: bool) -> String {
+        if is_top_level || self.pkg_ref.use_new_structure() {
+            project_target.packages_folder(&self.pkg_ref.target_kind())
+        } else {
+            "..".to_string()
+        }
+    }
+
+    pub fn container_folder<P: AsRef<Path>>(
+        &self,
+        path: &P,
+        name: &PackageNames,
+        version: &Version,
+    ) -> PathBuf {
+        path.as_ref()
+            .join(name.escaped())
+            .join(version.to_string())
+            .join(name.as_str().1)
+    }
+}
+
+pub type DependencyGraph = Graph<DependencyGraphNode>;
 
 pub fn insert_node(
     graph: &mut DependencyGraph,
@@ -49,6 +76,14 @@ pub fn insert_node(
         }
     }
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DownloadedDependencyGraphNode {
+    pub node: DependencyGraphNode,
+    pub target: Target,
+}
+
+pub type DownloadedGraph = Graph<DownloadedDependencyGraphNode>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Lockfile {

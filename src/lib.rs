@@ -7,6 +7,8 @@ use crate::lockfile::Lockfile;
 use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 
+pub mod download;
+pub mod linking;
 pub mod lockfile;
 pub mod manifest;
 pub mod names;
@@ -17,6 +19,7 @@ pub mod source;
 pub const MANIFEST_FILE_NAME: &str = "pesde.yaml";
 pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";
 pub const DEFAULT_INDEX_NAME: &str = "default";
+pub const PACKAGES_CONTAINER_NAME: &str = ".pesde";
 
 pub(crate) static REQWEST_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(|| {
     reqwest::blocking::Client::builder()

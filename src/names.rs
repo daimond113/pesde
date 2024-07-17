@@ -63,11 +63,29 @@ impl PackageName {
     pub fn as_str(&self) -> (&str, &str) {
         (&self.0, &self.1)
     }
+
+    pub fn escaped(&self) -> String {
+        format!("{}+{}", self.0, self.1)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PackageNames {
     Pesde(PackageName),
+}
+
+impl PackageNames {
+    pub fn as_str(&self) -> (&str, &str) {
+        match self {
+            PackageNames::Pesde(name) => name.as_str(),
+        }
+    }
+
+    pub fn escaped(&self) -> String {
+        match self {
+            PackageNames::Pesde(name) => name.escaped(),
+        }
+    }
 }
 
 impl Display for PackageNames {

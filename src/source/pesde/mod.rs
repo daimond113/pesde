@@ -1,63 +1,22 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display},
-    hash::Hash,
-    path::Path,
-};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::Path};
 
 use gix::remote::Direction;
-use semver::{Version, VersionReq};
+use semver::Version;
 use serde::{Deserialize, Serialize};
+
+use pkg_ref::PesdePackageRef;
+use specifier::PesdeDependencySpecifier;
 
 use crate::{
     authenticate_conn,
-    manifest::{DependencyType, TargetKind},
+    manifest::{DependencyType, Target},
     names::{PackageName, PackageNames},
-    source::{
-        hash, DependencySpecifier, DependencySpecifiers, PackageRef, PackageSource, ResolveResult,
-    },
+    source::{hash, DependencySpecifiers, PackageSource, ResolveResult},
     Project, REQWEST_CLIENT,
 };
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct PesdeDependencySpecifier {
-    pub name: PackageName,
-    pub version: VersionReq,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub index: Option<String>,
-}
-impl DependencySpecifier for PesdeDependencySpecifier {}
-
-impl Display for PesdeDependencySpecifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}@{}", self.name, self.version)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-pub struct PesdePackageRef {
-    name: PackageName,
-    version: Version,
-    index_url: gix::Url,
-    dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
-}
-impl PackageRef for PesdePackageRef {
-    fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
-        &self.dependencies
-    }
-}
-
-impl Ord for PesdePackageRef {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.version.cmp(&other.version)
-    }
-}
-
-impl PartialOrd for PesdePackageRef {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
+pub mod pkg_ref;
+pub mod specifier;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct PesdePackageSource {
@@ -359,6 +318,7 @@ impl PackageSource for PesdePackageSource {
                             version: entry.version,
                             index_url: self.repo_url.clone(),
                             dependencies: entry.dependencies,
+                            target: entry.target,
                         },
                     )
                 })
@@ -371,7 +331,7 @@ impl PackageSource for PesdePackageSource {
         pkg_ref: &Self::Ref,
         destination: &Path,
         project: &Project,
-    ) -> Result<(), Self::DownloadError> {
+    ) -> Result<Target, Self::DownloadError> {
         let config = self.config(project)?;
 
         let (scope, name) = pkg_ref.name.as_str();
@@ -397,7 +357,7 @@ impl PackageSource for PesdePackageSource {
 
         archive.unpack(destination)?;
 
-        Ok(())
+        Ok(pkg_ref.target.clone())
     }
 }
 
@@ -432,7 +392,7 @@ impl IndexConfig {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct IndexFileEntry {
     pub version: Version,
-    pub target: TargetKind,
+    pub target: Target,
     #[serde(default = "chrono::Utc::now")]
     pub published_at: chrono::DateTime<chrono::Utc>,
 

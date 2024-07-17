@@ -2,6 +2,7 @@ use crate::cli::get_token;
 use clap::Parser;
 use colored::Colorize;
 use pesde::{AuthConfig, Project};
+use std::fs::create_dir_all;
 
 mod cli;
 
@@ -27,6 +28,7 @@ fn main() {
     let cli = Cli::parse();
 
     let data_dir = project_dirs.data_dir();
+    create_dir_all(data_dir).expect("failed to create data directory");
 
     if let Err(err) = get_token(data_dir).and_then(|token| {
         cli.subcommand.run(Project::new(
@@ -35,16 +37,33 @@ fn main() {
             AuthConfig::new().with_pesde_token(token),
         ))
     }) {
-        eprintln!("{}: {}\n", "error".red().bold(), err.to_string().bold());
+        eprintln!("{}: {err}\n", "error".red().bold());
 
         let cause = err.chain().skip(1).collect::<Vec<_>>();
 
         if !cause.is_empty() {
             eprintln!("{}:", "caused by".red().bold());
             for err in cause {
-                eprintln!("  - {}", err.to_string().bold());
+                eprintln!("  - {err}");
             }
         }
+
+        let backtrace = err.backtrace();
+        match backtrace.status() {
+            std::backtrace::BacktraceStatus::Disabled => {
+                eprintln!(
+                    "\n{}: set RUST_BACKTRACE=1 for a backtrace",
+                    "help".yellow().bold()
+                );
+            }
+            std::backtrace::BacktraceStatus::Captured => {
+                eprintln!("\n{}:\n{backtrace}", "backtrace".yellow().bold());
+            }
+            _ => {
+                eprintln!("\n{}: not captured", "backtrace".yellow().bold());
+            }
+        }
+
         std::process::exit(1);
     }
 }

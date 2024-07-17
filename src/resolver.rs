@@ -11,19 +11,17 @@ use semver::Version;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 impl Project {
-    // TODO: implement dependency overrides
+    // TODO: implement dependency overrides, account for targets using the is_compatible_with method
     pub fn dependency_graph(
         &self,
         previous_graph: Option<&DependencyGraph>,
+        refreshed_sources: &mut HashSet<PackageSources>,
     ) -> Result<DependencyGraph, Box<errors::DependencyGraphError>> {
         let manifest = self.deser_manifest().map_err(|e| Box::new(e.into()))?;
 
-        let mut all_dependencies = manifest
+        let mut all_specifiers = manifest
             .all_dependencies()
-            .map_err(|e| Box::new(e.into()))?;
-
-        let mut all_specifiers = all_dependencies
-            .clone()
+            .map_err(|e| Box::new(e.into()))?
             .into_iter()
             .map(|(alias, (spec, ty))| ((spec, ty), alias))
             .collect::<HashMap<_, _>>();
@@ -38,14 +36,12 @@ impl Project {
                         continue;
                     };
 
-                    match all_specifiers.remove(&(specifier.clone(), node.ty)) {
-                        Some(alias) => {
-                            all_dependencies.remove(&alias);
-                        }
-                        None => {
-                            // this dependency is no longer in the manifest, or it's type has changed
-                            continue;
-                        }
+                    if all_specifiers
+                        .remove(&(specifier.clone(), node.ty))
+                        .is_none()
+                    {
+                        // this dependency is no longer in the manifest, or it's type has changed
+                        continue;
                     }
 
                     log::debug!("resolved {}@{} from old dependency graph", name, version);
@@ -96,10 +92,9 @@ impl Project {
             }
         }
 
-        let mut refreshed_sources = HashSet::new();
-        let mut queue = all_dependencies
+        let mut queue = all_specifiers
             .into_iter()
-            .map(|(alias, (spec, ty))| (alias, spec, ty, None::<(PackageNames, Version)>, 0usize))
+            .map(|((spec, ty), alias)| (alias, spec, ty, None::<(PackageNames, Version)>, 0usize))
             .collect::<VecDeque<_>>();
 
         while let Some((alias, specifier, ty, dependant, depth)) = queue.pop_front() {

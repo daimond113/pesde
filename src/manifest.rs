@@ -1,6 +1,6 @@
 use relative_path::RelativePathBuf;
 use semver::Version;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
     collections::BTreeMap,
@@ -58,7 +58,7 @@ impl TargetKind {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case", tag = "environment", remote = "Self")]
 pub enum Target {
     #[cfg(feature = "roblox")]
@@ -73,6 +73,39 @@ pub enum Target {
         lib: Option<RelativePathBuf>,
         bin: Option<RelativePathBuf>,
     },
+}
+
+impl Target {
+    pub fn kind(&self) -> TargetKind {
+        match self {
+            #[cfg(feature = "roblox")]
+            Target::Roblox { .. } => TargetKind::Roblox,
+            #[cfg(feature = "lune")]
+            Target::Lune { .. } => TargetKind::Lune,
+            #[cfg(feature = "luau")]
+            Target::Luau { .. } => TargetKind::Luau,
+        }
+    }
+
+    pub fn lib_path(&self) -> Option<&RelativePathBuf> {
+        match self {
+            #[cfg(feature = "roblox")]
+            Target::Roblox { lib } => Some(lib),
+            #[cfg(feature = "lune")]
+            Target::Lune { lib, .. } => lib.as_ref(),
+            #[cfg(feature = "luau")]
+            Target::Luau { lib, .. } => lib.as_ref(),
+        }
+    }
+}
+
+impl Serialize for Target {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        Self::serialize(self, serializer)
+    }
 }
 
 impl<'de> Deserialize<'de> for Target {
@@ -112,19 +145,6 @@ impl<'de> Deserialize<'de> for Target {
 impl Display for Target {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.kind())
-    }
-}
-
-impl Target {
-    pub fn kind(&self) -> TargetKind {
-        match self {
-            #[cfg(feature = "roblox")]
-            Target::Roblox { .. } => TargetKind::Roblox,
-            #[cfg(feature = "lune")]
-            Target::Lune { .. } => TargetKind::Lune,
-            #[cfg(feature = "luau")]
-            Target::Luau { .. } => TargetKind::Luau,
-        }
     }
 }
 
@@ -189,10 +209,10 @@ pub struct Manifest {
     pub scripts: BTreeMap<String, RelativePathBuf>,
     #[serde(default)]
     pub indices: BTreeMap<String, url::Url>,
-    #[cfg(feature = "wally")]
+    #[cfg(feature = "wally-compat")]
     #[serde(default)]
     pub wally_indices: BTreeMap<String, url::Url>,
-    #[cfg(all(feature = "wally", feature = "roblox"))]
+    #[cfg(all(feature = "wally-compat", feature = "roblox"))]
     #[serde(default)]
     pub sourcemap_generator: Option<String>,
     #[serde(default)]

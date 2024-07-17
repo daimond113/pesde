@@ -1,10 +1,16 @@
-use crate::{manifest::DependencyType, names::PackageNames, Project};
-use semver::Version;
-use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     fmt::{Debug, Display},
     path::Path,
+};
+
+use semver::Version;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    manifest::{DependencyType, Target, TargetKind},
+    names::PackageNames,
+    Project,
 };
 
 pub mod pesde;
@@ -20,7 +26,7 @@ pub(crate) fn hash<S: std::hash::Hash>(struc: &S) -> String {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum DependencySpecifiers {
-    Pesde(pesde::PesdeDependencySpecifier),
+    Pesde(pesde::specifier::PesdeDependencySpecifier),
 }
 pub trait DependencySpecifier: Debug + Display {}
 impl DependencySpecifier for DependencySpecifiers {}
@@ -35,15 +41,29 @@ impl Display for DependencySpecifiers {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum PackageRefs {
-    Pesde(pesde::PesdePackageRef),
+    Pesde(pesde::pkg_ref::PesdePackageRef),
 }
 pub trait PackageRef: Debug {
     fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)>;
+    fn use_new_structure(&self) -> bool;
+    fn target_kind(&self) -> TargetKind;
 }
 impl PackageRef for PackageRefs {
     fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
         match self {
             PackageRefs::Pesde(pkg_ref) => pkg_ref.dependencies(),
+        }
+    }
+
+    fn use_new_structure(&self) -> bool {
+        match self {
+            PackageRefs::Pesde(pkg_ref) => pkg_ref.use_new_structure(),
+        }
+    }
+
+    fn target_kind(&self) -> TargetKind {
+        match self {
+            PackageRefs::Pesde(pkg_ref) => pkg_ref.target_kind(),
         }
     }
 }
@@ -76,7 +96,7 @@ pub trait PackageSource: Debug {
         pkg_ref: &Self::Ref,
         destination: &Path,
         project: &Project,
-    ) -> Result<(), Self::DownloadError>;
+    ) -> Result<Target, Self::DownloadError>;
 }
 impl PackageSource for PackageSources {
     type Ref = PackageRefs;
@@ -119,7 +139,7 @@ impl PackageSource for PackageSources {
         pkg_ref: &Self::Ref,
         destination: &Path,
         project: &Project,
-    ) -> Result<(), Self::DownloadError> {
+    ) -> Result<Target, Self::DownloadError> {
         match (self, pkg_ref) {
             (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => source
                 .download(pkg_ref, destination, project)
