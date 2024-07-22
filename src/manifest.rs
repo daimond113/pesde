@@ -1,14 +1,13 @@
+use crate::{names::PackageName, source::DependencySpecifiers};
 use relative_path::RelativePathBuf;
 use semver::Version;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{Display, Formatter},
     str::FromStr,
 };
-
-use crate::{names::PackageName, source::DependencySpecifiers};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -54,23 +53,32 @@ impl TargetKind {
             return "packages".to_string();
         }
 
-        format!("{}_packages", dependency)
+        format!("{dependency}_packages")
     }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[serde(rename_all = "snake_case", tag = "environment", remote = "Self")]
+#[serde(rename_all = "snake_case", tag = "environment")]
 pub enum Target {
     #[cfg(feature = "roblox")]
-    Roblox { lib: RelativePathBuf },
+    Roblox {
+        #[serde(default)]
+        lib: Option<RelativePathBuf>,
+        #[serde(default)]
+        build_files: BTreeSet<String>,
+    },
     #[cfg(feature = "lune")]
     Lune {
+        #[serde(default)]
         lib: Option<RelativePathBuf>,
+        #[serde(default)]
         bin: Option<RelativePathBuf>,
     },
     #[cfg(feature = "luau")]
     Luau {
+        #[serde(default)]
         lib: Option<RelativePathBuf>,
+        #[serde(default)]
         bin: Option<RelativePathBuf>,
     },
 }
@@ -90,55 +98,47 @@ impl Target {
     pub fn lib_path(&self) -> Option<&RelativePathBuf> {
         match self {
             #[cfg(feature = "roblox")]
-            Target::Roblox { lib } => Some(lib),
+            Target::Roblox { lib, .. } => lib.as_ref(),
             #[cfg(feature = "lune")]
             Target::Lune { lib, .. } => lib.as_ref(),
             #[cfg(feature = "luau")]
             Target::Luau { lib, .. } => lib.as_ref(),
         }
     }
-}
 
-impl Serialize for Target {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        Self::serialize(self, serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for Target {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let target = Self::deserialize(deserializer)?;
-
-        match &target {
+    pub fn bin_path(&self) -> Option<&RelativePathBuf> {
+        match self {
+            #[cfg(feature = "roblox")]
+            Target::Roblox { .. } => None,
             #[cfg(feature = "lune")]
-            Target::Lune { lib, bin } => {
-                if lib.is_none() && bin.is_none() {
-                    return Err(serde::de::Error::custom(
-                        "one of `lib` or `bin` exports must be defined",
-                    ));
-                }
-            }
-
+            Target::Lune { bin, .. } => bin.as_ref(),
             #[cfg(feature = "luau")]
-            Target::Luau { lib, bin } => {
-                if lib.is_none() && bin.is_none() {
-                    return Err(serde::de::Error::custom(
-                        "one of `lib` or `bin` exports must be defined",
-                    ));
-                }
-            }
+            Target::Luau { bin, .. } => bin.as_ref(),
+        }
+    }
 
-            #[allow(unreachable_patterns)]
-            _ => {}
+    pub fn validate_publish(&self) -> Result<(), errors::TargetValidatePublishError> {
+        let has_exports = match self {
+            #[cfg(feature = "roblox")]
+            Target::Roblox { lib, .. } => lib.is_some(),
+            #[cfg(feature = "lune")]
+            Target::Lune { lib, bin } => lib.is_some() || bin.is_some(),
+            #[cfg(feature = "luau")]
+            Target::Luau { lib, bin } => lib.is_some() || bin.is_some(),
         };
 
-        Ok(target)
+        if !has_exports {
+            return Err(errors::TargetValidatePublishError::NoExportedFiles);
+        }
+
+        match self {
+            #[cfg(feature = "roblox")]
+            Target::Roblox { build_files, .. } if build_files.is_empty() => {
+                Err(errors::TargetValidatePublishError::NoBuildFiles)
+            }
+
+            _ => Ok(()),
+        }
     }
 }
 
@@ -190,39 +190,57 @@ impl Display for OverrideKey {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ScriptName {
+    #[cfg(feature = "roblox")]
+    RobloxSyncConfigGenerator,
+    #[cfg(all(feature = "wally-compat", feature = "roblox"))]
+    SourcemapGenerator,
+}
+
+impl Display for ScriptName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            #[cfg(feature = "roblox")]
+            ScriptName::RobloxSyncConfigGenerator => write!(f, "roblox_sync_config_generator"),
+            #[cfg(all(feature = "wally-compat", feature = "roblox"))]
+            ScriptName::SourcemapGenerator => write!(f, "sourcemap_generator"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Manifest {
     pub name: PackageName,
     pub version: Version,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authors: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
     pub target: Target,
     #[serde(default)]
     pub private: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub scripts: BTreeMap<String, RelativePathBuf>,
     #[serde(default)]
     pub indices: BTreeMap<String, url::Url>,
     #[cfg(feature = "wally-compat")]
     #[serde(default)]
     pub wally_indices: BTreeMap<String, url::Url>,
-    #[cfg(all(feature = "wally-compat", feature = "roblox"))]
-    #[serde(default)]
-    pub sourcemap_generator: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
+    #[serde(default)]
+    pub includes: BTreeSet<String>,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, DependencySpecifiers>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub peer_dependencies: BTreeMap<String, DependencySpecifiers>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dev_dependencies: BTreeMap<String, DependencySpecifiers>,
 }
 
@@ -274,5 +292,16 @@ pub mod errors {
     pub enum AllDependenciesError {
         #[error("another specifier is already using the alias {0}")]
         AliasConflict(String),
+    }
+
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum TargetValidatePublishError {
+        #[error("no exported files specified")]
+        NoExportedFiles,
+
+        #[cfg(feature = "roblox")]
+        #[error("roblox target must have at least one build file")]
+        NoBuildFiles,
     }
 }

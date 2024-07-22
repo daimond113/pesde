@@ -1,12 +1,31 @@
 use crate::cli::read_config;
+use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use inquire::validator::Validation;
-use pesde::{errors::ManifestReadError, names::PackageName, Project, DEFAULT_INDEX_NAME};
-use std::str::FromStr;
+use pesde::{
+    errors::ManifestReadError, manifest::ScriptName, names::PackageName, Project,
+    DEFAULT_INDEX_NAME,
+};
+use std::{path::Path, str::FromStr};
 
 #[derive(Debug, Args)]
 pub struct InitCommand {}
+
+fn script_contents(path: &Path) -> String {
+    format!(
+        concat!(
+            r#"local process = require("@lune/process")   
+local home_dir = if process.os == "windows" then process.env.userprofile else process.env.HOME
+
+require(home_dir .. ""#,
+            "/.",
+            env!("CARGO_PKG_NAME"),
+            r#"/scripts/{}")"#,
+        ),
+        path.display()
+    )
+}
 
 impl InitCommand {
     pub fn run(self, project: Project) -> anyhow::Result<()> {
@@ -92,6 +111,57 @@ impl InitCommand {
                 .unwrap();
                 if !license.is_empty() {
                     mapping.insert_str("license", license);
+                }
+
+                let target_env = inquire::Select::new(
+                    "What environment are you targeting for your package?",
+                    vec![
+                        #[cfg(feature = "roblox")]
+                        "roblox",
+                        #[cfg(feature = "lune")]
+                        "lune",
+                        #[cfg(feature = "luau")]
+                        "luau",
+                    ],
+                )
+                .prompt()
+                .unwrap();
+
+                let mut target = mapping
+                    .insert("target", nondestructive::yaml::Separator::Auto)
+                    .make_mapping();
+                target.insert_str("environment", target_env);
+
+                if target_env == "roblox"
+                    || inquire::Confirm::new(&format!(
+                        "Would you like to setup a default {} script?",
+                        ScriptName::RobloxSyncConfigGenerator
+                    ))
+                    .prompt()
+                    .unwrap()
+                {
+                    let folder = project.path().join(concat!(".", env!("CARGO_PKG_NAME")));
+                    std::fs::create_dir_all(&folder).context("failed to create scripts folder")?;
+
+                    std::fs::write(
+                        folder.join(format!("{}.luau", ScriptName::RobloxSyncConfigGenerator)),
+                        script_contents(Path::new(&format!(
+                            "lune/rojo/{}.luau",
+                            ScriptName::RobloxSyncConfigGenerator
+                        ))),
+                    )
+                    .context("failed to write script file")?;
+
+                    mapping
+                        .insert("scripts", nondestructive::yaml::Separator::Auto)
+                        .make_mapping()
+                        .insert_str(
+                            ScriptName::RobloxSyncConfigGenerator.to_string(),
+                            format!(
+                                concat!(concat!(".", env!("CARGO_PKG_NAME")), "/{}.luau"),
+                                ScriptName::RobloxSyncConfigGenerator
+                            ),
+                        );
                 }
 
                 let mut indices = mapping

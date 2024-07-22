@@ -8,7 +8,7 @@ use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::{
-    authenticate_conn,
+    git::authenticate_conn,
     manifest::{DependencyType, Target},
     names::{PackageName, PackageNames},
     source::{hash, DependencySpecifiers, PackageSource, ResolveResult},
@@ -264,7 +264,7 @@ impl PackageSource for PesdePackageSource {
                 .connect(Direction::Fetch)
                 .map_err(|e| Self::RefreshError::Connect(self.repo_url.clone(), e))?;
 
-            authenticate_conn(&mut connection, project.auth_config.clone());
+            authenticate_conn(&mut connection, &project.auth_config);
 
             connection
                 .prepare_fetch(gix::progress::Discard, Default::default())
@@ -276,12 +276,13 @@ impl PackageSource for PesdePackageSource {
         }
 
         std::fs::create_dir_all(&path)?;
+
         let auth_config = project.auth_config.clone();
 
         gix::prepare_clone_bare(self.repo_url.clone(), &path)
             .map_err(|e| Self::RefreshError::Clone(self.repo_url.clone(), e))?
             .configure_connection(move |c| {
-                authenticate_conn(c, auth_config.clone());
+                authenticate_conn(c, &auth_config);
                 Ok(())
             })
             .fetch_only(gix::progress::Discard, &false.into())
@@ -344,9 +345,7 @@ impl PackageSource for PesdePackageSource {
         let mut response = REQWEST_CLIENT.get(url);
 
         if let Some(token) = &project.auth_config.pesde_token {
-            use secrecy::ExposeSecret;
-            response =
-                response.header("Authorization", format!("Bearer {}", token.expose_secret()));
+            response = response.header("Authorization", format!("Bearer {token}"));
         }
 
         let response = response.send()?;

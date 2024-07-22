@@ -15,6 +15,10 @@ pub struct LoginCommand {
     /// The index to use. Defaults to `default`, or the configured default index if current directory doesn't have a manifest
     #[arg(short, long)]
     index: Option<String>,
+
+    /// The token to use for authentication, skipping login
+    #[arg(short, long, conflicts_with = "index")]
+    token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +48,11 @@ enum AccessTokenResponse {
 }
 
 impl LoginCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
+    pub fn authenticate_device_flow(
+        &self,
+        project: &Project,
+        reqwest: &reqwest::blocking::Client,
+    ) -> anyhow::Result<String> {
         let manifest = match project.deser_manifest() {
             Ok(manifest) => Some(manifest),
             Err(e) => match e {
@@ -82,18 +90,13 @@ impl LoginCommand {
                 .try_into()
                 .context("cannot parse URL to git URL")?,
         );
-        source
-            .refresh(&project)
-            .context("failed to refresh index")?;
-
-        dbg!(source.all_packages(&project).unwrap());
+        source.refresh(project).context("failed to refresh index")?;
 
         let config = source
-            .config(&project)
+            .config(project)
             .context("failed to read index config")?;
         let client_id = config.github_oauth_client_id;
 
-        let reqwest = reqwest_client(project.data_dir())?;
         let response = reqwest
             .post(Url::parse_with_params(
                 "https://github.com/login/device/code",
@@ -150,13 +153,7 @@ impl LoginCommand {
 
             match response {
                 AccessTokenResponse::Success { access_token } => {
-                    set_token(project.data_dir(), Some(&access_token))?;
-
-                    println!(
-                        "logged in as {}",
-                        get_token_login(&reqwest, &access_token)?.bold()
-                    );
-                    return Ok(());
+                    return Ok(access_token);
                 }
                 AccessTokenResponse::Error(e) => match e {
                     AccessTokenError::AuthorizationPending => continue,
@@ -177,5 +174,20 @@ impl LoginCommand {
         }
 
         anyhow::bail!("code expired, please re-run the login command");
+    }
+
+    pub fn run(self, project: Project) -> anyhow::Result<()> {
+        let reqwest = reqwest_client(project.data_dir())?;
+
+        let token = match self.token {
+            Some(token) => token,
+            None => self.authenticate_device_flow(&project, &reqwest)?,
+        };
+
+        println!("logged in as {}", get_token_login(&reqwest, &token)?.bold());
+
+        set_token(project.data_dir(), Some(&token))?;
+
+        Ok(())
     }
 }

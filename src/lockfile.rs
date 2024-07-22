@@ -91,5 +91,5 @@ pub struct Lockfile {
     pub version: Version,
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
 
-    pub graph: DependencyGraph,
+    pub graph: DownloadedGraph,
 }

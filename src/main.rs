@@ -5,6 +5,7 @@ use pesde::{AuthConfig, Project};
 use std::fs::create_dir_all;
 
 mod cli;
+pub mod git;
 
 #[derive(Parser, Debug)]
 #[clap(version, about = "pesde is a feature-rich package manager for Luau")]

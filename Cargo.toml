@@ -10,7 +10,7 @@ repository = "https://github.com/daimond113/pesde"
 include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [features]
-bin = ["clap", "directories", "ignore", "pretty_env_logger", "reqwest/json", "reqwest/multipart", "indicatif", "indicatif-log-bridge", "inquire", "nondestructive", "colored", "anyhow", "keyring", "open"]
+bin = ["clap", "directories", "pretty_env_logger", "reqwest/json", "reqwest/multipart", "indicatif", "indicatif-log-bridge", "inquire", "nondestructive", "colored", "anyhow", "keyring", "open", "gix/worktree-mutation"]
 wally-compat = ["toml", "zip"]
 roblox = []
 lune = []
@@ -21,11 +21,14 @@ name = "pesde"
 path = "src/main.rs"
 required-features = ["bin"]
 
+[lints.clippy]
+uninlined_format_args = "warn"
+
 [dependencies]
 serde = { version = "1.0.204", features = ["derive"] }
 serde_yaml = "0.9.34"
 serde_json = "1.0.120"
-serde_with = "3.8.3"
+serde_with = "3.9.0"
 gix = { version = "0.63.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials", "serde"] }
 semver = { version = "1.0.23", features = ["serde"] }
 reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls", "blocking"] }
@@ -34,26 +37,26 @@ flate2 = "1.0.30"
 pathdiff = "0.2.1"
 relative-path = { version = "1.9.3", features = ["serde"] }
 log = "0.4.22"
-thiserror = "1.0.62"
+thiserror = "1.0.63"
 threadpool = "1.8.1"
 full_moon = { version = "1.0.0-rc.5", features = ["luau"] }
 url = { version = "2.5.2", features = ["serde"] }
 cfg-if = "1.0.0"
 once_cell = "1.19.0"
-secrecy = "0.8.0"
+# TODO: reevaluate whether to use this
+# secrecy = "0.8.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 
-toml = { version = "0.8.14", optional = true }
-zip = { version = "2.1.3", optional = true }
+toml = { version = "0.8.15", optional = true }
+zip = { version = "2.1.5", optional = true }
 
 anyhow = { version = "1.0.86", optional = true }
 open = { version = "5.3.0", optional = true }
-keyring = { version = "3.0.1", features = ["crypto-rust", "windows-native", "apple-native", "linux-native"], optional = true }
+keyring = { version = "3.0.3", features = ["crypto-rust", "windows-native", "apple-native", "linux-native"], optional = true }
 colored = { version = "2.1.0", optional = true }
 nondestructive = { version = "0.0.25", optional = true }
 clap = { version = "4.5.9", features = ["derive"], optional = true }
 directories = { version = "5.0.1", optional = true }
-ignore = { version = "0.4.22", optional = true }
 pretty_env_logger = { version = "0.5.0", optional = true }
 indicatif = { version = "0.17.8", optional = true }
 indicatif-log-bridge = { version = "0.2.2", optional = true }

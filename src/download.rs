@@ -10,6 +10,7 @@ use crate::{
 };
 
 impl Project {
+    // TODO: use threadpool for concurrent downloads
     pub fn download_graph(
         &self,
         graph: &DependencyGraph,

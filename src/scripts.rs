@@ -1,21 +1,23 @@
-use crate::manifest::Manifest;
-use relative_path::RelativePathBuf;
 use std::{
     ffi::OsStr,
     io::{BufRead, BufReader},
+    path::Path,
     process::{Command, Stdio},
     thread::spawn,
 };
 
-pub fn execute_lune_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
+pub fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>>(
     script_name: Option<&str>,
-    script_path: &RelativePathBuf,
+    script_path: &Path,
     args: A,
-) -> Result<(), std::io::Error> {
+    cwd: P,
+    return_stdout: bool,
+) -> Result<Option<String>, std::io::Error> {
     match Command::new("lune")
         .arg("run")
-        .arg(script_path.as_str())
+        .arg(script_path.as_os_str())
         .args(args)
+        .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -27,7 +29,7 @@ pub fn execute_lune_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
 
             let script = match script_name {
                 Some(script) => script.to_string(),
-                None => script_path.to_string(),
+                None => script_path.to_string_lossy().to_string(),
             };
 
             let script_2 = script.to_string();
@@ -46,10 +48,17 @@ pub fn execute_lune_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
                 }
             });
 
+            let mut stdout_str = String::new();
+
             for line in stdout.lines() {
                 match line {
                     Ok(line) => {
                         log::info!("[{script_2}]: {line}");
+
+                        if return_stdout {
+                            stdout_str.push_str(&line);
+                            stdout_str.push('\n');
+                        }
                     }
                     Err(e) => {
                         log::error!("ERROR IN READING STDOUT OF {script_2}: {e}");
@@ -57,24 +66,18 @@ pub fn execute_lune_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
                     }
                 }
             }
+
+            if return_stdout {
+                Ok(Some(stdout_str))
+            } else {
+                Ok(None)
+            }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            log::warn!("Lune could not be found in PATH: {e}")
+            log::warn!("Lune could not be found in PATH: {e}");
+
+            Ok(None)
         }
-        Err(e) => return Err(e),
-    };
-
-    Ok(())
-}
-
-pub fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
-    manifest: &Manifest,
-    script: &str,
-    args: A,
-) -> Result<(), std::io::Error> {
-    if let Some(script_path) = manifest.scripts.get(script) {
-        return execute_lune_script(Some(script), script_path, args);
+        Err(e) => Err(e),
     }
-
-    Ok(())
 }

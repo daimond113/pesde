@@ -1,6 +1,11 @@
 use crate::{
-    linking::generator::get_file_types, lockfile::DownloadedGraph, manifest::Manifest,
-    names::PackageNames, source::PackageRef, Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
+    linking::generator::get_file_types,
+    lockfile::DownloadedGraph,
+    manifest::{Manifest, ScriptName, Target},
+    names::PackageNames,
+    scripts::execute_script,
+    source::PackageRef,
+    Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
 };
 use semver::Version;
 use std::{collections::BTreeMap, fs::create_dir_all};
@@ -34,7 +39,7 @@ impl Project {
                     version,
                 );
 
-                let lib_file = lib_file.to_path(container_folder);
+                let lib_file = lib_file.to_path(&container_folder);
 
                 let contents = match std::fs::read_to_string(&lib_file) {
                     Ok(contents) => contents,
@@ -60,6 +65,30 @@ impl Project {
                     .entry(name)
                     .or_default()
                     .insert(version, types);
+
+                #[cfg(feature = "roblox")]
+                if let Target::Roblox { build_files, .. } = &node.target {
+                    let script_name = ScriptName::RobloxSyncConfigGenerator.to_string();
+
+                    let Some(script_path) = manifest.scripts.get(&script_name) else {
+                        log::warn!("not having a `{script_name}` script in the manifest might cause issues with Roblox linking");
+                        continue;
+                    };
+
+                    execute_script(
+                        Some(&script_name),
+                        &script_path.to_path(self.path()),
+                        build_files,
+                        &container_folder,
+                        false,
+                    )
+                    .map_err(|e| {
+                        errors::LinkingError::GenerateRobloxSyncConfig(
+                            container_folder.display().to_string(),
+                            e,
+                        )
+                    })?;
+                }
             }
         }
 
@@ -173,5 +202,9 @@ pub mod errors {
 
         #[error("error generating require path")]
         GetRequirePath(#[from] crate::linking::generator::errors::GetRequirePathError),
+
+        #[cfg(feature = "roblox")]
+        #[error("error generating roblox sync config for {0}")]
+        GenerateRobloxSyncConfig(String, #[source] std::io::Error),
     }
 }

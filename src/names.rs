@@ -91,7 +91,7 @@ impl PackageNames {
 impl Display for PackageNames {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PackageNames::Pesde(name) => write!(f, "{}", name),
+            PackageNames::Pesde(name) => write!(f, "{name}"),
         }
     }
 }

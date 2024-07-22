@@ -27,7 +27,7 @@ impl DefaultIndexCommand {
             Some(index) => {
                 config.default_index = index.clone();
                 write_config(project.data_dir(), &config)?;
-                println!("default index set to: {}", index);
+                println!("default index set to: {index}");
             }
             None => {
                 println!("current default index: {}", config.default_index);

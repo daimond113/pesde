@@ -8,6 +8,7 @@ use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 
 pub mod download;
+mod git;
 pub mod linking;
 pub mod lockfile;
 pub mod manifest;
@@ -20,6 +21,7 @@ pub const MANIFEST_FILE_NAME: &str = "pesde.yaml";
 pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";
 pub const DEFAULT_INDEX_NAME: &str = "default";
 pub const PACKAGES_CONTAINER_NAME: &str = ".pesde";
+pub const MAX_ARCHIVE_SIZE: usize = 4 * 1024 * 1024;
 
 pub(crate) static REQWEST_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(|| {
     reqwest::blocking::Client::builder()
@@ -32,43 +34,10 @@ pub(crate) static REQWEST_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(||
         .expect("failed to create reqwest client")
 });
 
-#[derive(Debug, Clone)]
-pub struct GitAccount {
-    username: String,
-    password: secrecy::SecretString,
-}
-
-impl GitAccount {
-    pub fn new<S: Into<secrecy::SecretString>>(username: String, password: S) -> Self {
-        GitAccount {
-            username,
-            password: password.into(),
-        }
-    }
-
-    pub fn as_account(&self) -> gix::sec::identity::Account {
-        use secrecy::ExposeSecret;
-
-        gix::sec::identity::Account {
-            username: self.username.clone(),
-            password: self.password.expose_secret().to_string(),
-        }
-    }
-}
-
-impl From<gix::sec::identity::Account> for GitAccount {
-    fn from(account: gix::sec::identity::Account) -> Self {
-        GitAccount {
-            username: account.username,
-            password: account.password.into(),
-        }
-    }
-}
-
 #[derive(Debug, Default, Clone)]
 pub struct AuthConfig {
-    pesde_token: Option<secrecy::SecretString>,
-    git_credentials: Option<GitAccount>,
+    pesde_token: Option<String>,
+    git_credentials: Option<gix::sec::identity::Account>,
 }
 
 impl AuthConfig {
@@ -76,36 +45,25 @@ impl AuthConfig {
         AuthConfig::default()
     }
 
-    pub fn with_pesde_token<S: Into<secrecy::SecretString>>(mut self, token: Option<S>) -> Self {
-        self.pesde_token = token.map(Into::into);
+    pub fn pesde_token(&self) -> Option<&str> {
+        self.pesde_token.as_deref()
+    }
+
+    pub fn git_credentials(&self) -> Option<&gix::sec::identity::Account> {
+        self.git_credentials.as_ref()
+    }
+
+    pub fn with_pesde_token<S: AsRef<str>>(mut self, token: Option<S>) -> Self {
+        self.pesde_token = token.map(|s| s.as_ref().to_string());
         self
     }
 
-    pub fn with_git_credentials(mut self, git_credentials: Option<GitAccount>) -> Self {
+    pub fn with_git_credentials(
+        mut self,
+        git_credentials: Option<gix::sec::identity::Account>,
+    ) -> Self {
         self.git_credentials = git_credentials;
         self
-    }
-}
-
-pub(crate) fn authenticate_conn(
-    conn: &mut gix::remote::Connection<
-        '_,
-        '_,
-        Box<dyn gix::protocol::transport::client::Transport + Send>,
-    >,
-    auth_config: AuthConfig,
-) {
-    if let Some(iden) = auth_config.git_credentials {
-        conn.set_credentials(move |action| match action {
-            gix::credentials::helper::Action::Get(ctx) => {
-                Ok(Some(gix::credentials::protocol::Outcome {
-                    identity: iden.as_account(),
-                    next: gix::credentials::helper::NextAction::from(ctx),
-                }))
-            }
-            gix::credentials::helper::Action::Store(_) => Ok(None),
-            gix::credentials::helper::Action::Erase(_) => Ok(None),
-        });
     }
 }
 
@@ -135,6 +93,10 @@ impl Project {
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    pub fn auth_config(&self) -> &AuthConfig {
+        &self.auth_config
     }
 
     pub fn read_manifest(&self) -> Result<Vec<u8>, errors::ManifestReadError> {
