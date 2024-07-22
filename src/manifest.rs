@@ -33,6 +33,22 @@ impl Display for TargetKind {
     }
 }
 
+impl FromStr for TargetKind {
+    type Err = errors::TargetKindFromStr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            #[cfg(feature = "roblox")]
+            "roblox" => Ok(Self::Roblox),
+            #[cfg(feature = "lune")]
+            "lune" => Ok(Self::Lune),
+            #[cfg(feature = "luau")]
+            "luau" => Ok(Self::Luau),
+            t => Err(errors::TargetKindFromStr::Unknown(t.to_string())),
+        }
+    }
+}
+
 impl TargetKind {
     // self is the project's target, dependency is the target of the dependency
     pub fn is_compatible_with(&self, dependency: &Self) -> bool {
@@ -303,5 +319,12 @@ pub mod errors {
         #[cfg(feature = "roblox")]
         #[error("roblox target must have at least one build file")]
         NoBuildFiles,
+    }
+
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum TargetKindFromStr {
+        #[error("unknown target kind {0}")]
+        Unknown(String),
     }
 }
