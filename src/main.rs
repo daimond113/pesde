@@ -1,6 +1,8 @@
 use crate::cli::get_token;
 use clap::Parser;
 use colored::Colorize;
+use indicatif::MultiProgress;
+use indicatif_log_bridge::LogWrapper;
 use pesde::{AuthConfig, Project};
 use std::fs::create_dir_all;
 
@@ -20,7 +22,16 @@ struct Cli {
 }
 
 fn main() {
-    pretty_env_logger::init();
+    let multi = {
+        let logger = pretty_env_logger::formatted_builder()
+            .parse_env(pretty_env_logger::env_logger::Env::default().default_filter_or("info"))
+            .build();
+        let multi = MultiProgress::new();
+
+        LogWrapper::new(multi.clone(), logger).try_init().unwrap();
+
+        multi
+    };
 
     let project_dirs =
         directories::ProjectDirs::from("com", env!("CARGO_PKG_NAME"), env!("CARGO_BIN_NAME"))
@@ -32,11 +43,10 @@ fn main() {
     create_dir_all(data_dir).expect("failed to create data directory");
 
     if let Err(err) = get_token(data_dir).and_then(|token| {
-        cli.subcommand.run(Project::new(
-            cwd,
-            data_dir,
-            AuthConfig::new().with_pesde_token(token),
-        ))
+        cli.subcommand.run(
+            Project::new(cwd, data_dir, AuthConfig::new().with_pesde_token(token)),
+            multi,
+        )
     }) {
         eprintln!("{}: {err}\n", "error".red().bold());
 

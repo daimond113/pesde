@@ -1,6 +1,7 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::HashSet,
     fs::create_dir_all,
+    sync::{mpsc::Receiver, Arc, Mutex},
 };
 
 use crate::{
@@ -9,16 +10,26 @@ use crate::{
     Project, PACKAGES_CONTAINER_NAME,
 };
 
+type MultithreadedGraph = Arc<Mutex<DownloadedGraph>>;
+
+type MultithreadDownloadJob = (
+    Receiver<Result<(), errors::DownloadGraphError>>,
+    MultithreadedGraph,
+);
+
 impl Project {
-    // TODO: use threadpool for concurrent downloads
     pub fn download_graph(
         &self,
         graph: &DependencyGraph,
         refreshed_sources: &mut HashSet<PackageSources>,
-    ) -> Result<DownloadedGraph, errors::DownloadGraphError> {
+        reqwest: &reqwest::blocking::Client,
+        threads: usize,
+    ) -> Result<MultithreadDownloadJob, errors::DownloadGraphError> {
         let manifest = self.deser_manifest()?;
+        let downloaded_graph: MultithreadedGraph = Arc::new(Mutex::new(Default::default()));
 
-        let mut downloaded_graph: DownloadedGraph = BTreeMap::new();
+        let threadpool = threadpool::ThreadPool::new(threads);
+        let (tx, rx) = std::sync::mpsc::channel();
 
         for (name, versions) in graph {
             for (version_id, node) in versions {
@@ -43,19 +54,41 @@ impl Project {
 
                 create_dir_all(&container_folder)?;
 
-                let target = source.download(&node.pkg_ref, &container_folder, self)?;
+                let tx = tx.clone();
 
-                downloaded_graph.entry(name.clone()).or_default().insert(
-                    version_id.clone(),
-                    DownloadedDependencyGraphNode {
-                        node: node.clone(),
-                        target,
-                    },
-                );
+                let name = name.clone();
+                let version_id = version_id.clone();
+                let node = node.clone();
+
+                let project = Arc::new(self.clone());
+                let reqwest = reqwest.clone();
+                let downloaded_graph = downloaded_graph.clone();
+
+                threadpool.execute(move || {
+                    let project = project.clone();
+
+                    let target =
+                        match source.download(&node.pkg_ref, &container_folder, &project, &reqwest)
+                        {
+                            Ok(target) => target,
+                            Err(e) => {
+                                tx.send(Err(e.into())).unwrap();
+                                return;
+                            }
+                        };
+
+                    let mut downloaded_graph = downloaded_graph.lock().unwrap();
+                    downloaded_graph
+                        .entry(name)
+                        .or_default()
+                        .insert(version_id, DownloadedDependencyGraphNode { node, target });
+
+                    tx.send(Ok(())).unwrap();
+                });
             }
         }
 
-        Ok(downloaded_graph)
+        Ok((rx, downloaded_graph))
     }
 }
 

@@ -134,6 +134,7 @@ pub trait PackageSource: Debug {
         pkg_ref: &Self::Ref,
         destination: &Path,
         project: &Project,
+        reqwest: &reqwest::blocking::Client,
     ) -> Result<Target, Self::DownloadError>;
 }
 impl PackageSource for PackageSources {
@@ -178,10 +179,11 @@ impl PackageSource for PackageSources {
         pkg_ref: &Self::Ref,
         destination: &Path,
         project: &Project,
+        reqwest: &reqwest::blocking::Client,
     ) -> Result<Target, Self::DownloadError> {
         match (self, pkg_ref) {
             (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => source
-                .download(pkg_ref, destination, project)
+                .download(pkg_ref, destination, project, reqwest)
                 .map_err(Into::into),
 
             _ => Err(errors::DownloadError::Mismatch),

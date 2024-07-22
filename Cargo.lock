@@ -2644,7 +2644,6 @@ dependencies = [
  "inquire",
  "keyring",
  "log",
- "once_cell",
  "open",
  "pathdiff",
  "pretty_env_logger",

@@ -59,6 +59,13 @@ impl PublishCommand {
             );
         }
 
+        if manifest.includes.remove(".git") {
+            println!(
+                "{}: .git was in includes, removing it",
+                "warn".yellow().bold()
+            );
+        }
+
         for (name, path) in [("lib path", lib_path), ("bin path", bin_path)] {
             let Some(export_path) = path else { continue };
 

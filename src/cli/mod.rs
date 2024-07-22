@@ -1,6 +1,7 @@
 use crate::util::authenticate_conn;
 use anyhow::Context;
 use gix::remote::Direction;
+use indicatif::MultiProgress;
 use keyring::Entry;
 use pesde::Project;
 use serde::{Deserialize, Serialize};
@@ -306,13 +307,13 @@ pub enum Subcommand {
 }
 
 impl Subcommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
+    pub fn run(self, project: Project, multi: MultiProgress) -> anyhow::Result<()> {
         match self {
             Subcommand::Auth(auth) => auth.run(project),
             Subcommand::Config(config) => config.run(project),
             Subcommand::Init(init) => init.run(project),
             Subcommand::Run(run) => run.run(project),
-            Subcommand::Install(install) => install.run(project),
+            Subcommand::Install(install) => install.run(project, multi),
             Subcommand::Publish(publish) => publish.run(project),
             Subcommand::SelfInstall(self_install) => self_install.run(project),
         }

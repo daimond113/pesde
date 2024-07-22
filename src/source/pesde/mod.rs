@@ -6,13 +6,12 @@ use serde::{Deserialize, Serialize};
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
-use crate::manifest::TargetKind;
 use crate::{
-    manifest::{DependencyType, Target},
+    manifest::{DependencyType, Target, TargetKind},
     names::{PackageName, PackageNames},
     source::{hash, DependencySpecifiers, PackageSource, ResolveResult, VersionId},
     util::authenticate_conn,
-    Project, REQWEST_CLIENT,
+    Project,
 };
 
 pub mod pkg_ref;
@@ -345,6 +344,7 @@ impl PackageSource for PesdePackageSource {
         pkg_ref: &Self::Ref,
         destination: &Path,
         project: &Project,
+        reqwest: &reqwest::blocking::Client,
     ) -> Result<Target, Self::DownloadError> {
         let config = self.config(project)?;
 
@@ -355,7 +355,7 @@ impl PackageSource for PesdePackageSource {
             .replace("{PACKAGE_NAME}", name)
             .replace("{PACKAGE_VERSION}", &pkg_ref.version.to_string());
 
-        let mut response = REQWEST_CLIENT.get(url);
+        let mut response = reqwest.get(url);
 
         if let Some(token) = &project.auth_config.pesde_token {
             response = response.header("Authorization", format!("Bearer {token}"));

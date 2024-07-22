@@ -4,7 +4,6 @@
 compile_error!("at least one of the features `roblox`, `lune`, or `luau` must be enabled");
 
 use crate::lockfile::Lockfile;
-use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 
 pub mod download;
@@ -22,17 +21,6 @@ pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";
 pub const DEFAULT_INDEX_NAME: &str = "default";
 pub const PACKAGES_CONTAINER_NAME: &str = ".pesde";
 pub const MAX_ARCHIVE_SIZE: usize = 4 * 1024 * 1024;
-
-pub(crate) static REQWEST_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(|| {
-    reqwest::blocking::Client::builder()
-        .user_agent(concat!(
-            env!("CARGO_PKG_NAME"),
-            "/",
-            env!("CARGO_PKG_VERSION")
-        ))
-        .build()
-        .expect("failed to create reqwest client")
-});
 
 #[derive(Debug, Default, Clone)]
 pub struct AuthConfig {
@@ -67,7 +55,7 @@ impl AuthConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Project {
     path: PathBuf,
     data_dir: PathBuf,
