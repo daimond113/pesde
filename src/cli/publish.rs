@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use pesde::{manifest::Target, Project, MANIFEST_FILE_NAME, MAX_ARCHIVE_SIZE};
-use std::{io::Seek, path::Component};
+use std::path::Component;
 
 #[derive(Debug, Args)]
 pub struct PublishCommand {
@@ -239,19 +239,14 @@ impl PublishCommand {
             .data_dir()
             .join(format!("temp_manifest_{}", chrono::Utc::now().timestamp()));
 
-        let mut temp_manifest = std::fs::File::options()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&temp_manifest_path)
-            .context("failed to create temp manifest file")?;
+        std::fs::write(
+            &temp_manifest_path,
+            toml::to_string(&manifest).context("failed to serialize manifest")?,
+        )
+        .context("failed to write temp manifest file")?;
 
-        serde_yaml::to_writer(&mut temp_manifest, &manifest)
-            .context("failed to write temp manifest file")?;
-        temp_manifest
-            .rewind()
-            .context("failed to rewind temp manifest file")?;
+        let mut temp_manifest = std::fs::File::open(&temp_manifest_path)
+            .context("failed to open temp manifest file")?;
 
         archive.append_file(MANIFEST_FILE_NAME, &mut temp_manifest)?;
 

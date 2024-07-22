@@ -35,11 +35,9 @@ impl InitCommand {
                 Ok(())
             }
             Err(ManifestReadError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-                let mut manifest = nondestructive::yaml::from_slice(b"").unwrap();
-                let mut mapping = manifest.as_mut().make_mapping();
+                let mut manifest = toml_edit::DocumentMut::new();
 
-                mapping.insert_str(
-                    "name",
+                manifest["name"] = toml_edit::value(
                     inquire::Text::new("What is the name of the project?")
                         .with_validator(|name: &str| {
                             Ok(match PackageName::from_str(name) {
@@ -50,7 +48,7 @@ impl InitCommand {
                         .prompt()
                         .unwrap(),
                 );
-                mapping.insert_str("version", "0.1.0");
+                manifest["version"] = toml_edit::value("0.1.0");
 
                 let description = inquire::Text::new(
                     "What is the description of the project? (leave empty for none)",
@@ -59,7 +57,7 @@ impl InitCommand {
                 .unwrap();
 
                 if !description.is_empty() {
-                    mapping.insert_str("description", description);
+                    manifest["description"] = toml_edit::value(description);
                 }
 
                 let authors = inquire::Text::new(
@@ -72,16 +70,14 @@ impl InitCommand {
                     .split(',')
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
-                    .collect::<Vec<_>>();
+                    .map(|s| s.into())
+                    .collect::<Vec<toml_edit::Value>>();
 
                 if !authors.is_empty() {
-                    let mut authors_field = mapping
-                        .insert("authors", nondestructive::yaml::Separator::Auto)
-                        .make_sequence();
+                    let mut authors_arr = toml_edit::Array::new();
+                    authors_arr.extend(authors);
 
-                    for author in authors {
-                        authors_field.push_string(author);
-                    }
+                    manifest["authors"] = toml_edit::value(authors_arr);
                 }
 
                 let repo = inquire::Text::new(
@@ -100,7 +96,7 @@ impl InitCommand {
                 .prompt()
                 .unwrap();
                 if !repo.is_empty() {
-                    mapping.insert_str("repository", repo);
+                    manifest["repository"] = toml_edit::value(repo);
                 }
 
                 let license = inquire::Text::new(
@@ -110,7 +106,7 @@ impl InitCommand {
                 .prompt()
                 .unwrap();
                 if !license.is_empty() {
-                    mapping.insert_str("license", license);
+                    manifest["license"] = toml_edit::value(license);
                 }
 
                 let target_env = inquire::Select::new(
@@ -127,10 +123,8 @@ impl InitCommand {
                 .prompt()
                 .unwrap();
 
-                let mut target = mapping
-                    .insert("target", nondestructive::yaml::Separator::Auto)
-                    .make_mapping();
-                target.insert_str("environment", target_env);
+                let mut target = toml_edit::Table::new();
+                target["environment"] = toml_edit::value(target_env);
 
                 if target_env == "roblox"
                     || inquire::Confirm::new(&format!(
@@ -152,25 +146,22 @@ impl InitCommand {
                     )
                     .context("failed to write script file")?;
 
-                    mapping
-                        .insert("scripts", nondestructive::yaml::Separator::Auto)
-                        .make_mapping()
-                        .insert_str(
-                            ScriptName::RobloxSyncConfigGenerator.to_string(),
-                            format!(
-                                concat!(concat!(".", env!("CARGO_PKG_NAME")), "/{}.luau"),
-                                ScriptName::RobloxSyncConfigGenerator
-                            ),
-                        );
+                    let mut scripts = manifest
+                        .entry("scripts")
+                        .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+                        .to_owned()
+                        .into_table()
+                        .unwrap();
+                    scripts[&ScriptName::RobloxSyncConfigGenerator.to_string()] =
+                        toml_edit::value(format!(
+                            concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
+                            ScriptName::RobloxSyncConfigGenerator
+                        ));
                 }
 
-                let mut indices = mapping
-                    .insert("indices", nondestructive::yaml::Separator::Auto)
-                    .make_mapping();
-                indices.insert_str(
-                    DEFAULT_INDEX_NAME,
-                    read_config(project.data_dir())?.default_index.as_str(),
-                );
+                let mut indices = toml_edit::Table::new();
+                indices[DEFAULT_INDEX_NAME] =
+                    toml_edit::value(read_config(project.data_dir())?.default_index.as_str());
 
                 project.write_manifest(manifest.to_string())?;
 

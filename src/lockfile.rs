@@ -49,8 +49,13 @@ pub fn insert_node(
     graph: &mut DependencyGraph,
     name: PackageNames,
     version: Version,
-    node: DependencyGraphNode,
+    mut node: DependencyGraphNode,
+    is_top_level: bool,
 ) {
+    if !is_top_level {
+        node.direct.take();
+    }
+
     match graph
         .entry(name.clone())
         .or_default()
@@ -89,7 +94,9 @@ pub type DownloadedGraph = Graph<DownloadedDependencyGraphNode>;
 pub struct Lockfile {
     pub name: PackageName,
     pub version: Version,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
 
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub graph: DownloadedGraph,
 }

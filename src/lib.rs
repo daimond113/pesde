@@ -17,7 +17,7 @@ pub mod resolver;
 pub mod scripts;
 pub mod source;
 
-pub const MANIFEST_FILE_NAME: &str = "pesde.yaml";
+pub const MANIFEST_FILE_NAME: &str = "pesde.toml";
 pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";
 pub const DEFAULT_INDEX_NAME: &str = "default";
 pub const PACKAGES_CONTAINER_NAME: &str = ".pesde";
@@ -105,8 +105,8 @@ impl Project {
     }
 
     pub fn deser_manifest(&self) -> Result<manifest::Manifest, errors::ManifestReadError> {
-        let bytes = std::fs::read(self.path.join(MANIFEST_FILE_NAME))?;
-        Ok(serde_yaml::from_slice(&bytes)?)
+        let string = std::fs::read_to_string(self.path.join(MANIFEST_FILE_NAME))?;
+        Ok(toml::from_str(&string)?)
     }
 
     pub fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
@@ -114,13 +114,13 @@ impl Project {
     }
 
     pub fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
-        let bytes = std::fs::read(self.path.join(LOCKFILE_FILE_NAME))?;
-        Ok(serde_yaml::from_slice(&bytes)?)
+        let string = std::fs::read_to_string(self.path.join(LOCKFILE_FILE_NAME))?;
+        Ok(toml::from_str(&string)?)
     }
 
     pub fn write_lockfile(&self, lockfile: Lockfile) -> Result<(), errors::LockfileWriteError> {
-        let writer = std::fs::File::create(self.path.join(LOCKFILE_FILE_NAME))?;
-        serde_yaml::to_writer(writer, &lockfile)?;
+        let string = toml::to_string(&lockfile)?;
+        std::fs::write(self.path.join(LOCKFILE_FILE_NAME), string)?;
         Ok(())
     }
 }
@@ -135,26 +135,26 @@ pub mod errors {
         Io(#[from] std::io::Error),
 
         #[error("error deserializing manifest file")]
-        Serde(#[from] serde_yaml::Error),
+        Serde(#[from] toml::de::Error),
     }
 
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum LockfileReadError {
-        #[error("io error reading lockfile file")]
+        #[error("io error reading lockfile")]
         Io(#[from] std::io::Error),
 
-        #[error("error deserializing lockfile file")]
-        Serde(#[from] serde_yaml::Error),
+        #[error("error deserializing lockfile")]
+        Serde(#[from] toml::de::Error),
     }
 
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum LockfileWriteError {
-        #[error("io error writing lockfile file")]
+        #[error("io error writing lockfile")]
         Io(#[from] std::io::Error),
 
-        #[error("error serializing lockfile file")]
-        Serde(#[from] serde_yaml::Error),
+        #[error("error serializing lockfile")]
+        Serde(#[from] toml::ser::Error),
     }
 }

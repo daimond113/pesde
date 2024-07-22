@@ -70,6 +70,7 @@ impl PackageName {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(untagged)]
 pub enum PackageNames {
     Pesde(PackageName),
 }

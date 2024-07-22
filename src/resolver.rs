@@ -45,7 +45,13 @@ impl Project {
                     }
 
                     log::debug!("resolved {}@{} from old dependency graph", name, version);
-                    insert_node(&mut graph, name.clone(), version.clone(), node.clone());
+                    insert_node(
+                        &mut graph,
+                        name.clone(),
+                        version.clone(),
+                        node.clone(),
+                        true,
+                    );
 
                     let mut queue = node
                         .dependencies
@@ -71,6 +77,7 @@ impl Project {
                                 dep_name.clone(),
                                 dep_version.clone(),
                                 dep_node.clone(),
+                                false,
                             );
 
                             dep_node
@@ -209,6 +216,7 @@ impl Project {
                 name.clone(),
                 target_version.clone(),
                 node.clone(),
+                depth == 0,
             );
 
             log::debug!(

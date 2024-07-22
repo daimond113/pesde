@@ -18,6 +18,7 @@ mod self_install;
 pub struct CliConfig {
     pub default_index: url::Url,
     pub scripts_repo: url::Url,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
 }
 
@@ -34,7 +35,7 @@ impl Default for CliConfig {
 }
 
 pub fn read_config(data_dir: &Path) -> anyhow::Result<CliConfig> {
-    let config_string = match std::fs::read_to_string(data_dir.join("config.yaml")) {
+    let config_string = match std::fs::read_to_string(data_dir.join("config.toml")) {
         Ok(config_string) => config_string,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(CliConfig::default());
@@ -42,14 +43,14 @@ pub fn read_config(data_dir: &Path) -> anyhow::Result<CliConfig> {
         Err(e) => return Err(e).context("failed to read config file"),
     };
 
-    let config = serde_yaml::from_str(&config_string).context("failed to parse config file")?;
+    let config = toml::from_str(&config_string).context("failed to parse config file")?;
 
     Ok(config)
 }
 
 pub fn write_config(data_dir: &Path, config: &CliConfig) -> anyhow::Result<()> {
-    let config_string = serde_yaml::to_string(config).context("failed to serialize config")?;
-    std::fs::write(data_dir.join("config.yaml"), config_string)
+    let config_string = toml::to_string(config).context("failed to serialize config")?;
+    std::fs::write(data_dir.join("config.toml"), config_string)
         .context("failed to write config file")?;
 
     Ok(())
@@ -258,7 +259,7 @@ impl IsUpToDate for Project {
             })
             .collect::<HashSet<_>>();
 
-        Ok(!manifest
+        Ok(manifest
             .all_dependencies()
             .context("failed to get all dependencies")?
             .iter()

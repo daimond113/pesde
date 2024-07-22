@@ -23,7 +23,7 @@ pub struct PesdePackageSource {
     repo_url: gix::Url,
 }
 
-const OWNERS_FILE: &str = "owners.yaml";
+const SCOPE_INFO_FILE: &str = "scope.toml";
 
 impl PesdePackageSource {
     pub fn new(repo_url: gix::Url) -> Self {
@@ -101,7 +101,7 @@ impl PesdePackageSource {
         &self,
         file_path: I,
         project: &Project,
-    ) -> Result<Option<Vec<u8>>, Box<errors::ReadFile>> {
+    ) -> Result<Option<String>, Box<errors::ReadFile>> {
         let path = self.path(project);
 
         let repo = match gix::open(&path) {
@@ -134,15 +134,19 @@ impl PesdePackageSource {
         };
 
         let blob = object.into_blob();
-        Ok(Some(blob.data.clone()))
+        let string = String::from_utf8(blob.data.clone())
+            .map_err(|e| Box::new(errors::ReadFile::Utf8(file_path_str, e)))?;
+
+        Ok(Some(string))
     }
 
     pub fn config(&self, project: &Project) -> Result<IndexConfig, Box<errors::ConfigError>> {
         let file = self
-            .read_file(["config.yaml"], project)
+            .read_file(["config.toml"], project)
             .map_err(|e| Box::new(e.into()))?;
-        let bytes = match file {
-            Some(bytes) => bytes,
+
+        let string = match file {
+            Some(s) => s,
             None => {
                 return Err(Box::new(errors::ConfigError::Missing(
                     self.repo_url.clone(),
@@ -150,7 +154,7 @@ impl PesdePackageSource {
             }
         };
 
-        let config: IndexConfig = serde_yaml::from_slice(&bytes).map_err(|e| Box::new(e.into()))?;
+        let config: IndexConfig = toml::from_str(&string).map_err(|e| Box::new(e.into()))?;
 
         Ok(config)
     }
@@ -208,12 +212,16 @@ impl PesdePackageSource {
 
                 let package_name = inner_entry.filename().to_string();
 
-                if package_name == OWNERS_FILE {
+                if package_name == SCOPE_INFO_FILE {
                     continue;
                 }
 
                 let blob = object.into_blob();
-                let file: IndexFileEntry = match serde_yaml::from_slice(&blob.data) {
+                let string = String::from_utf8(blob.data.clone()).map_err(|e| {
+                    Box::new(errors::AllPackagesError::Utf8(package_name.to_string(), e))
+                })?;
+
+                let file: IndexFile = match toml::from_str(&string) {
                     Ok(file) => file,
                     Err(e) => {
                         return Err(Box::new(errors::AllPackagesError::Deserialize(
@@ -227,10 +235,7 @@ impl PesdePackageSource {
                 // if this panics, it's an issue with the index.
                 let name = format!("{package_scope}/{package_name}").parse().unwrap();
 
-                packages
-                    .entry(name)
-                    .or_default()
-                    .insert(file.version.clone(), file);
+                packages.insert(name, file);
             }
         }
 
@@ -297,26 +302,26 @@ impl PackageSource for PesdePackageSource {
         project: &Project,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (scope, name) = specifier.name.as_str();
-        let bytes = match self.read_file([scope, name], project) {
-            Ok(Some(bytes)) => bytes,
+        let string = match self.read_file([scope, name], project) {
+            Ok(Some(s)) => s,
             Ok(None) => return Err(Self::ResolveError::NotFound(specifier.name.to_string())),
             Err(e) => return Err(Self::ResolveError::Read(specifier.name.to_string(), e)),
         };
 
-        let entries: Vec<IndexFileEntry> = serde_yaml::from_slice(&bytes)
+        let entries: IndexFile = toml::from_str(&string)
             .map_err(|e| Self::ResolveError::Parse(specifier.name.to_string(), e))?;
 
         Ok((
             PackageNames::Pesde(specifier.name.clone()),
             entries
                 .into_iter()
-                .filter(|entry| specifier.version.matches(&entry.version))
-                .map(|entry| {
+                .filter(|(version, _)| specifier.version.matches(version))
+                .map(|(version, entry)| {
                     (
-                        entry.version.clone(),
+                        version.clone(),
                         PesdePackageRef {
                             name: specifier.name.clone(),
-                            version: entry.version,
+                            version,
                             index_url: self.repo_url.clone(),
                             dependencies: entry.dependencies,
                             target: entry.target,
@@ -388,9 +393,8 @@ impl IndexConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IndexFileEntry {
-    pub version: Version,
     pub target: Target,
     #[serde(default = "chrono::Utc::now")]
     pub published_at: chrono::DateTime<chrono::Utc>,
@@ -400,20 +404,6 @@ pub struct IndexFileEntry {
 
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
-}
-
-impl Ord for IndexFileEntry {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.target
-            .cmp(&other.target)
-            .then_with(|| self.version.cmp(&other.version))
-    }
-}
-
-impl PartialOrd for IndexFileEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
 }
 
 pub type IndexFile = BTreeMap<Version, IndexFileEntry>;
@@ -499,6 +489,9 @@ pub mod errors {
 
         #[error("error looking up entry {0} in tree")]
         Lookup(String, #[source] gix::object::find::existing::Error),
+
+        #[error("error parsing file for {0} as utf8")]
+        Utf8(String, #[source] std::string::FromUtf8Error),
     }
 
     #[derive(Debug, Error)]
@@ -514,7 +507,10 @@ pub mod errors {
         Read(String, #[source] Box<ReadFile>),
 
         #[error("error parsing file for {0}")]
-        Parse(String, #[source] serde_yaml::Error),
+        Parse(String, #[source] toml::de::Error),
+
+        #[error("error parsing file for {0} to utf8")]
+        Utf8(String, #[source] std::string::FromUtf8Error),
     }
 
     #[derive(Debug, Error)]
@@ -524,7 +520,7 @@ pub mod errors {
         ReadFile(#[from] Box<ReadFile>),
 
         #[error("error parsing config file")]
-        Parse(#[from] serde_yaml::Error),
+        Parse(#[from] toml::de::Error),
 
         #[error("missing config file for index at {0}")]
         Missing(gix::Url),
@@ -546,7 +542,10 @@ pub mod errors {
         Convert(PathBuf, #[source] gix::object::find::existing::Error),
 
         #[error("error deserializing file {0} in repository at {1}")]
-        Deserialize(String, PathBuf, #[source] serde_yaml::Error),
+        Deserialize(String, PathBuf, #[source] toml::de::Error),
+
+        #[error("error parsing file for {0} as utf8")]
+        Utf8(String, #[source] std::string::FromUtf8Error),
     }
 
     #[derive(Debug, Error)]

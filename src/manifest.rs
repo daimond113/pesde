@@ -229,7 +229,7 @@ pub struct Manifest {
     #[serde(default)]
     pub indices: BTreeMap<String, url::Url>,
     #[cfg(feature = "wally-compat")]
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub wally_indices: BTreeMap<String, url::Url>,
     #[serde(default, skip_serializing)]
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,

@@ -1,22 +1,16 @@
 use crate::{
     linking::generator::get_file_types,
     lockfile::DownloadedGraph,
-    manifest::{Manifest, ScriptName, Target},
+    manifest::{ScriptName, Target},
     names::PackageNames,
     scripts::execute_script,
     source::PackageRef,
-    Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
+    Project, PACKAGES_CONTAINER_NAME,
 };
 use semver::Version;
 use std::{collections::BTreeMap, fs::create_dir_all};
 
 pub mod generator;
-
-fn read_manifest(path: &std::path::Path) -> Result<Manifest, errors::LinkingError> {
-    let manifest = std::fs::read_to_string(path.join(MANIFEST_FILE_NAME))?;
-    serde_yaml::from_str(&manifest)
-        .map_err(|e| errors::LinkingError::DependencyManifest(path.display().to_string(), e))
-}
 
 impl Project {
     pub fn link_dependencies(&self, graph: &DownloadedGraph) -> Result<(), errors::LinkingError> {
@@ -106,8 +100,6 @@ impl Project {
                     node.node
                         .container_folder(&packages_container_folder, name, version);
 
-                let node_manifest = read_manifest(&container_folder)?;
-
                 if let Some((alias, types)) = package_types
                     .get(name)
                     .and_then(|v| v.get(version))
@@ -115,7 +107,7 @@ impl Project {
                 {
                     let module = generator::generate_linking_module(
                         &generator::get_require_path(
-                            &node_manifest.target,
+                            &node.target,
                             &base_folder,
                             &container_folder,
                             node.node.pkg_ref.use_new_structure(),
@@ -145,8 +137,6 @@ impl Project {
                         dependency_version,
                     );
 
-                    let dependency_manifest = read_manifest(&dependency_container_folder)?;
-
                     let linker_folder = container_folder
                         .join(dependency_node.node.base_folder(node.target.kind(), false));
                     create_dir_all(&linker_folder)?;
@@ -156,7 +146,7 @@ impl Project {
 
                     let module = generator::generate_linking_module(
                         &generator::get_require_path(
-                            &dependency_manifest.target,
+                            &dependency_node.target,
                             &linker_file,
                             &dependency_container_folder,
                             node.node.pkg_ref.use_new_structure(),
@@ -184,9 +174,6 @@ pub mod errors {
     pub enum LinkingError {
         #[error("error deserializing project manifest")]
         Manifest(#[from] crate::errors::ManifestReadError),
-
-        #[error("error deserializing manifest at {0}")]
-        DependencyManifest(String, #[source] serde_yaml::Error),
 
         #[error("error interacting with filesystem")]
         Io(#[from] std::io::Error),
