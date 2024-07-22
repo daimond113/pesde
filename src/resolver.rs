@@ -4,14 +4,13 @@ use crate::{
     names::PackageNames,
     source::{
         pesde::PesdePackageSource, DependencySpecifiers, PackageRef, PackageSource, PackageSources,
+        VersionId,
     },
     Project, DEFAULT_INDEX_NAME,
 };
-use semver::Version;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 impl Project {
-    // TODO: account for targets using the is_compatible_with method
     pub fn dependency_graph(
         &self,
         previous_graph: Option<&DependencyGraph>,
@@ -106,14 +105,17 @@ impl Project {
                     alias.to_string(),
                     spec,
                     ty,
-                    None::<(PackageNames, Version)>,
+                    None::<(PackageNames, VersionId)>,
                     vec![alias.to_string()],
                     false,
+                    manifest.target.kind(),
                 )
             })
             .collect::<VecDeque<_>>();
 
-        while let Some((alias, specifier, ty, dependant, path, overridden)) = queue.pop_front() {
+        while let Some((alias, specifier, ty, dependant, path, overridden, target)) =
+            queue.pop_front()
+        {
             let depth = path.len() - 1;
 
             log::debug!(
@@ -155,10 +157,10 @@ impl Project {
             }
 
             let (name, resolved) = source
-                .resolve(&specifier, self)
+                .resolve(&specifier, self, target)
                 .map_err(|e| Box::new(e.into()))?;
 
-            let Some(target_version) = graph
+            let Some(target_version_id) = graph
                 .get(&name)
                 .and_then(|versions| {
                     versions
@@ -170,11 +172,9 @@ impl Project {
                 .or_else(|| resolved.last_key_value().map(|(ver, _)| ver))
                 .cloned()
             else {
-                log::warn!(
-                    "{}could not find any version for {specifier} ({alias})",
-                    "\t".repeat(depth)
-                );
-                continue;
+                return Err(Box::new(errors::DependencyGraphError::NoMatchingVersion(
+                    format!("{specifier} ({})", manifest.target.kind()),
+                )));
             };
 
             let ty = if depth == 0 && ty == DependencyType::Peer {
@@ -183,25 +183,25 @@ impl Project {
                 ty
             };
 
-            if let Some((dependant_name, dependant_version)) = dependant {
+            if let Some((dependant_name, dependant_version_id)) = dependant {
                 graph
                     .get_mut(&dependant_name)
-                    .and_then(|versions| versions.get_mut(&dependant_version))
+                    .and_then(|versions| versions.get_mut(&dependant_version_id))
                     .and_then(|node| {
                         node.dependencies
-                            .insert(name.clone(), (target_version.clone(), alias.clone()))
+                            .insert(name.clone(), (target_version_id.clone(), alias.clone()))
                     });
             }
 
             if let Some(already_resolved) = graph
                 .get_mut(&name)
-                .and_then(|versions| versions.get_mut(&target_version))
+                .and_then(|versions| versions.get_mut(&target_version_id))
             {
                 log::debug!(
                     "{}{}@{} already resolved",
                     "\t".repeat(depth),
                     name,
-                    target_version
+                    target_version_id
                 );
 
                 if already_resolved.ty == DependencyType::Peer && ty == DependencyType::Standard {
@@ -211,7 +211,7 @@ impl Project {
                 continue;
             }
 
-            let pkg_ref = &resolved[&target_version];
+            let pkg_ref = &resolved[&target_version_id];
             let node = DependencyGraphNode {
                 direct: if depth == 0 {
                     Some((alias.clone(), specifier.clone()))
@@ -225,7 +225,7 @@ impl Project {
             insert_node(
                 &mut graph,
                 name.clone(),
-                target_version.clone(),
+                target_version_id.clone(),
                 node.clone(),
                 depth == 0,
             );
@@ -234,7 +234,7 @@ impl Project {
                 "{}resolved {}@{} from new dependency graph",
                 "\t".repeat(depth),
                 name,
-                target_version
+                target_version_id
             );
 
             for (dependency_alias, (dependency_spec, dependency_ty)) in
@@ -262,20 +262,21 @@ impl Project {
                     dependency_alias,
                     overridden.cloned().unwrap_or(dependency_spec),
                     dependency_ty,
-                    Some((name.clone(), target_version.clone())),
+                    Some((name.clone(), target_version_id.clone())),
                     path.iter()
                         .cloned()
                         .chain(std::iter::once(alias.to_string()))
                         .collect(),
                     overridden.is_some(),
+                    pkg_ref.target_kind(),
                 ));
             }
         }
 
         for (name, versions) in &graph {
-            for (version, node) in versions {
+            for (version_id, node) in versions {
                 if node.ty == DependencyType::Peer {
-                    log::warn!("peer dependency {name}@{version} was not resolved");
+                    log::warn!("peer dependency {name}@{version_id} was not resolved");
                 }
             }
         }
@@ -310,5 +311,8 @@ pub mod errors {
 
         #[error("error resolving package")]
         Resolve(#[from] crate::source::errors::ResolveError),
+
+        #[error("no matching version found for {0}")]
+        NoMatchingVersion(String),
     }
 }

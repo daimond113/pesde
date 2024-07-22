@@ -245,9 +245,16 @@ impl IsUpToDate for Project {
             Err(e) => return Err(e.into()),
         };
 
+        if manifest.overrides != lockfile.overrides {
+            return Ok(false);
+        }
+
+        if manifest.target.kind() != lockfile.target {
+            return Ok(false);
+        }
+
         if !strict {
-            // the resolver will use the old lockfile and update it itself. it can't handle overrides only
-            return Ok(manifest.overrides == lockfile.overrides);
+            return Ok(true);
         }
 
         if manifest.name != lockfile.name || manifest.version != lockfile.version {

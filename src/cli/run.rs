@@ -30,7 +30,7 @@ impl RunCommand {
 
             let pkg_name = PackageNames::Pesde(pkg_name);
 
-            for (version, node) in graph.get(&pkg_name).context("package not found in graph")? {
+            for (version_id, node) in graph.get(&pkg_name).context("package not found in graph")? {
                 if node.node.direct.is_none() {
                     continue;
                 }
@@ -48,7 +48,7 @@ impl RunCommand {
                         .join(base_folder)
                         .join(PACKAGES_CONTAINER_NAME),
                     &pkg_name,
-                    version,
+                    version_id.version(),
                 );
 
                 let path = bin_path.to_path(&container_folder);

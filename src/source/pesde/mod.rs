@@ -1,23 +1,16 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display},
-    hash::Hash,
-    path::Path,
-    str::FromStr,
-};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::Path};
 
 use gix::remote::Direction;
-use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
+use crate::manifest::TargetKind;
 use crate::{
-    manifest::{DependencyType, Target, TargetKind},
+    manifest::{DependencyType, Target},
     names::{PackageName, PackageNames},
-    source::{hash, DependencySpecifiers, PackageSource, ResolveResult},
+    source::{hash, DependencySpecifiers, PackageSource, ResolveResult, VersionId},
     util::authenticate_conn,
     Project, REQWEST_CLIENT,
 };
@@ -307,6 +300,7 @@ impl PackageSource for PesdePackageSource {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
+        project_target: TargetKind,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (scope, name) = specifier.name.as_str();
         let string = match self.read_file([scope, name], project) {
@@ -322,10 +316,17 @@ impl PackageSource for PesdePackageSource {
             PackageNames::Pesde(specifier.name.clone()),
             entries
                 .into_iter()
-                .filter(|(EntryKey(version, _), _)| specifier.version.matches(version))
-                .map(|(EntryKey(version, _), entry)| {
+                .filter(|(VersionId(version, target), _)| {
+                    specifier.version.matches(version)
+                        && specifier
+                            .target
+                            .map_or(project_target.is_compatible_with(target), |t| t == *target)
+                })
+                .map(|(id, entry)| {
+                    let version = id.version().clone();
+
                     (
-                        version.clone(),
+                        id,
                         PesdePackageRef {
                             name: specifier.name.clone(),
                             version,
@@ -413,33 +414,7 @@ pub struct IndexFileEntry {
     pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
 }
 
-#[derive(
-    Debug, SerializeDisplay, DeserializeFromStr, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
-pub struct EntryKey(pub Version, pub TargetKind);
-
-impl Display for EntryKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.0, self.1)
-    }
-}
-
-impl FromStr for EntryKey {
-    type Err = errors::EntryKeyParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let Some((version, target)) = s.split_once(' ') else {
-            return Err(errors::EntryKeyParseError::Malformed(s.to_string()));
-        };
-
-        let version = version.parse()?;
-        let target = target.parse()?;
-
-        Ok(EntryKey(version, target))
-    }
-}
-
-pub type IndexFile = BTreeMap<EntryKey, IndexFileEntry>;
+pub type IndexFile = BTreeMap<VersionId, IndexFileEntry>;
 
 pub mod errors {
     use std::path::PathBuf;
@@ -592,18 +567,5 @@ pub mod errors {
 
         #[error("error unpacking package")]
         Unpack(#[from] std::io::Error),
-    }
-
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum EntryKeyParseError {
-        #[error("malformed entry key {0}")]
-        Malformed(String),
-
-        #[error("malformed version")]
-        Version(#[from] semver::Error),
-
-        #[error("malformed target")]
-        Target(#[from] crate::manifest::errors::TargetKindFromStr),
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     manifest::{DependencyType, OverrideKey, Target, TargetKind},
     names::{PackageName, PackageNames},
-    source::{DependencySpecifiers, PackageRef, PackageRefs},
+    source::{DependencySpecifiers, PackageRef, PackageRefs, VersionId},
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -10,16 +10,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub type Graph<Node> = BTreeMap<PackageNames, BTreeMap<Version, Node>>;
+pub type Graph<Node> = BTreeMap<PackageNames, BTreeMap<VersionId, Node>>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyGraphNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct: Option<(String, DependencySpecifiers)>,
-    pub pkg_ref: PackageRefs,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub dependencies: BTreeMap<PackageNames, (Version, String)>,
+    pub dependencies: BTreeMap<PackageNames, (VersionId, String)>,
     pub ty: DependencyType,
+    pub pkg_ref: PackageRefs,
 }
 
 impl DependencyGraphNode {
@@ -49,7 +49,7 @@ pub type DependencyGraph = Graph<DependencyGraphNode>;
 pub fn insert_node(
     graph: &mut DependencyGraph,
     name: PackageNames,
-    version: Version,
+    version: VersionId,
     mut node: DependencyGraphNode,
     is_top_level: bool,
 ) {
@@ -85,8 +85,9 @@ pub fn insert_node(
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DownloadedDependencyGraphNode {
-    pub node: DependencyGraphNode,
     pub target: Target,
+    #[serde(flatten)]
+    pub node: DependencyGraphNode,
 }
 
 pub type DownloadedGraph = Graph<DownloadedDependencyGraphNode>;
@@ -95,6 +96,7 @@ pub type DownloadedGraph = Graph<DownloadedDependencyGraphNode>;
 pub struct Lockfile {
     pub name: PackageName,
     pub version: Version,
+    pub target: TargetKind,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
 

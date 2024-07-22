@@ -63,6 +63,7 @@ impl InstallCommand {
             .write_lockfile(Lockfile {
                 name: manifest.name,
                 version: manifest.version,
+                target: manifest.target.kind(),
                 overrides: manifest.overrides,
 
                 graph: downloaded_graph,

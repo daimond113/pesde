@@ -1,16 +1,16 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display},
-    path::Path,
-};
-
-use semver::Version;
-use serde::{Deserialize, Serialize};
-
 use crate::{
     manifest::{DependencyType, Target, TargetKind},
     names::PackageNames,
     Project,
+};
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+    path::Path,
+    str::FromStr,
 };
 
 pub mod pesde;
@@ -40,6 +40,7 @@ impl Display for DependencySpecifiers {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case", tag = "ref_ty")]
 pub enum PackageRefs {
     Pesde(pesde::pkg_ref::PesdePackageRef),
 }
@@ -68,7 +69,43 @@ impl PackageRef for PackageRefs {
     }
 }
 
-pub type ResolveResult<Ref> = (PackageNames, BTreeMap<Version, Ref>);
+#[derive(
+    Debug, SerializeDisplay, DeserializeFromStr, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
+pub struct VersionId(Version, TargetKind);
+
+impl VersionId {
+    pub fn version(&self) -> &Version {
+        &self.0
+    }
+
+    pub fn target(&self) -> &TargetKind {
+        &self.1
+    }
+}
+
+impl Display for VersionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.0, self.1)
+    }
+}
+
+impl FromStr for VersionId {
+    type Err = errors::VersionIdParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let Some((version, target)) = s.split_once(' ') else {
+            return Err(errors::VersionIdParseError::Malformed(s.to_string()));
+        };
+
+        let version = version.parse()?;
+        let target = target.parse()?;
+
+        Ok(VersionId(version, target))
+    }
+}
+
+pub type ResolveResult<Ref> = (PackageNames, BTreeMap<VersionId, Ref>);
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PackageSources {
@@ -89,6 +126,7 @@ pub trait PackageSource: Debug {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
+        project_target: TargetKind,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError>;
 
     fn download(
@@ -115,10 +153,11 @@ impl PackageSource for PackageSources {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
+        project_target: TargetKind,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         match (self, specifier) {
             (PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => source
-                .resolve(specifier, project)
+                .resolve(specifier, project, project_target)
                 .map(|(name, results)| {
                     (
                         name,
@@ -178,5 +217,18 @@ pub mod errors {
 
         #[error("error downloading pesde package")]
         Pesde(#[from] crate::source::pesde::errors::DownloadError),
+    }
+
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum VersionIdParseError {
+        #[error("malformed entry key {0}")]
+        Malformed(String),
+
+        #[error("malformed version")]
+        Version(#[from] semver::Error),
+
+        #[error("malformed target")]
+        Target(#[from] crate::manifest::errors::TargetKindFromStr),
     }
 }

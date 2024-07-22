@@ -4,10 +4,9 @@ use crate::{
     manifest::{ScriptName, Target},
     names::PackageNames,
     scripts::execute_script,
-    source::PackageRef,
+    source::{PackageRef, VersionId},
     Project, PACKAGES_CONTAINER_NAME,
 };
-use semver::Version;
 use std::{collections::BTreeMap, fs::create_dir_all};
 
 pub mod generator;
@@ -16,10 +15,10 @@ impl Project {
     pub fn link_dependencies(&self, graph: &DownloadedGraph) -> Result<(), errors::LinkingError> {
         let manifest = self.deser_manifest()?;
 
-        let mut package_types = BTreeMap::<&PackageNames, BTreeMap<&Version, Vec<String>>>::new();
+        let mut package_types = BTreeMap::<&PackageNames, BTreeMap<&VersionId, Vec<String>>>::new();
 
         for (name, versions) in graph {
-            for (version, node) in versions {
+            for (version_id, node) in versions {
                 let Some(lib_file) = node.target.lib_path() else {
                     continue;
                 };
@@ -30,7 +29,7 @@ impl Project {
                         .join(node.node.base_folder(manifest.target.kind(), true))
                         .join(PACKAGES_CONTAINER_NAME),
                     name,
-                    version,
+                    version_id.version(),
                 );
 
                 let lib_file = lib_file.to_path(&container_folder);
@@ -58,7 +57,7 @@ impl Project {
                 package_types
                     .entry(name)
                     .or_default()
-                    .insert(version, types);
+                    .insert(version_id, types);
 
                 #[cfg(feature = "roblox")]
                 if let Target::Roblox { build_files, .. } = &node.target {
@@ -87,7 +86,7 @@ impl Project {
         }
 
         for (name, versions) in graph {
-            for (version, node) in versions {
+            for (version_id, node) in versions {
                 let base_folder = self.path().join(
                     self.path()
                         .join(node.node.base_folder(manifest.target.kind(), true)),
@@ -96,13 +95,15 @@ impl Project {
                 let base_folder = base_folder.canonicalize()?;
                 let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
-                let container_folder =
-                    node.node
-                        .container_folder(&packages_container_folder, name, version);
+                let container_folder = node.node.container_folder(
+                    &packages_container_folder,
+                    name,
+                    version_id.version(),
+                );
 
                 if let Some((alias, types)) = package_types
                     .get(name)
-                    .and_then(|v| v.get(version))
+                    .and_then(|v| v.get(version_id))
                     .and_then(|types| node.node.direct.as_ref().map(|(alias, _)| (alias, types)))
                 {
                     let module = generator::generate_linking_module(
@@ -118,23 +119,23 @@ impl Project {
                     std::fs::write(base_folder.join(format!("{alias}.luau")), module)?;
                 }
 
-                for (dependency_name, (dependency_version, dependency_alias)) in
+                for (dependency_name, (dependency_version_id, dependency_alias)) in
                     &node.node.dependencies
                 {
                     let Some(dependency_node) = graph
                         .get(dependency_name)
-                        .and_then(|v| v.get(dependency_version))
+                        .and_then(|v| v.get(dependency_version_id))
                     else {
                         return Err(errors::LinkingError::DependencyNotFound(
                             dependency_name.to_string(),
-                            dependency_version.to_string(),
+                            dependency_version_id.to_string(),
                         ));
                     };
 
                     let dependency_container_folder = dependency_node.node.container_folder(
                         &packages_container_folder,
                         dependency_name,
-                        dependency_version,
+                        dependency_version_id.version(),
                     );
 
                     let linker_folder = container_folder
@@ -153,7 +154,7 @@ impl Project {
                         )?,
                         package_types
                             .get(dependency_name)
-                            .and_then(|v| v.get(dependency_version))
+                            .and_then(|v| v.get(dependency_version_id))
                             .unwrap(),
                     );
 

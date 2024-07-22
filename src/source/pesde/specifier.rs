@@ -1,4 +1,4 @@
-use crate::{names::PackageName, source::DependencySpecifier};
+use crate::{manifest::TargetKind, names::PackageName, source::DependencySpecifier};
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -9,6 +9,8 @@ pub struct PesdeDependencySpecifier {
     pub version: VersionReq,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<TargetKind>,
 }
 impl DependencySpecifier for PesdeDependencySpecifier {}
 

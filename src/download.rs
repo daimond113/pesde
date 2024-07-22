@@ -21,7 +21,7 @@ impl Project {
         let mut downloaded_graph: DownloadedGraph = BTreeMap::new();
 
         for (name, versions) in graph {
-            for (version, node) in versions {
+            for (version_id, node) in versions {
                 let source = match &node.pkg_ref {
                     PackageRefs::Pesde(pkg_ref) => {
                         PackageSources::Pesde(PesdePackageSource::new(pkg_ref.index_url.clone()))
@@ -38,7 +38,7 @@ impl Project {
                         .join(node.base_folder(manifest.target.kind(), true))
                         .join(PACKAGES_CONTAINER_NAME),
                     name,
-                    version,
+                    version_id.version(),
                 );
 
                 create_dir_all(&container_folder)?;
@@ -46,7 +46,7 @@ impl Project {
                 let target = source.download(&node.pkg_ref, &container_folder, self)?;
 
                 downloaded_graph.entry(name.clone()).or_default().insert(
-                    version.clone(),
+                    version_id.clone(),
                     DownloadedDependencyGraphNode {
                         node: node.clone(),
                         target,
