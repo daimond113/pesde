@@ -146,12 +146,12 @@ impl InitCommand {
                     )
                     .context("failed to write script file")?;
 
-                    let mut scripts = manifest
+                    let scripts = manifest
                         .entry("scripts")
                         .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-                        .to_owned()
-                        .into_table()
+                        .as_table_mut()
                         .unwrap();
+
                     scripts[&ScriptName::RobloxSyncConfigGenerator.to_string()] =
                         toml_edit::value(format!(
                             concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
