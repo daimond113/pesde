@@ -17,6 +17,7 @@ pub struct DependencyGraphNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct: Option<(String, DependencySpecifiers)>,
     pub pkg_ref: PackageRefs,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<PackageNames, (Version, String)>,
     pub ty: DependencyType,
 }

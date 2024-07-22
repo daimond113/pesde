@@ -16,7 +16,7 @@ impl InstallCommand {
             .context("failed to read manifest")?;
 
         let lockfile = if project
-            .is_up_to_date()
+            .is_up_to_date(false)
             .context("failed to check if project is up to date")?
         {
             match project.deser_lockfile() {

@@ -15,10 +15,10 @@ use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::{
-    git::authenticate_conn,
     manifest::{DependencyType, Target, TargetKind},
     names::{PackageName, PackageNames},
     source::{hash, DependencySpecifiers, PackageSource, ResolveResult},
+    util::authenticate_conn,
     Project, REQWEST_CLIENT,
 };
 

@@ -22,7 +22,7 @@ pub struct RunCommand {
 impl RunCommand {
     pub fn run(self, project: Project) -> anyhow::Result<()> {
         if let Ok(pkg_name) = self.package_or_script.parse::<PackageName>() {
-            let graph = if project.is_up_to_date()? {
+            let graph = if project.is_up_to_date(true)? {
                 project.deser_lockfile()?.graph
             } else {
                 anyhow::bail!("outdated lockfile, please run the install command first")

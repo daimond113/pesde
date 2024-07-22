@@ -1,4 +1,4 @@
-use crate::git::authenticate_conn;
+use crate::util::authenticate_conn;
 use anyhow::Context;
 use gix::remote::Direction;
 use keyring::Entry;
@@ -229,11 +229,11 @@ pub fn update_scripts_folder(project: &Project) -> anyhow::Result<()> {
 }
 
 pub trait IsUpToDate {
-    fn is_up_to_date(&self) -> anyhow::Result<bool>;
+    fn is_up_to_date(&self, strict: bool) -> anyhow::Result<bool>;
 }
 
 impl IsUpToDate for Project {
-    fn is_up_to_date(&self) -> anyhow::Result<bool> {
+    fn is_up_to_date(&self, strict: bool) -> anyhow::Result<bool> {
         let manifest = self.deser_manifest()?;
         let lockfile = match self.deser_lockfile() {
             Ok(lockfile) => lockfile,
@@ -244,6 +244,11 @@ impl IsUpToDate for Project {
             }
             Err(e) => return Err(e.into()),
         };
+
+        if !strict {
+            // the resolver will use the old lockfile and update it itself. it can't handle overrides only
+            return Ok(manifest.overrides == lockfile.overrides);
+        }
 
         if manifest.name != lockfile.name || manifest.version != lockfile.version {
             return Ok(false);

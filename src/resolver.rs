@@ -11,7 +11,7 @@ use semver::Version;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 impl Project {
-    // TODO: implement dependency overrides, account for targets using the is_compatible_with method
+    // TODO: account for targets using the is_compatible_with method
     pub fn dependency_graph(
         &self,
         previous_graph: Option<&DependencyGraph>,
@@ -101,17 +101,28 @@ impl Project {
 
         let mut queue = all_specifiers
             .into_iter()
-            .map(|((spec, ty), alias)| (alias, spec, ty, None::<(PackageNames, Version)>, 0usize))
+            .map(|((spec, ty), alias)| {
+                (
+                    alias.to_string(),
+                    spec,
+                    ty,
+                    None::<(PackageNames, Version)>,
+                    vec![alias.to_string()],
+                    false,
+                )
+            })
             .collect::<VecDeque<_>>();
 
-        while let Some((alias, specifier, ty, dependant, depth)) = queue.pop_front() {
+        while let Some((alias, specifier, ty, dependant, path, overridden)) = queue.pop_front() {
+            let depth = path.len() - 1;
+
             log::debug!(
                 "{}resolving {specifier} ({alias}) from {dependant:?}",
                 "\t".repeat(depth)
             );
             let source = match &specifier {
                 DependencySpecifiers::Pesde(specifier) => {
-                    let index_url = if depth == 0 {
+                    let index_url = if depth == 0 || overridden {
                         let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
                         let index_url = manifest.indices.get(index_name).ok_or(
                             errors::DependencyGraphError::IndexNotFound(index_name.to_string()),
@@ -235,12 +246,28 @@ impl Project {
                     continue;
                 }
 
+                let overridden = manifest.overrides.iter().find_map(|(key, spec)| {
+                    key.0.iter().find_map(|override_path| {
+                        // if the path up until the last element is the same as the current path,
+                        // and the last element in the path is the dependency alias,
+                        // then the specifier is to be overridden
+                        (path.len() == override_path.len() - 1
+                            && path == override_path[..override_path.len() - 1]
+                            && override_path.last() == Some(&dependency_alias))
+                        .then_some(spec)
+                    })
+                });
+
                 queue.push_back((
                     dependency_alias,
-                    dependency_spec,
+                    overridden.cloned().unwrap_or(dependency_spec),
                     dependency_ty,
                     Some((name.clone(), target_version.clone())),
-                    depth + 1,
+                    path.iter()
+                        .cloned()
+                        .chain(std::iter::once(alias.to_string()))
+                        .collect(),
+                    overridden.is_some(),
                 ));
             }
         }

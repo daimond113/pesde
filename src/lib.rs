@@ -8,7 +8,6 @@ use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 
 pub mod download;
-mod git;
 pub mod linking;
 pub mod lockfile;
 pub mod manifest;
@@ -16,6 +15,7 @@ pub mod names;
 pub mod resolver;
 pub mod scripts;
 pub mod source;
+pub(crate) mod util;
 
 pub const MANIFEST_FILE_NAME: &str = "pesde.toml";
 pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";

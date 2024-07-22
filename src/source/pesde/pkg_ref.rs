@@ -13,7 +13,12 @@ use crate::{
 pub struct PesdePackageRef {
     pub name: PackageName,
     pub version: Version,
+    #[serde(
+        serialize_with = "crate::util::serialize_gix_url",
+        deserialize_with = "crate::util::deserialize_gix_url"
+    )]
     pub index_url: gix::Url,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
     pub target: Target,
 }
