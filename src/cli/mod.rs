@@ -3,14 +3,16 @@ use anyhow::Context;
 use gix::remote::Direction;
 use indicatif::MultiProgress;
 use keyring::Entry;
-use pesde::Project;
+use pesde::{lockfile::DownloadedGraph, names::PackageNames, source::VersionId, Project};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, path::Path};
+use std::{collections::HashSet, path::Path, str::FromStr};
 
 mod auth;
 mod config;
 mod init;
 mod install;
+mod patch;
+mod patch_commit;
 mod publish;
 mod run;
 mod self_install;
@@ -280,6 +282,48 @@ impl IsUpToDate for Project {
     }
 }
 
+#[derive(Debug, Clone)]
+struct VersionedPackageName(PackageNames, Option<VersionId>);
+
+impl FromStr for VersionedPackageName {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.splitn(2, '@');
+        let name = parts.next().unwrap();
+        let version = parts.next().map(VersionId::from_str).transpose()?;
+
+        Ok(VersionedPackageName(name.parse()?, version))
+    }
+}
+
+impl VersionedPackageName {
+    fn get(self, graph: &DownloadedGraph) -> anyhow::Result<(PackageNames, VersionId)> {
+        let version_id = match self.1 {
+            Some(version) => version,
+            None => {
+                let versions = graph.get(&self.0).context("package not found in graph")?;
+                if versions.len() == 1 {
+                    let version = versions.keys().next().unwrap().clone();
+                    log::debug!("only one version found, using {version}");
+                    version
+                } else {
+                    anyhow::bail!(
+                        "multiple versions found, please specify one of: {}",
+                        versions
+                            .keys()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
+            }
+        };
+
+        Ok((self.0, version_id))
+    }
+}
+
 #[derive(Debug, clap::Subcommand)]
 pub enum Subcommand {
     /// Authentication-related commands
@@ -304,6 +348,12 @@ pub enum Subcommand {
 
     /// Installs the pesde binary and scripts
     SelfInstall(self_install::SelfInstallCommand),
+
+    /// Sets up a patching environment for a package
+    Patch(patch::PatchCommand),
+
+    /// Finalizes a patching environment for a package
+    PatchCommit(patch_commit::PatchCommitCommand),
 }
 
 impl Subcommand {
@@ -316,6 +366,8 @@ impl Subcommand {
             Subcommand::Install(install) => install.run(project, multi),
             Subcommand::Publish(publish) => publish.run(project),
             Subcommand::SelfInstall(self_install) => self_install.run(project),
+            Subcommand::Patch(patch) => patch.run(project),
+            Subcommand::PatchCommit(patch_commit) => patch_commit.run(project),
         }
     }
 }

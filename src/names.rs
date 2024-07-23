@@ -1,6 +1,5 @@
 use std::{fmt::Display, str::FromStr};
 
-use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 #[derive(Debug)]
@@ -69,8 +68,9 @@ impl PackageName {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(untagged)]
+#[derive(
+    Debug, DeserializeFromStr, SerializeDisplay, Clone, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub enum PackageNames {
     Pesde(PackageName),
 }
@@ -97,6 +97,18 @@ impl Display for PackageNames {
     }
 }
 
+impl FromStr for PackageNames {
+    type Err = errors::PackageNamesError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(name) = PackageName::from_str(s) {
+            Ok(PackageNames::Pesde(name))
+        } else {
+            Err(errors::PackageNamesError::InvalidPackageName(s.to_string()))
+        }
+    }
+}
+
 pub mod errors {
     use thiserror::Error;
 
@@ -118,5 +130,12 @@ pub mod errors {
 
         #[error("package {0} `{1}` is not within 3-32 characters long")]
         InvalidLength(ErrorReason, String),
+    }
+
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum PackageNamesError {
+        #[error("invalid package name {0}")]
+        InvalidPackageName(String),
     }
 }

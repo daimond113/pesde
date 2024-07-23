@@ -1,4 +1,7 @@
-use crate::{names::PackageName, source::DependencySpecifiers};
+use crate::{
+    names::{PackageName, PackageNames},
+    source::{DependencySpecifiers, VersionId},
+};
 use relative_path::RelativePathBuf;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -251,6 +254,8 @@ pub struct Manifest {
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
     #[serde(default)]
     pub includes: BTreeSet<String>,
+    #[serde(default, skip_serializing)]
+    pub patches: BTreeMap<PackageNames, BTreeMap<VersionId, RelativePathBuf>>,
 
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, DependencySpecifiers>,

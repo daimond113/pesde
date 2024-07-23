@@ -68,19 +68,11 @@ impl InitCommand {
         .prompt()
         .unwrap();
 
-        let authors = authors
+        authors
             .split(',')
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
-            .map(|s| s.into())
-            .collect::<Vec<toml_edit::Value>>();
-
-        if !authors.is_empty() {
-            let mut authors_arr = toml_edit::Array::new();
-            authors_arr.extend(authors);
-
-            manifest["authors"] = toml_edit::value(authors_arr);
-        }
+            .for_each(|author| manifest["authors"].as_array_mut().unwrap().push(author));
 
         let repo = inquire::Text::new(
             "What is the repository URL of this project? (leave empty for none)",
@@ -124,8 +116,7 @@ impl InitCommand {
         .prompt()
         .unwrap();
 
-        let mut target = toml_edit::Table::new();
-        target["environment"] = toml_edit::value(target_env);
+        manifest["target"]["environment"] = toml_edit::value(target_env);
 
         if target_env == "roblox"
             || inquire::Confirm::new(&format!(
@@ -147,21 +138,14 @@ impl InitCommand {
             )
             .context("failed to write script file")?;
 
-            let scripts = manifest
-                .entry("scripts")
-                .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-                .as_table_mut()
-                .unwrap();
-
-            scripts[&ScriptName::RobloxSyncConfigGenerator.to_string()] =
+            manifest["scripts"][&ScriptName::RobloxSyncConfigGenerator.to_string()] =
                 toml_edit::value(format!(
                     concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
                     ScriptName::RobloxSyncConfigGenerator
                 ));
         }
 
-        let mut indices = toml_edit::Table::new();
-        indices[DEFAULT_INDEX_NAME] =
+        manifest["indices"][DEFAULT_INDEX_NAME] =
             toml_edit::value(read_config(project.data_dir())?.default_index.as_str());
 
         project.write_manifest(manifest.to_string())?;

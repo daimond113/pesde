@@ -48,6 +48,7 @@ pub trait PackageRef: Debug {
     fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)>;
     fn use_new_structure(&self) -> bool;
     fn target_kind(&self) -> TargetKind;
+    fn source(&self) -> PackageSources;
 }
 impl PackageRef for PackageRefs {
     fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
@@ -67,6 +68,12 @@ impl PackageRef for PackageRefs {
             PackageRefs::Pesde(pkg_ref) => pkg_ref.target_kind(),
         }
     }
+
+    fn source(&self) -> PackageSources {
+        match self {
+            PackageRefs::Pesde(pkg_ref) => pkg_ref.source(),
+        }
+    }
 }
 
 #[derive(
@@ -75,12 +82,20 @@ impl PackageRef for PackageRefs {
 pub struct VersionId(Version, TargetKind);
 
 impl VersionId {
+    pub fn new(version: Version, target: TargetKind) -> Self {
+        VersionId(version, target)
+    }
+
     pub fn version(&self) -> &Version {
         &self.0
     }
 
     pub fn target(&self) -> &TargetKind {
         &self.1
+    }
+
+    pub fn escaped(&self) -> String {
+        format!("{}+{}", self.0, self.1)
     }
 }
 

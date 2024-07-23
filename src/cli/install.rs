@@ -98,6 +98,10 @@ impl InstallCommand {
             .context("failed to link dependencies")?;
 
         project
+            .apply_patches(&downloaded_graph)
+            .context("failed to apply patches")?;
+
+        project
             .write_lockfile(Lockfile {
                 name: manifest.name,
                 version: manifest.version,

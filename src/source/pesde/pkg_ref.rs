@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     manifest::{DependencyType, Target, TargetKind},
     names::PackageName,
-    source::{DependencySpecifiers, PackageRef},
+    source::{pesde::PesdePackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -33,6 +33,10 @@ impl PackageRef for PesdePackageRef {
 
     fn target_kind(&self) -> TargetKind {
         self.target.kind()
+    }
+
+    fn source(&self) -> PackageSources {
+        PackageSources::Pesde(PesdePackageSource::new(self.index_url.clone()))
     }
 }
 

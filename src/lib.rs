@@ -11,6 +11,7 @@ pub mod linking;
 pub mod lockfile;
 pub mod manifest;
 pub mod names;
+pub mod patches;
 pub mod resolver;
 pub mod scripts;
 pub mod source;
@@ -87,9 +88,9 @@ impl Project {
         &self.auth_config
     }
 
-    pub fn read_manifest(&self) -> Result<Vec<u8>, errors::ManifestReadError> {
-        let bytes = std::fs::read(self.path.join(MANIFEST_FILE_NAME))?;
-        Ok(bytes)
+    pub fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
+        let string = std::fs::read_to_string(self.path.join(MANIFEST_FILE_NAME))?;
+        Ok(string)
     }
 
     pub fn deser_manifest(&self) -> Result<manifest::Manifest, errors::ManifestReadError> {

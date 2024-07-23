@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     lockfile::{DependencyGraph, DownloadedDependencyGraphNode, DownloadedGraph},
-    source::{pesde::PesdePackageSource, PackageRefs, PackageSource, PackageSources},
+    source::{PackageRef, PackageSource, PackageSources},
     Project, PACKAGES_CONTAINER_NAME,
 };
 
@@ -33,11 +33,7 @@ impl Project {
 
         for (name, versions) in graph {
             for (version_id, node) in versions {
-                let source = match &node.pkg_ref {
-                    PackageRefs::Pesde(pkg_ref) => {
-                        PackageSources::Pesde(PesdePackageSource::new(pkg_ref.index_url.clone()))
-                    }
-                };
+                let source = node.pkg_ref.source();
 
                 if refreshed_sources.insert(source.clone()) {
                     source.refresh(self).map_err(Box::new)?;
