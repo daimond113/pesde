@@ -11,7 +11,9 @@ mod auth;
 mod config;
 mod init;
 mod install;
+#[cfg(feature = "patches")]
 mod patch;
+#[cfg(feature = "patches")]
 mod patch_commit;
 mod publish;
 mod run;
@@ -249,10 +251,12 @@ impl IsUpToDate for Project {
         };
 
         if manifest.overrides != lockfile.overrides {
+            log::debug!("overrides are different");
             return Ok(false);
         }
 
         if manifest.target.kind() != lockfile.target {
+            log::debug!("target kind is different");
             return Ok(false);
         }
 
@@ -261,6 +265,7 @@ impl IsUpToDate for Project {
         }
 
         if manifest.name != lockfile.name || manifest.version != lockfile.version {
+            log::debug!("name or version is different");
             return Ok(false);
         }
 
@@ -274,11 +279,15 @@ impl IsUpToDate for Project {
             })
             .collect::<HashSet<_>>();
 
-        Ok(manifest
+        let same_dependencies = manifest
             .all_dependencies()
             .context("failed to get all dependencies")?
             .iter()
-            .all(|(_, (spec, ty))| specs.contains(&(spec.clone(), *ty))))
+            .all(|(_, (spec, ty))| specs.contains(&(spec.clone(), *ty)));
+
+        log::debug!("dependencies are the same: {same_dependencies}");
+
+        Ok(same_dependencies)
     }
 }
 
@@ -350,9 +359,11 @@ pub enum Subcommand {
     SelfInstall(self_install::SelfInstallCommand),
 
     /// Sets up a patching environment for a package
+    #[cfg(feature = "patches")]
     Patch(patch::PatchCommand),
 
     /// Finalizes a patching environment for a package
+    #[cfg(feature = "patches")]
     PatchCommit(patch_commit::PatchCommitCommand),
 }
 
@@ -366,7 +377,9 @@ impl Subcommand {
             Subcommand::Install(install) => install.run(project, multi),
             Subcommand::Publish(publish) => publish.run(project),
             Subcommand::SelfInstall(self_install) => self_install.run(project),
+            #[cfg(feature = "patches")]
             Subcommand::Patch(patch) => patch.run(project),
+            #[cfg(feature = "patches")]
             Subcommand::PatchCommit(patch_commit) => patch_commit.run(project),
         }
     }

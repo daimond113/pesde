@@ -63,6 +63,8 @@ impl Project {
                 threadpool.execute(move || {
                     let project = project.clone();
 
+                    log::debug!("downloading {name}@{version_id}");
+
                     let target =
                         match source.download(&node.pkg_ref, &container_folder, &project, &reqwest)
                         {
@@ -72,6 +74,8 @@ impl Project {
                                 return;
                             }
                         };
+
+                    log::debug!("downloaded {name}@{version_id}");
 
                     let mut downloaded_graph = downloaded_graph.lock().unwrap();
                     downloaded_graph

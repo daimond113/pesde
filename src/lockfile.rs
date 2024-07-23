@@ -53,8 +53,10 @@ pub fn insert_node(
     mut node: DependencyGraphNode,
     is_top_level: bool,
 ) {
-    if !is_top_level {
-        node.direct.take();
+    if !is_top_level && node.direct.take().is_some() {
+        log::debug!(
+            "tried to insert {name}@{version} as direct dependency from a non top-level context",
+        );
     }
 
     match graph

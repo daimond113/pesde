@@ -11,6 +11,7 @@ pub mod linking;
 pub mod lockfile;
 pub mod manifest;
 pub mod names;
+#[cfg(feature = "patches")]
 pub mod patches;
 pub mod resolver;
 pub mod scripts;

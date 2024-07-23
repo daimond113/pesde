@@ -76,8 +76,10 @@ pub fn get_require_path(
 
     let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
     let path = if !use_new_structure {
+        log::debug!("using old structure for require path");
         lib_file.to_path(path)
     } else {
+        log::debug!("using new structure for require path");
         path
     };
 

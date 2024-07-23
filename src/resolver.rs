@@ -39,7 +39,9 @@ impl Project {
                         .remove(&(specifier.clone(), node.ty))
                         .is_none()
                     {
-                        // this dependency is no longer in the manifest, or it's type has changed
+                        log::debug!(
+                            "dependency {name}@{version} from old dependency graph is no longer in the manifest",
+                        );
                         continue;
                     }
 
@@ -257,6 +259,13 @@ impl Project {
                         .then_some(spec)
                     })
                 });
+
+                if overridden.is_some() {
+                    log::debug!(
+                        "{}overridden specifier found for {dependency_alias} ({dependency_spec})",
+                        "\t".repeat(depth)
+                    );
+                }
 
                 queue.push_back((
                     dependency_alias,

@@ -54,6 +54,8 @@ impl Project {
                     }
                 };
 
+                log::debug!("{name}@{version_id} has {} exported types", types.len());
+
                 package_types
                     .entry(name)
                     .or_default()

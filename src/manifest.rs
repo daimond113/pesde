@@ -53,6 +53,15 @@ impl FromStr for TargetKind {
 }
 
 impl TargetKind {
+    pub const VARIANTS: &'static [TargetKind] = &[
+        #[cfg(feature = "roblox")]
+        TargetKind::Roblox,
+        #[cfg(feature = "lune")]
+        TargetKind::Lune,
+        #[cfg(feature = "luau")]
+        TargetKind::Luau,
+    ];
+
     // self is the project's target, dependency is the target of the dependency
     pub fn is_compatible_with(&self, dependency: &Self) -> bool {
         if self == dependency {
@@ -213,7 +222,7 @@ impl Display for OverrideKey {
 pub enum ScriptName {
     #[cfg(feature = "roblox")]
     RobloxSyncConfigGenerator,
-    #[cfg(all(feature = "wally-compat", feature = "roblox"))]
+    #[cfg(feature = "wally-compat")]
     SourcemapGenerator,
 }
 
@@ -222,7 +231,7 @@ impl Display for ScriptName {
         match self {
             #[cfg(feature = "roblox")]
             ScriptName::RobloxSyncConfigGenerator => write!(f, "roblox_sync_config_generator"),
-            #[cfg(all(feature = "wally-compat", feature = "roblox"))]
+            #[cfg(feature = "wally-compat")]
             ScriptName::SourcemapGenerator => write!(f, "sourcemap_generator"),
         }
     }
@@ -254,6 +263,7 @@ pub struct Manifest {
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
     #[serde(default)]
     pub includes: BTreeSet<String>,
+    #[cfg(feature = "patches")]
     #[serde(default, skip_serializing)]
     pub patches: BTreeMap<PackageNames, BTreeMap<VersionId, RelativePathBuf>>,
 

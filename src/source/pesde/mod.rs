@@ -250,6 +250,8 @@ impl PackageSource for PesdePackageSource {
     type DownloadError = errors::DownloadError;
 
     fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+        log::debug!("refreshing pesde index at {}", self.repo_url);
+
         let path = self.path(project);
         if path.exists() {
             let repo = match gix::open(&path) {
@@ -311,6 +313,8 @@ impl PackageSource for PesdePackageSource {
         let entries: IndexFile = toml::from_str(&string)
             .map_err(|e| Self::ResolveError::Parse(specifier.name.to_string(), e))?;
 
+        log::debug!("{} has {} possible entries", specifier.name, entries.len());
+
         Ok((
             PackageNames::Pesde(specifier.name.clone()),
             entries
@@ -358,6 +362,7 @@ impl PackageSource for PesdePackageSource {
         let mut response = reqwest.get(url);
 
         if let Some(token) = &project.auth_config.pesde_token {
+            log::debug!("using token for pesde package download");
             response = response.header("Authorization", format!("Bearer {token}"));
         }
 

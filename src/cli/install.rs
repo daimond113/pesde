@@ -2,7 +2,7 @@ use crate::cli::{reqwest_client, IsUpToDate};
 use anyhow::Context;
 use clap::Args;
 use indicatif::MultiProgress;
-use pesde::{lockfile::Lockfile, Project};
+use pesde::{lockfile::Lockfile, manifest::TargetKind, Project};
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 #[derive(Debug, Args)]
@@ -36,6 +36,25 @@ impl InstallCommand {
         } else {
             None
         };
+
+        {
+            let mut deleted_folders = HashSet::new();
+
+            for target_kind in TargetKind::VARIANTS {
+                let folder = manifest.target.kind().packages_folder(target_kind);
+
+                if deleted_folders.insert(folder.to_string()) {
+                    log::debug!("deleting the {folder} folder");
+
+                    if let Some(e) = std::fs::remove_dir_all(project.path().join(&folder))
+                        .err()
+                        .filter(|e| e.kind() != std::io::ErrorKind::NotFound)
+                    {
+                        return Err(e).context(format!("failed to remove the {folder} folder"));
+                    };
+                }
+            }
+        }
 
         let old_graph = lockfile.map(|lockfile| {
             lockfile

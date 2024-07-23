@@ -90,10 +90,14 @@ impl Project {
                     version_id.version(),
                 );
 
+                log::debug!("applying patch to {name}@{version_id}");
+
                 {
                     let repo = setup_patches_repo(&container_folder)?;
                     repo.apply(&patch, ApplyLocation::Both, None)?;
                 }
+
+                log::debug!("patch applied to {name}@{version_id}, removing .git directory");
 
                 std::fs::remove_dir_all(container_folder.join(".git")).map_err(|e| {
                     errors::ApplyPatchesError::GitDirectoryRemovalError(container_folder, e)
