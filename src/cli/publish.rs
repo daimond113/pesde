@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
-use pesde::{manifest::Target, Project, MANIFEST_FILE_NAME, MAX_ARCHIVE_SIZE};
+use pesde::{manifest::target::Target, Project, MANIFEST_FILE_NAME, MAX_ARCHIVE_SIZE};
 use std::path::Component;
 
 #[derive(Debug, Args)]

@@ -4,7 +4,10 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    manifest::{DependencyType, Target, TargetKind},
+    manifest::{
+        target::{Target, TargetKind},
+        DependencyType,
+    },
     names::PackageName,
     source::{pesde::PesdePackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };

@@ -1,5 +1,8 @@
 use crate::{
-    manifest::{DependencyType, Target, TargetKind},
+    manifest::{
+        target::{Target, TargetKind},
+        DependencyType,
+    },
     names::PackageNames,
     Project,
 };
@@ -246,6 +249,6 @@ pub mod errors {
         Version(#[from] semver::Error),
 
         #[error("malformed target")]
-        Target(#[from] crate::manifest::errors::TargetKindFromStr),
+        Target(#[from] crate::manifest::target::errors::TargetKindFromStr),
     }
 }

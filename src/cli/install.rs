@@ -2,7 +2,7 @@ use crate::cli::{reqwest_client, IsUpToDate};
 use anyhow::Context;
 use clap::Args;
 use indicatif::MultiProgress;
-use pesde::{lockfile::Lockfile, manifest::TargetKind, Project};
+use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project};
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 #[derive(Debug, Args)]

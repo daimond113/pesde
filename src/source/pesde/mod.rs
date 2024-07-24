@@ -7,7 +7,10 @@ use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::{
-    manifest::{DependencyType, Target, TargetKind},
+    manifest::{
+        target::{Target, TargetKind},
+        DependencyType,
+    },
     names::{PackageName, PackageNames},
     source::{hash, DependencySpecifiers, PackageSource, ResolveResult, VersionId},
     util::authenticate_conn,

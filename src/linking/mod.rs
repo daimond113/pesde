@@ -1,9 +1,9 @@
 use crate::{
     linking::generator::get_file_types,
     lockfile::DownloadedGraph,
-    manifest::{ScriptName, Target},
+    manifest::target::Target,
     names::PackageNames,
-    scripts::execute_script,
+    scripts::{execute_script, ScriptName},
     source::{PackageRef, VersionId},
     Project, PACKAGES_CONTAINER_NAME,
 };

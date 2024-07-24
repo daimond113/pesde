@@ -1,4 +1,4 @@
-use crate::{manifest::TargetKind, names::PackageName, source::DependencySpecifier};
+use crate::{manifest::target::TargetKind, names::PackageName, source::DependencySpecifier};
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;

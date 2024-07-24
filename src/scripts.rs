@@ -6,6 +6,27 @@ use std::{
     thread::spawn,
 };
 
+use std::fmt::{Display, Formatter};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ScriptName {
+    #[cfg(feature = "roblox")]
+    RobloxSyncConfigGenerator,
+    #[cfg(feature = "wally-compat")]
+    SourcemapGenerator,
+}
+
+impl Display for ScriptName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            #[cfg(feature = "roblox")]
+            ScriptName::RobloxSyncConfigGenerator => write!(f, "roblox_sync_config_generator"),
+            #[cfg(feature = "wally-compat")]
+            ScriptName::SourcemapGenerator => write!(f, "sourcemap_generator"),
+        }
+    }
+}
+
 pub fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>>(
     script_name: Option<&str>,
     script_path: &Path,

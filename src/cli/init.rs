@@ -4,8 +4,7 @@ use clap::Args;
 use colored::Colorize;
 use inquire::validator::Validation;
 use pesde::{
-    errors::ManifestReadError, manifest::ScriptName, names::PackageName, Project,
-    DEFAULT_INDEX_NAME,
+    errors::ManifestReadError, names::PackageName, scripts::ScriptName, Project, DEFAULT_INDEX_NAME,
 };
 use std::{path::Path, str::FromStr};
 

@@ -2,7 +2,7 @@ use std::path::{Component, Path};
 
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
 
-use crate::manifest::Target;
+use crate::manifest::target::Target;
 
 struct TypeVisitor {
     types: Vec<String>,

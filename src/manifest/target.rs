@@ -1,13 +1,7 @@
-use crate::{
-    names::{PackageName, PackageNames},
-    source::{DependencySpecifiers, VersionId},
-};
 use relative_path::RelativePathBuf;
-use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     fmt::{Display, Formatter},
     str::FromStr,
 };
@@ -176,154 +170,8 @@ impl Display for Target {
     }
 }
 
-#[derive(
-    Debug, DeserializeFromStr, SerializeDisplay, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
-pub struct OverrideKey(pub Vec<Vec<String>>);
-
-impl FromStr for OverrideKey {
-    type Err = errors::OverrideKeyFromStr;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let overrides = s
-            .split(',')
-            .map(|overrides| overrides.split('>').map(|s| s.to_string()).collect())
-            .collect::<Vec<Vec<String>>>();
-
-        if overrides.is_empty() {
-            return Err(errors::OverrideKeyFromStr::Empty);
-        }
-
-        Ok(Self(overrides))
-    }
-}
-
-impl Display for OverrideKey {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.0
-                .iter()
-                .map(|overrides| {
-                    overrides
-                        .iter()
-                        .map(|o| o.as_str())
-                        .collect::<Vec<_>>()
-                        .join(">")
-                })
-                .collect::<Vec<_>>()
-                .join(",")
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum ScriptName {
-    #[cfg(feature = "roblox")]
-    RobloxSyncConfigGenerator,
-    #[cfg(feature = "wally-compat")]
-    SourcemapGenerator,
-}
-
-impl Display for ScriptName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(feature = "roblox")]
-            ScriptName::RobloxSyncConfigGenerator => write!(f, "roblox_sync_config_generator"),
-            #[cfg(feature = "wally-compat")]
-            ScriptName::SourcemapGenerator => write!(f, "sourcemap_generator"),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Manifest {
-    pub name: PackageName,
-    pub version: Version,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub license: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub authors: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub repository: Option<String>,
-    pub target: Target,
-    #[serde(default)]
-    pub private: bool,
-    #[serde(default, skip_serializing)]
-    pub scripts: BTreeMap<String, RelativePathBuf>,
-    #[serde(default)]
-    pub indices: BTreeMap<String, url::Url>,
-    #[cfg(feature = "wally-compat")]
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub wally_indices: BTreeMap<String, url::Url>,
-    #[serde(default, skip_serializing)]
-    pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
-    #[serde(default)]
-    pub includes: BTreeSet<String>,
-    #[cfg(feature = "patches")]
-    #[serde(default, skip_serializing)]
-    pub patches: BTreeMap<PackageNames, BTreeMap<VersionId, RelativePathBuf>>,
-
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub dependencies: BTreeMap<String, DependencySpecifiers>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub peer_dependencies: BTreeMap<String, DependencySpecifiers>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub dev_dependencies: BTreeMap<String, DependencySpecifiers>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum DependencyType {
-    Standard,
-    Dev,
-    Peer,
-}
-
-impl Manifest {
-    pub fn all_dependencies(
-        &self,
-    ) -> Result<
-        BTreeMap<String, (DependencySpecifiers, DependencyType)>,
-        errors::AllDependenciesError,
-    > {
-        let mut all_deps = BTreeMap::new();
-
-        for (deps, ty) in [
-            (&self.dependencies, DependencyType::Standard),
-            (&self.peer_dependencies, DependencyType::Peer),
-            (&self.dev_dependencies, DependencyType::Dev),
-        ] {
-            for (alias, spec) in deps {
-                if all_deps.insert(alias.clone(), (spec.clone(), ty)).is_some() {
-                    return Err(errors::AllDependenciesError::AliasConflict(alias.clone()));
-                }
-            }
-        }
-
-        Ok(all_deps)
-    }
-}
-
 pub mod errors {
     use thiserror::Error;
-
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum OverrideKeyFromStr {
-        #[error("empty override key")]
-        Empty,
-    }
-
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum AllDependenciesError {
-        #[error("another specifier is already using the alias {0}")]
-        AliasConflict(String),
-    }
 
     #[derive(Debug, Error)]
     #[non_exhaustive]

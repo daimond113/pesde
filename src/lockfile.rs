@@ -1,5 +1,9 @@
 use crate::{
-    manifest::{DependencyType, OverrideKey, Target, TargetKind},
+    manifest::{
+        overrides::OverrideKey,
+        target::{Target, TargetKind},
+        DependencyType,
+    },
     names::{PackageName, PackageNames},
     source::{DependencySpecifiers, PackageRef, PackageRefs, VersionId},
 };
