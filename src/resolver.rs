@@ -128,26 +128,22 @@ impl Project {
                 DependencySpecifiers::Pesde(specifier) => {
                     let index_url = if depth == 0 || overridden {
                         let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
-                        let index_url = manifest.indices.get(index_name).ok_or(
-                            errors::DependencyGraphError::IndexNotFound(index_name.to_string()),
-                        )?;
 
-                        match index_url.as_str().try_into() {
-                            Ok(url) => url,
-                            Err(e) => {
-                                return Err(Box::new(errors::DependencyGraphError::UrlParse(
-                                    index_url.clone(),
-                                    e,
-                                )))
-                            }
-                        }
+                        manifest
+                            .indices
+                            .get(index_name)
+                            .ok_or(errors::DependencyGraphError::IndexNotFound(
+                                index_name.to_string(),
+                            ))?
+                            .clone()
                     } else {
                         let index_url = specifier.index.clone().unwrap();
 
                         index_url
                             .clone()
                             .try_into()
-                            .map_err(|e| errors::DependencyGraphError::InvalidIndex(index_url, e))?
+                            // specifiers in indices store the index url in this field
+                            .unwrap()
                     };
 
                     PackageSources::Pesde(PesdePackageSource::new(index_url))
@@ -308,12 +304,6 @@ pub mod errors {
 
         #[error("index named {0} not found in manifest")]
         IndexNotFound(String),
-
-        #[error("error parsing url {0} into git url")]
-        UrlParse(url::Url, #[source] gix::url::parse::Error),
-
-        #[error("index {0} cannot be parsed as a git url")]
-        InvalidIndex(String, #[source] gix::url::parse::Error),
 
         #[error("error refreshing package source")]
         Refresh(#[from] crate::source::errors::RefreshError),

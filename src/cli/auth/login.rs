@@ -61,8 +61,8 @@ impl LoginCommand {
             },
         };
 
-        let index_url = match &self.index {
-            Some(index) => match index.parse() {
+        let index_url = match self.index.as_deref() {
+            Some(index) => match index.try_into() {
                 Ok(url) => Some(url),
                 Err(_) => None,
             },
@@ -84,12 +84,7 @@ impl LoginCommand {
             }
         };
 
-        let source = PesdePackageSource::new(
-            index_url
-                .as_str()
-                .try_into()
-                .context("cannot parse URL to git URL")?,
-        );
+        let source = PesdePackageSource::new(index_url);
         source.refresh(project).context("failed to refresh index")?;
 
         let config = source

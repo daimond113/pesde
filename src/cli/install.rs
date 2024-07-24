@@ -7,9 +7,9 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 #[derive(Debug, Args)]
 pub struct InstallCommand {
-    /// The amount of threads to use for downloading, defaults to 6
-    #[arg(short, long)]
-    threads: Option<usize>,
+    /// The amount of threads to use for downloading
+    #[arg(short, long, default_value_t = 6, value_parser = clap::value_parser!(u64).range(1..=128))]
+    threads: u64,
 }
 
 impl InstallCommand {
@@ -92,7 +92,7 @@ impl InstallCommand {
                 &graph,
                 &mut refreshed_sources,
                 &reqwest_client(project.data_dir())?,
-                self.threads.unwrap_or(6).max(1),
+                self.threads as usize,
             )
             .context("failed to download dependencies")?;
 

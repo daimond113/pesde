@@ -10,8 +10,8 @@ repository = "https://github.com/daimond113/pesde"
 include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [features]
-bin = ["clap", "directories", "pretty_env_logger", "reqwest/json", "reqwest/multipart", "indicatif", "indicatif-log-bridge", "inquire", "toml_edit", "colored", "anyhow", "keyring", "open", "gix/worktree-mutation"]
-wally-compat = ["zip", "roblox"]
+bin = ["clap", "directories", "pretty_env_logger", "reqwest/json", "reqwest/multipart", "indicatif", "indicatif-log-bridge", "inquire", "toml_edit", "colored", "anyhow", "keyring", "open", "gix/worktree-mutation", "serde_json"]
+wally-compat = ["zip", "serde_json", "roblox"]
 roblox = []
 lune = []
 luau = []
@@ -28,7 +28,6 @@ uninlined_format_args = "warn"
 [dependencies]
 serde = { version = "1.0.204", features = ["derive"] }
 toml = "0.8.15"
-serde_json = "1.0.120"
 serde_with = "3.9.0"
 gix = { version = "0.64.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials"] }
 semver = { version = "1.0.23", features = ["serde"] }
@@ -42,7 +41,6 @@ thiserror = "1.0.63"
 threadpool = "1.8.1"
 full_moon = { version = "1.0.0-rc.5", features = ["luau"] }
 url = { version = "2.5.2", features = ["serde"] }
-cfg-if = "1.0.0"
 # TODO: reevaluate whether to use this
 # secrecy = "0.8.0"
 chrono = { version = "0.4.38", features = ["serde"] }
@@ -51,6 +49,7 @@ chrono = { version = "0.4.38", features = ["serde"] }
 git2 = { version = "0.19.0", optional = true }
 
 zip = { version = "2.1.5", optional = true }
+serde_json = { version = "1.0.120", optional = true }
 
 anyhow = { version = "1.0.86", optional = true }
 open = { version = "5.3.0", optional = true }

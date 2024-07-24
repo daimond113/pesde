@@ -21,8 +21,16 @@ mod self_install;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliConfig {
-    pub default_index: url::Url,
-    pub scripts_repo: url::Url,
+    #[serde(
+        serialize_with = "crate::util::serialize_gix_url",
+        deserialize_with = "crate::util::deserialize_gix_url"
+    )]
+    pub default_index: gix::Url,
+    #[serde(
+        serialize_with = "crate::util::serialize_gix_url",
+        deserialize_with = "crate::util::deserialize_gix_url"
+    )]
+    pub scripts_repo: gix::Url,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
 }
@@ -30,9 +38,11 @@ pub struct CliConfig {
 impl Default for CliConfig {
     fn default() -> Self {
         Self {
-            default_index: "https://github.com/daimond113/pesde-index".parse().unwrap(),
+            default_index: "https://github.com/daimond113/pesde-index"
+                .try_into()
+                .unwrap(),
             scripts_repo: "https://github.com/daimond113/pesde-scripts"
-                .parse()
+                .try_into()
                 .unwrap(),
             token: None,
         }
@@ -221,7 +231,7 @@ pub fn update_scripts_folder(project: &Project) -> anyhow::Result<()> {
 
         let cli_config = read_config(project.data_dir())?;
 
-        gix::prepare_clone(cli_config.scripts_repo.as_str(), &scripts_dir)
+        gix::prepare_clone(cli_config.scripts_repo, &scripts_dir)
             .context("failed to prepare scripts repository clone")?
             .fetch_then_checkout(gix::progress::Discard, &false.into())
             .context("failed to fetch and checkout scripts repository")?
@@ -331,6 +341,10 @@ impl VersionedPackageName {
 
         Ok((self.0, version_id))
     }
+}
+
+pub fn parse_gix_url(s: &str) -> Result<gix::Url, gix::url::parse::Error> {
+    s.try_into()
 }
 
 #[derive(Debug, clap::Subcommand)]

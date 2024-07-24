@@ -144,8 +144,12 @@ impl InitCommand {
                 ));
         }
 
-        manifest["indices"][DEFAULT_INDEX_NAME] =
-            toml_edit::value(read_config(project.data_dir())?.default_index.as_str());
+        manifest["indices"][DEFAULT_INDEX_NAME] = toml_edit::value(
+            read_config(project.data_dir())?
+                .default_index
+                .to_bstring()
+                .to_string(),
+        );
 
         project.write_manifest(manifest.to_string())?;
 

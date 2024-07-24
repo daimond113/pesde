@@ -5,8 +5,8 @@ use pesde::Project;
 #[derive(Debug, Args)]
 pub struct DefaultIndexCommand {
     /// The new index URL to set as default, don't pass any value to check the current default index
-    #[arg(index = 1)]
-    index: Option<url::Url>,
+    #[arg(index = 1, value_parser = crate::cli::parse_gix_url)]
+    index: Option<gix::Url>,
 
     /// Resets the default index to the default value
     #[arg(short, long, conflicts_with = "index")]

@@ -30,11 +30,20 @@ pub struct Manifest {
     pub private: bool,
     #[serde(default, skip_serializing)]
     pub scripts: BTreeMap<String, RelativePathBuf>,
-    #[serde(default)]
-    pub indices: BTreeMap<String, url::Url>,
+    #[serde(
+        default,
+        serialize_with = "crate::util::serialize_gix_url_map",
+        deserialize_with = "crate::util::deserialize_gix_url_map"
+    )]
+    pub indices: BTreeMap<String, gix::Url>,
     #[cfg(feature = "wally-compat")]
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub wally_indices: BTreeMap<String, url::Url>,
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        serialize_with = "crate::util::serialize_gix_url_map",
+        deserialize_with = "crate::util::deserialize_gix_url_map"
+    )]
+    pub wally_indices: BTreeMap<String, gix::Url>,
     #[serde(default, skip_serializing)]
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
     #[serde(default)]
