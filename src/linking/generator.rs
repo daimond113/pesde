@@ -1,8 +1,8 @@
 use std::path::{Component, Path};
 
+use crate::manifest::target::TargetKind;
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
-
-use crate::manifest::target::Target;
+use relative_path::RelativePathBuf;
 
 struct TypeVisitor {
     types: Vec<String>,
@@ -49,7 +49,7 @@ pub fn get_file_types(file: &str) -> Result<Vec<String>, Vec<full_moon::Error>> 
     Ok(visitor.types)
 }
 
-pub fn generate_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
+pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
     path: &str,
     types: I,
 ) -> String {
@@ -64,27 +64,40 @@ pub fn generate_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
     output
 }
 
-pub fn get_require_path(
-    target: &Target,
+fn luau_style_path(path: &Path) -> String {
+    path.components()
+        .enumerate()
+        .filter_map(|(i, ct)| match ct {
+            Component::ParentDir => Some(if i == 0 {
+                ".".to_string()
+            } else {
+                "..".to_string()
+            }),
+            Component::Normal(part) => Some(format!("{}", part.to_string_lossy())),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+pub fn get_lib_require_path(
+    target: &TargetKind,
     base_dir: &Path,
+    lib_file: &RelativePathBuf,
     destination_dir: &Path,
     use_new_structure: bool,
-) -> Result<String, errors::GetRequirePathError> {
-    let Some(lib_file) = target.lib_path() else {
-        return Err(errors::GetRequirePathError::NoLibPath);
-    };
-
+) -> String {
     let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
-    let path = if !use_new_structure {
-        log::debug!("using old structure for require path");
+    let path = if use_new_structure {
+        log::debug!("using new structure for require path");
         lib_file.to_path(path)
     } else {
-        log::debug!("using new structure for require path");
+        log::debug!("using old structure for require path");
         path
     };
 
     #[cfg(feature = "roblox")]
-    if matches!(target, Target::Roblox { .. }) {
+    if matches!(target, TargetKind::Roblox) {
         let path = path
             .components()
             .filter_map(|component| match component {
@@ -102,29 +115,23 @@ pub fn get_require_path(
             .collect::<Vec<_>>()
             .join("");
 
-        return Ok(format!("script{path}"));
+        return format!("script{path}");
     };
 
-    let path = path
-        .components()
-        .filter_map(|ct| match ct {
-            Component::ParentDir => Some("..".to_string()),
-            Component::Normal(part) => Some(format!("{}", part.to_string_lossy())),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/");
-
-    Ok(format!("./{path}"))
+    format!("{:?}", luau_style_path(&path))
 }
 
-pub mod errors {
-    use thiserror::Error;
+pub fn generate_bin_linking_module(path: &str) -> String {
+    format!("return require({path})")
+}
 
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum GetRequirePathError {
-        #[error("get require path called for target without a lib path")]
-        NoLibPath,
-    }
+pub fn get_bin_require_path(
+    base_dir: &Path,
+    bin_file: &RelativePathBuf,
+    destination_dir: &Path,
+) -> String {
+    let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
+    let path = bin_file.to_path(path);
+
+    format!("{:?}", luau_style_path(&path))
 }

@@ -149,15 +149,15 @@ pub fn reqwest_client(data_dir: &Path) -> anyhow::Result<reqwest::blocking::Clie
         .build()?)
 }
 
-pub fn update_scripts_folder(project: &Project) -> anyhow::Result<()> {
-    let home_dir = directories::UserDirs::new()
+pub fn home_dir() -> anyhow::Result<std::path::PathBuf> {
+    Ok(directories::UserDirs::new()
         .context("failed to get home directory")?
         .home_dir()
-        .to_owned();
+        .join(concat!(".", env!("CARGO_PKG_NAME"))))
+}
 
-    let scripts_dir = home_dir
-        .join(concat!(".", env!("CARGO_PKG_NAME")))
-        .join("scripts");
+pub fn update_scripts_folder(project: &Project) -> anyhow::Result<()> {
+    let scripts_dir = home_dir()?.join("scripts");
 
     if scripts_dir.exists() {
         let repo = gix::open(&scripts_dir).context("failed to open scripts repository")?;

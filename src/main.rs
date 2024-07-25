@@ -22,6 +22,27 @@ struct Cli {
 }
 
 fn main() {
+    #[cfg(windows)]
+    {
+        let exe = std::env::current_exe().expect("failed to get current executable path");
+        let exe_name = exe.with_extension("");
+        let exe_name = exe_name.file_name().unwrap();
+
+        if exe_name != env!("CARGO_BIN_NAME") {
+            let args = std::env::args_os();
+
+            let status = std::process::Command::new("lune")
+                .arg("run")
+                .arg(exe.with_extension("luau"))
+                .args(args.skip(1))
+                .current_dir(std::env::current_dir().unwrap())
+                .status()
+                .expect("failed to run lune");
+
+            std::process::exit(status.code().unwrap());
+        }
+    }
+
     let multi = {
         let logger = pretty_env_logger::formatted_builder()
             .parse_env(pretty_env_logger::env_logger::Env::default().default_filter_or("info"))

@@ -1,15 +1,57 @@
-use crate::cli::{reqwest_client, IsUpToDate};
+use crate::cli::{home_dir, reqwest_client, IsUpToDate};
 use anyhow::Context;
 use clap::Args;
 use indicatif::MultiProgress;
 use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project};
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeSet, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
 #[derive(Debug, Args)]
 pub struct InstallCommand {
     /// The amount of threads to use for downloading
     #[arg(short, long, default_value_t = 6, value_parser = clap::value_parser!(u64).range(1..=128))]
     threads: u64,
+}
+
+fn bin_link_file(alias: &str) -> String {
+    let mut all_combinations = BTreeSet::new();
+
+    for a in TargetKind::VARIANTS {
+        for b in TargetKind::VARIANTS {
+            all_combinations.insert((a, b));
+        }
+    }
+
+    let all_folders = all_combinations
+        .into_iter()
+        .map(|(a, b)| format!("{:?}", a.packages_folder(b)))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    #[cfg(windows)]
+    let prefix = String::new();
+    #[cfg(not(windows))]
+    let prefix = "#!/usr/bin/env -S lune run\n";
+
+    format!(
+        r#"{prefix}local process = require("@lune/process")
+local fs = require("@lune/fs")
+    
+for _, packages_folder in {{ {all_folders} }} do
+    local path = `{{process.cwd}}/{{packages_folder}}/{alias}.bin.luau`
+    
+    if fs.isFile(path) then
+        require(path)
+        break
+    end
+end
+    "#,
+    )
 }
 
 impl InstallCommand {
@@ -119,6 +161,47 @@ impl InstallCommand {
         project
             .apply_patches(&downloaded_graph)
             .context("failed to apply patches")?;
+
+        let bin_folder = home_dir()?.join("bin");
+
+        for versions in downloaded_graph.values() {
+            for node in versions.values() {
+                if node.target.bin_path().is_none() {
+                    continue;
+                }
+
+                let Some((alias, _)) = &node.node.direct else {
+                    continue;
+                };
+
+                let bin_file = bin_folder.join(format!("{alias}.luau"));
+                std::fs::write(&bin_file, bin_link_file(alias))
+                    .context("failed to write bin link file")?;
+
+                // TODO: test if this actually works
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+
+                    let mut perms = std::fs::metadata(&bin_file)
+                        .context("failed to get bin link file metadata")?
+                        .permissions();
+                    perms.set_mode(perms.mode() | 0o111);
+                    std::fs::set_permissions(&bin_file, perms)
+                        .context("failed to set bin link file permissions")?;
+                }
+
+                #[cfg(windows)]
+                {
+                    let bin_file = bin_file.with_extension(std::env::consts::EXE_EXTENSION);
+                    std::fs::copy(
+                        std::env::current_exe().context("failed to get current executable path")?,
+                        &bin_file,
+                    )
+                    .context("failed to copy bin link file")?;
+                }
+            }
+        }
 
         project
             .write_lockfile(Lockfile {

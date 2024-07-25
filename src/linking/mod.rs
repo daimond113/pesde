@@ -11,6 +11,14 @@ use std::{collections::BTreeMap, fs::create_dir_all};
 
 pub mod generator;
 
+fn create_and_canonicalize<P: AsRef<std::path::Path>>(
+    path: P,
+) -> std::io::Result<std::path::PathBuf> {
+    let p = path.as_ref();
+    create_dir_all(p)?;
+    p.canonicalize()
+}
+
 impl Project {
     pub fn link_dependencies(&self, graph: &DownloadedGraph) -> Result<(), errors::LinkingError> {
         let manifest = self.deser_manifest()?;
@@ -89,12 +97,12 @@ impl Project {
 
         for (name, versions) in graph {
             for (version_id, node) in versions {
-                let base_folder = self.path().join(
-                    self.path()
-                        .join(node.node.base_folder(manifest.target.kind(), true)),
-                );
-                create_dir_all(&base_folder)?;
-                let base_folder = base_folder.canonicalize()?;
+                let base_folder = create_and_canonicalize(
+                    self.path().join(
+                        self.path()
+                            .join(node.node.base_folder(manifest.target.kind(), true)),
+                    ),
+                )?;
                 let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
                 let container_folder = node.node.container_folder(
@@ -108,17 +116,36 @@ impl Project {
                     .and_then(|v| v.get(version_id))
                     .and_then(|types| node.node.direct.as_ref().map(|(alias, _)| (alias, types)))
                 {
-                    let module = generator::generate_linking_module(
-                        &generator::get_require_path(
-                            &node.target,
-                            &base_folder,
-                            &container_folder,
-                            node.node.pkg_ref.use_new_structure(),
-                        )?,
-                        types,
-                    );
+                    if let Some(lib_file) = node.target.lib_path() {
+                        let linker_file = base_folder.join(format!("{alias}.luau"));
 
-                    std::fs::write(base_folder.join(format!("{alias}.luau")), module)?;
+                        let module = generator::generate_lib_linking_module(
+                            &generator::get_lib_require_path(
+                                &node.target.kind(),
+                                &linker_file,
+                                lib_file,
+                                &container_folder,
+                                node.node.pkg_ref.use_new_structure(),
+                            ),
+                            types,
+                        );
+
+                        std::fs::write(linker_file, module)?;
+                    };
+
+                    if let Some(bin_file) = node.target.bin_path() {
+                        let linker_file = base_folder.join(format!("{alias}.bin.luau"));
+
+                        let module = generator::generate_bin_linking_module(
+                            &generator::get_bin_require_path(
+                                &linker_file,
+                                bin_file,
+                                &container_folder,
+                            ),
+                        );
+
+                        std::fs::write(linker_file, module)?;
+                    }
                 }
 
                 for (dependency_name, (dependency_version_id, dependency_alias)) in
@@ -134,26 +161,28 @@ impl Project {
                         ));
                     };
 
-                    let dependency_container_folder = dependency_node.node.container_folder(
-                        &packages_container_folder,
-                        dependency_name,
-                        dependency_version_id.version(),
-                    );
+                    let Some(lib_file) = dependency_node.target.lib_path() else {
+                        continue;
+                    };
 
-                    let linker_folder = container_folder
-                        .join(dependency_node.node.base_folder(node.target.kind(), false));
-                    create_dir_all(&linker_folder)?;
-                    let linker_folder = linker_folder.canonicalize()?;
+                    let linker_file = create_and_canonicalize(
+                        container_folder
+                            .join(dependency_node.node.base_folder(node.target.kind(), false)),
+                    )?
+                    .join(format!("{dependency_alias}.luau"));
 
-                    let linker_file = linker_folder.join(format!("{dependency_alias}.luau"));
-
-                    let module = generator::generate_linking_module(
-                        &generator::get_require_path(
-                            &dependency_node.target,
+                    let module = generator::generate_lib_linking_module(
+                        &generator::get_lib_require_path(
+                            &dependency_node.target.kind(),
                             &linker_file,
-                            &dependency_container_folder,
+                            lib_file,
+                            &dependency_node.node.container_folder(
+                                &packages_container_folder,
+                                dependency_name,
+                                dependency_version_id.version(),
+                            ),
                             node.node.pkg_ref.use_new_structure(),
-                        )?,
+                        ),
                         package_types
                             .get(dependency_name)
                             .and_then(|v| v.get(dependency_version_id))
@@ -189,9 +218,6 @@ pub mod errors {
 
         #[error("error parsing Luau script at {0}")]
         FullMoon(String, Vec<full_moon::Error>),
-
-        #[error("error generating require path")]
-        GetRequirePath(#[from] crate::linking::generator::errors::GetRequirePathError),
 
         #[cfg(feature = "roblox")]
         #[error("error generating roblox sync config for {0}")]
