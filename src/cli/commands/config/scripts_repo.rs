@@ -1,4 +1,4 @@
-use crate::cli::{read_config, write_config, CliConfig};
+use crate::cli::config::{read_config, write_config, CliConfig};
 use clap::Args;
 use pesde::Project;
 

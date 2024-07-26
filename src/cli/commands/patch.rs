@@ -1,4 +1,4 @@
-use crate::cli::{reqwest_client, IsUpToDate, VersionedPackageName};
+use crate::cli::{IsUpToDate, VersionedPackageName};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
@@ -16,7 +16,7 @@ pub struct PatchCommand {
 }
 
 impl PatchCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
+    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
         let graph = if project.is_up_to_date(true)? {
             project.deser_lockfile()?.graph
         } else {
@@ -39,12 +39,7 @@ impl PatchCommand {
             .join(chrono::Utc::now().timestamp().to_string());
         std::fs::create_dir_all(&directory)?;
 
-        source.download(
-            &node.node.pkg_ref,
-            &directory,
-            &project,
-            &reqwest_client(project.data_dir())?,
-        )?;
+        source.download(&node.node.pkg_ref, &directory, &project, &reqwest)?;
 
         // TODO: if MANIFEST_FILE_NAME does not exist, try to convert it
 

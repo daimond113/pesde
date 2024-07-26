@@ -1,4 +1,4 @@
-use crate::cli::read_config;
+use crate::cli::config::read_config;
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;

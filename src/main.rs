@@ -1,4 +1,9 @@
-use crate::cli::get_token;
+use crate::cli::{
+    auth::get_token,
+    home_dir,
+    version::{check_for_updates, current_version, get_or_download_version, max_installed_version},
+};
+use anyhow::Context;
 use clap::Parser;
 use colored::Colorize;
 use indicatif::MultiProgress;
@@ -18,29 +23,38 @@ struct Cli {
     version: (),
 
     #[command(subcommand)]
-    subcommand: cli::Subcommand,
+    subcommand: cli::commands::Subcommand,
 }
 
-fn main() {
+fn run() -> anyhow::Result<()> {
     #[cfg(windows)]
-    {
+    'scripts: {
         let exe = std::env::current_exe().expect("failed to get current executable path");
+        if exe.parent().is_some_and(|parent| {
+            parent.as_os_str() != "bin"
+                || parent
+                    .parent()
+                    .is_some_and(|parent| parent.as_os_str() != cli::HOME_DIR)
+        }) {
+            break 'scripts;
+        }
+
         let exe_name = exe.with_extension("");
         let exe_name = exe_name.file_name().unwrap();
 
-        if exe_name != env!("CARGO_BIN_NAME") {
-            let args = std::env::args_os();
-
-            let status = std::process::Command::new("lune")
-                .arg("run")
-                .arg(exe.with_extension("luau"))
-                .args(args.skip(1))
-                .current_dir(std::env::current_dir().unwrap())
-                .status()
-                .expect("failed to run lune");
-
-            std::process::exit(status.code().unwrap());
+        if exe_name == env!("CARGO_BIN_NAME") {
+            break 'scripts;
         }
+
+        let status = std::process::Command::new("lune")
+            .arg("run")
+            .arg(exe.with_extension("luau"))
+            .args(std::env::args_os().skip(1))
+            .current_dir(std::env::current_dir().unwrap())
+            .status()
+            .expect("failed to run lune");
+
+        std::process::exit(status.code().unwrap());
     }
 
     let multi = {
@@ -54,21 +68,82 @@ fn main() {
         multi
     };
 
-    let project_dirs =
-        directories::ProjectDirs::from("com", env!("CARGO_PKG_NAME"), env!("CARGO_BIN_NAME"))
-            .expect("couldn't get home directory");
     let cwd = std::env::current_dir().expect("failed to get current working directory");
-    let cli = Cli::parse();
 
-    let data_dir = project_dirs.data_dir();
-    create_dir_all(data_dir).expect("failed to create data directory");
+    let data_dir = home_dir()?.join("data");
+    create_dir_all(&data_dir).expect("failed to create data directory");
 
-    if let Err(err) = get_token(data_dir).and_then(|token| {
-        cli.subcommand.run(
-            Project::new(cwd, data_dir, AuthConfig::new().with_pesde_token(token)),
-            multi,
-        )
-    }) {
+    let token = get_token(&data_dir)?;
+
+    let project = Project::new(
+        cwd,
+        &data_dir,
+        AuthConfig::new().with_pesde_token(token.as_ref()),
+    );
+
+    let reqwest = {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(token) = token {
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {token}")
+                    .parse()
+                    .context("failed to create auth header")?,
+            );
+        }
+
+        headers.insert(
+            reqwest::header::ACCEPT,
+            "application/json"
+                .parse()
+                .context("failed to create accept header")?,
+        );
+
+        reqwest::blocking::Client::builder()
+            .user_agent(concat!(
+                env!("CARGO_PKG_NAME"),
+                "/",
+                env!("CARGO_PKG_VERSION")
+            ))
+            .default_headers(headers)
+            .build()?
+    };
+
+    check_for_updates(&reqwest, &data_dir)?;
+
+    let target_version = project
+        .deser_manifest()
+        .ok()
+        .and_then(|manifest| manifest.pesde_version);
+
+    // store the current version in case it needs to be used later
+    get_or_download_version(&reqwest, &current_version())?;
+
+    let exe_path = if let Some(version) = target_version {
+        Some(get_or_download_version(&reqwest, &version)?)
+    } else {
+        None
+    };
+    let exe_path = if let Some(exe_path) = exe_path {
+        exe_path
+    } else {
+        get_or_download_version(&reqwest, &max_installed_version()?)?
+    };
+
+    if let Some(exe_path) = exe_path {
+        let status = std::process::Command::new(exe_path)
+            .args(std::env::args_os().skip(1))
+            .status()
+            .expect("failed to run new version");
+
+        std::process::exit(status.code().unwrap());
+    }
+
+    Cli::parse().subcommand.run(project, multi, reqwest)
+}
+
+fn main() {
+    if let Err(err) = run() {
         eprintln!("{}: {err}\n", "error".red().bold());
 
         let cause = err.chain().skip(1).collect::<Vec<_>>();

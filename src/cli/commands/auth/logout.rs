@@ -1,4 +1,4 @@
-use crate::cli::set_token;
+use crate::cli::auth::set_token;
 use clap::Args;
 use pesde::Project;
 

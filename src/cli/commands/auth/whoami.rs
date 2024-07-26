@@ -1,4 +1,4 @@
-use crate::cli::{auth::get_token_login, get_token, reqwest_client};
+use crate::cli::{auth::get_token_login, get_token};
 use clap::Args;
 use colored::Colorize;
 use pesde::Project;
@@ -7,7 +7,7 @@ use pesde::Project;
 pub struct WhoAmICommand {}
 
 impl WhoAmICommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
+    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
         let token = match get_token(project.data_dir())? {
             Some(token) => token,
             None => {
@@ -16,10 +16,7 @@ impl WhoAmICommand {
             }
         };
 
-        println!(
-            "logged in as {}",
-            get_token_login(&reqwest_client(project.data_dir())?, &token)?.bold()
-        );
+        println!("logged in as {}", get_token_login(&reqwest, &token)?.bold());
 
         Ok(())
     }

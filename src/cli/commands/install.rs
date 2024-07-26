@@ -1,4 +1,4 @@
-use crate::cli::{home_dir, reqwest_client, IsUpToDate};
+use crate::cli::{files::make_executable, home_dir, IsUpToDate};
 use anyhow::Context;
 use clap::Args;
 use indicatif::MultiProgress;
@@ -55,7 +55,12 @@ end
 }
 
 impl InstallCommand {
-    pub fn run(self, project: Project, multi: MultiProgress) -> anyhow::Result<()> {
+    pub fn run(
+        self,
+        project: Project,
+        multi: MultiProgress,
+        reqwest: reqwest::blocking::Client,
+    ) -> anyhow::Result<()> {
         let mut refreshed_sources = HashSet::new();
 
         let manifest = project
@@ -133,7 +138,7 @@ impl InstallCommand {
             .download_graph(
                 &graph,
                 &mut refreshed_sources,
-                &reqwest_client(project.data_dir())?,
+                &reqwest,
                 self.threads as usize,
             )
             .context("failed to download dependencies")?;
@@ -174,22 +179,16 @@ impl InstallCommand {
                     continue;
                 };
 
+                if alias == env!("CARGO_BIN_NAME") {
+                    log::warn!("package {alias} has the same name as the CLI, skipping bin link");
+                    continue;
+                }
+
                 let bin_file = bin_folder.join(format!("{alias}.luau"));
                 std::fs::write(&bin_file, bin_link_file(alias))
                     .context("failed to write bin link file")?;
 
-                // TODO: test if this actually works
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-
-                    let mut perms = std::fs::metadata(&bin_file)
-                        .context("failed to get bin link file metadata")?
-                        .permissions();
-                    perms.set_mode(perms.mode() | 0o111);
-                    std::fs::set_permissions(&bin_file, perms)
-                        .context("failed to set bin link file permissions")?;
-                }
+                make_executable(&bin_file).context("failed to make bin link executable")?;
 
                 #[cfg(windows)]
                 {

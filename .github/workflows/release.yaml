@@ -3,6 +3,8 @@ on:
   push:
     tags:
       - v*
+env:
+  BIN_NAME: pesde
 jobs:
   # Better to check first, runners other than ubuntu-latest take up more free minutes
   check:
@@ -14,29 +16,29 @@ jobs:
         run: cargo check --all-features --locked
 
   build:
-    needs: [check]
+    needs: [ check ]
     strategy:
       matrix:
-       include:
-         - os: ubuntu-latest
-           host: linux
-           arch: x86_64
-           target: x86_64-unknown-linux-gnu
+        include:
+          - os: ubuntu-latest
+            host: linux
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
 
-         - os: windows-latest
-           host: windows
-           arch: x86_64
-           target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            host: windows
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
 
-         - os: macos-13
-           host: macos
-           arch: x86_64
-           target: x86_64-apple-darwin
+          - os: macos-13
+            host: macos
+            arch: x86_64
+            target: x86_64-apple-darwin
 
-         - os: macos-latest
-           host: macos
-           arch: aarch64
-           target: aarch64-apple-darwin
+          - os: macos-latest
+            host: macos
+            arch: aarch64
+            target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     name: Build for ${{ matrix.host }}-${{ matrix.arch }}
     steps:
@@ -44,10 +46,8 @@ jobs:
       - name: Set env
         shell: bash
         run: |
-          BIN_NAME=pesde
-          ARCHIVE_NAME=$BIN_NAME-$(echo ${{ github.ref_name }} | cut -c 2-)-${{ matrix.host }}-${{ matrix.arch }}.zip
-          
-          echo "BIN_NAME=$BIN_NAME" >> $GITHUB_ENV
+          ARCHIVE_NAME=${{ env.BIN_NAME }}-$(echo ${{ github.ref_name }} | cut -c 2-)-${{ matrix.host }}-${{ matrix.arch }}
+
           echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
 
       - name: Build
@@ -57,23 +57,31 @@ jobs:
         shell: bash
         run: |
           if [ ${{ matrix.host }} = "windows" ]; then
-            cp target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe ${{ env.BIN_NAME }}.exe
-            7z a ${{ env.ARCHIVE_NAME }} ${{ env.BIN_NAME }}.exe
+            mv target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe ${{ env.BIN_NAME }}.exe
+            7z a ${{ env.ARCHIVE_NAME }}.zip ${{ env.BIN_NAME }}.exe
+            tar -czf ${{ env.ARCHIVE_NAME }}.tar.gz ${{ env.BIN_NAME }}.exe
           else
-            cp target/${{ matrix.target }}/release/${{ env.BIN_NAME }} ${{ env.BIN_NAME }}
-            zip -r ${{ env.ARCHIVE_NAME }} ${{ env.BIN_NAME }}
+            mv target/${{ matrix.target }}/release/${{ env.BIN_NAME }} ${{ env.BIN_NAME }}
+            zip -r ${{ env.ARCHIVE_NAME }}.zip ${{ env.BIN_NAME }}
+            tar -czf ${{ env.ARCHIVE_NAME }}.tar.gz ${{ env.BIN_NAME }}
           fi
 
-      - name: Upload assets
+      - name: Upload zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARCHIVE_NAME }}
-          path: ${{ env.ARCHIVE_NAME }}
+          name: ${{ env.ARCHIVE_NAME }}.zip
+          path: ${{ env.ARCHIVE_NAME }}.zip
+
+      - name: Upload tar.gz artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}.tar.gz
+          path: ${{ env.ARCHIVE_NAME }}.tar.gz
 
   publish:
     name: Publish to crates.io
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [ build ]
     steps:
       - uses: actions/checkout@v4
       - name: Publish
@@ -85,7 +93,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: read
-    needs: [build, publish]
+    needs: [ build, publish ]
     steps:
       - uses: actions/checkout@v4
         with:

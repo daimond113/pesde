@@ -1,4 +1,7 @@
-use crate::cli::{auth::get_token_login, read_config, reqwest_client, set_token};
+use crate::cli::{
+    auth::{get_token_login, set_token},
+    config::read_config,
+};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
@@ -171,9 +174,7 @@ impl LoginCommand {
         anyhow::bail!("code expired, please re-run the login command");
     }
 
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
-        let reqwest = reqwest_client(project.data_dir())?;
-
+    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
         let token = match self.token {
             Some(token) => token,
             None => self.authenticate_device_flow(&project, &reqwest)?,

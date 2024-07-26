@@ -51,6 +51,8 @@ pub struct Manifest {
     #[cfg(feature = "patches")]
     #[serde(default, skip_serializing)]
     pub patches: BTreeMap<PackageNames, BTreeMap<VersionId, RelativePathBuf>>,
+    #[serde(default, skip_serializing)]
+    pub pesde_version: Option<Version>,
 
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, DependencySpecifiers>,
