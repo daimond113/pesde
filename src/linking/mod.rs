@@ -122,7 +122,7 @@ impl Project {
                         let module = generator::generate_lib_linking_module(
                             &generator::get_lib_require_path(
                                 &node.target.kind(),
-                                &linker_file,
+                                &base_folder,
                                 lib_file,
                                 &container_folder,
                                 node.node.pkg_ref.use_new_structure(),
@@ -138,7 +138,7 @@ impl Project {
 
                         let module = generator::generate_bin_linking_module(
                             &generator::get_bin_require_path(
-                                &linker_file,
+                                &base_folder,
                                 bin_file,
                                 &container_folder,
                             ),
@@ -165,16 +165,16 @@ impl Project {
                         continue;
                     };
 
-                    let linker_file = create_and_canonicalize(
+                    let linker_folder = create_and_canonicalize(
                         container_folder
                             .join(dependency_node.node.base_folder(node.target.kind(), false)),
-                    )?
-                    .join(format!("{dependency_alias}.luau"));
+                    )?;
+                    let linker_file = linker_folder.join(format!("{dependency_alias}.luau"));
 
                     let module = generator::generate_lib_linking_module(
                         &generator::get_lib_require_path(
                             &dependency_node.target.kind(),
-                            &linker_file,
+                            &linker_folder,
                             lib_file,
                             &dependency_node.node.container_folder(
                                 &packages_container_folder,

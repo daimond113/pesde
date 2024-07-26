@@ -65,19 +65,19 @@ pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
 }
 
 fn luau_style_path(path: &Path) -> String {
-    path.components()
-        .enumerate()
-        .filter_map(|(i, ct)| match ct {
-            Component::ParentDir => Some(if i == 0 {
-                ".".to_string()
-            } else {
-                "..".to_string()
-            }),
+    let path = path
+        .components()
+        .filter_map(|ct| match ct {
+            Component::CurDir => Some(".".to_string()),
+            Component::ParentDir => Some("..".to_string()),
             Component::Normal(part) => Some(format!("{}", part.to_string_lossy())),
             _ => None,
         })
         .collect::<Vec<_>>()
-        .join("/")
+        .join("/");
+
+    let require = format!("./{path}");
+    format!("{require:?}")
 }
 
 pub fn get_lib_require_path(
@@ -115,10 +115,10 @@ pub fn get_lib_require_path(
             .collect::<Vec<_>>()
             .join("");
 
-        return format!("script{path}");
+        return format!("script.Parent{path}");
     };
 
-    format!("{:?}", luau_style_path(&path))
+    luau_style_path(&path)
 }
 
 pub fn generate_bin_linking_module(path: &str) -> String {
@@ -133,5 +133,5 @@ pub fn get_bin_require_path(
     let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
     let path = bin_file.to_path(path);
 
-    format!("{:?}", luau_style_path(&path))
+    luau_style_path(&path)
 }
