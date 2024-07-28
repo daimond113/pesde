@@ -5,7 +5,6 @@ use crate::{
     names::PackageNames,
     scripts::{execute_script, ScriptName},
     source::{fs::store_in_cas, traits::PackageRef, version_id::VersionId},
-    util::hash,
     Project, PACKAGES_CONTAINER_NAME,
 };
 use std::{

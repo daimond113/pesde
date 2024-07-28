@@ -1,19 +1,26 @@
-use crate::cli::{bin_dir, files::make_executable, home_dir, IsUpToDate};
-use anyhow::Context;
-use clap::Args;
-use indicatif::MultiProgress;
-use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project};
 use std::{
     collections::{BTreeSet, HashSet},
     sync::Arc,
     time::Duration,
 };
 
+use anyhow::Context;
+use clap::Args;
+use indicatif::MultiProgress;
+
+use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project};
+
+use crate::cli::{bin_dir, files::make_executable, IsUpToDate};
+
 #[derive(Debug, Args)]
 pub struct InstallCommand {
     /// The amount of threads to use for downloading
     #[arg(short, long, default_value_t = 6, value_parser = clap::value_parser!(u64).range(1..=128))]
     threads: u64,
+
+    /// Whether to ignore the lockfile, refreshing it
+    #[arg(short, long)]
+    pub unlocked: bool,
 }
 
 fn bin_link_file(alias: &str) -> String {
@@ -67,7 +74,9 @@ impl InstallCommand {
             .deser_manifest()
             .context("failed to read manifest")?;
 
-        let lockfile = if project
+        let lockfile = if self.unlocked {
+            None
+        } else if project
             .is_up_to_date(false)
             .context("failed to check if project is up to date")?
         {

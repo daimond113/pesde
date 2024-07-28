@@ -43,6 +43,10 @@ impl PesdePackageSource {
         project.data_dir.join("indices").join(hash(self.as_bytes()))
     }
 
+    pub fn repo_url(&self) -> &gix::Url {
+        &self.repo_url
+    }
+
     pub(crate) fn tree<'a>(
         &'a self,
         repo: &'a gix::Repository,

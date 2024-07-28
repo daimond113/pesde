@@ -1,10 +1,12 @@
 use indicatif::MultiProgress;
 use pesde::Project;
 
+mod add;
 mod auth;
 mod config;
 mod init;
 mod install;
+mod outdated;
 #[cfg(feature = "patches")]
 mod patch;
 #[cfg(feature = "patches")]
@@ -49,6 +51,15 @@ pub enum Subcommand {
 
     /// Installs the latest version of pesde
     SelfUpgrade(self_upgrade::SelfUpgradeCommand),
+
+    /// Adds a dependency to the project
+    Add(add::AddCommand),
+
+    /// Updates the project's lockfile. note: this command is just an alias for `install --unlocked`
+    Update(install::InstallCommand),
+
+    /// Checks for outdated dependencies
+    Outdated(outdated::OutdatedCommand),
 }
 
 impl Subcommand {
@@ -71,6 +82,12 @@ impl Subcommand {
             #[cfg(feature = "patches")]
             Subcommand::PatchCommit(patch_commit) => patch_commit.run(project),
             Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(reqwest),
+            Subcommand::Add(add) => add.run(project),
+            Subcommand::Update(mut update) => {
+                update.unlocked = true;
+                update.run(project, multi, reqwest)
+            }
+            Subcommand::Outdated(outdated) => outdated.run(project),
         }
     }
 }

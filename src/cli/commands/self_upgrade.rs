@@ -5,11 +5,7 @@ use crate::cli::{
 use clap::Args;
 
 #[derive(Debug, Args)]
-pub struct SelfUpgradeCommand {
-    #[cfg(windows)]
-    #[arg(short, long)]
-    skip_add_to_path: bool,
-}
+pub struct SelfUpgradeCommand {}
 
 impl SelfUpgradeCommand {
     pub fn run(self, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {

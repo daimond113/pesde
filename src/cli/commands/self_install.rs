@@ -1,15 +1,12 @@
-use crate::cli::{
-    bin_dir, files::make_executable, home_dir, scripts::update_scripts_folder,
-    version::update_bin_exe, HOME_DIR,
-};
+use crate::cli::{bin_dir, scripts::update_scripts_folder, version::update_bin_exe, HOME_DIR};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use pesde::Project;
-use std::fs::create_dir_all;
 
 #[derive(Debug, Args)]
 pub struct SelfInstallCommand {
+    /// Skip adding the bin directory to the PATH
     #[cfg(windows)]
     #[arg(short, long)]
     skip_add_to_path: bool,
