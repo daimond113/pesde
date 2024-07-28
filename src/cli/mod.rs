@@ -10,7 +10,7 @@ use anyhow::Context;
 use pesde::{
     lockfile::DownloadedGraph, names::PackageNames, source::version_id::VersionId, Project,
 };
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, fs::create_dir_all, str::FromStr};
 
 pub const HOME_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));
 
@@ -18,6 +18,12 @@ pub fn home_dir() -> anyhow::Result<std::path::PathBuf> {
     Ok(dirs::home_dir()
         .context("failed to get home directory")?
         .join(HOME_DIR))
+}
+
+pub fn bin_dir() -> anyhow::Result<std::path::PathBuf> {
+    let bin_dir = home_dir()?.join("bin");
+    create_dir_all(&bin_dir).context("failed to create bin folder")?;
+    Ok(bin_dir)
 }
 
 pub trait IsUpToDate {

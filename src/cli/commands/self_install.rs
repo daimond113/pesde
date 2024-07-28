@@ -1,4 +1,7 @@
-use crate::cli::{files::make_executable, home_dir, scripts::update_scripts_folder, HOME_DIR};
+use crate::cli::{
+    bin_dir, files::make_executable, home_dir, scripts::update_scripts_folder,
+    version::update_bin_exe, HOME_DIR,
+};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
@@ -16,8 +19,7 @@ impl SelfInstallCommand {
     pub fn run(self, project: Project) -> anyhow::Result<()> {
         update_scripts_folder(&project)?;
 
-        let bin_dir = home_dir()?.join("bin");
-        create_dir_all(&bin_dir).context("failed to create bin folder")?;
+        let bin_dir = bin_dir()?;
 
         #[cfg(windows)]
         if !self.skip_add_to_path {
@@ -74,14 +76,7 @@ and then restart your shell.
             );
         }
 
-        let copy_to = bin_dir
-            .join(env!("CARGO_BIN_NAME"))
-            .with_extension(std::env::consts::EXE_EXTENSION);
-
-        std::fs::copy(std::env::current_exe()?, &copy_to)
-            .context("failed to copy executable to bin folder")?;
-
-        make_executable(&copy_to)?;
+        update_bin_exe()?;
 
         Ok(())
     }

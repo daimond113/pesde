@@ -7,6 +7,7 @@ use semver::Version;
 use serde::Deserialize;
 
 use crate::cli::{
+    bin_dir,
     config::{read_config, write_config, CliConfig},
     files::make_executable,
     home_dir,
@@ -205,4 +206,15 @@ pub fn max_installed_version() -> anyhow::Result<Version> {
         .unwrap_or_else(current_version);
 
     Ok(max_version)
+}
+
+pub fn update_bin_exe() -> anyhow::Result<()> {
+    let copy_to = bin_dir()?
+        .join(env!("CARGO_BIN_NAME"))
+        .with_extension(std::env::consts::EXE_EXTENSION);
+
+    std::fs::copy(std::env::current_exe()?, &copy_to)
+        .context("failed to copy executable to bin folder")?;
+
+    make_executable(&copy_to)
 }

@@ -1,4 +1,4 @@
-use crate::cli::{files::make_executable, home_dir, IsUpToDate};
+use crate::cli::{bin_dir, files::make_executable, home_dir, IsUpToDate};
 use anyhow::Context;
 use clap::Args;
 use indicatif::MultiProgress;
@@ -167,7 +167,7 @@ impl InstallCommand {
             .apply_patches(&downloaded_graph)
             .context("failed to apply patches")?;
 
-        let bin_folder = home_dir()?.join("bin");
+        let bin_folder = bin_dir()?;
 
         for versions in downloaded_graph.values() {
             for node in versions.values() {

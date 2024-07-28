@@ -1,4 +1,7 @@
-use crate::cli::{config::read_config, version::get_or_download_version};
+use crate::cli::{
+    config::read_config,
+    version::{get_or_download_version, update_bin_exe},
+};
 use clap::Args;
 
 #[derive(Debug, Args)]
@@ -13,6 +16,7 @@ impl SelfUpgradeCommand {
         let config = read_config()?;
 
         get_or_download_version(&reqwest, &config.last_checked_updates.unwrap().1)?;
+        update_bin_exe()?;
 
         Ok(())
     }
