@@ -1,8 +1,4 @@
-use std::{
-    fs::create_dir_all,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::{fs::create_dir_all, io::Read, path::PathBuf};
 
 use anyhow::Context;
 use colored::Colorize;
@@ -42,13 +38,10 @@ fn get_repo() -> (String, String) {
 
 const CHECK_INTERVAL: chrono::Duration = chrono::Duration::seconds(30);
 
-pub fn check_for_updates<P: AsRef<Path>>(
-    reqwest: &reqwest::blocking::Client,
-    data_dir: P,
-) -> anyhow::Result<()> {
+pub fn check_for_updates(reqwest: &reqwest::blocking::Client) -> anyhow::Result<()> {
     let (owner, repo) = get_repo();
 
-    let config = read_config(&data_dir)?;
+    let config = read_config()?;
 
     let version = if let Some((_, version)) = config
         .last_checked_updates
@@ -71,13 +64,10 @@ pub fn check_for_updates<P: AsRef<Path>>(
             .max()
             .context("failed to find latest version")?;
 
-        write_config(
-            &data_dir,
-            &CliConfig {
-                last_checked_updates: Some((chrono::Utc::now(), version.clone())),
-                ..config
-            },
-        )?;
+        write_config(&CliConfig {
+            last_checked_updates: Some((chrono::Utc::now(), version.clone())),
+            ..config
+        })?;
 
         version
     };

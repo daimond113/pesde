@@ -1,13 +1,15 @@
+use crate::{
+    lockfile::{DependencyGraph, DownloadedDependencyGraphNode, DownloadedGraph},
+    source::{
+        traits::{PackageRef, PackageSource},
+        PackageSources,
+    },
+    Project, PACKAGES_CONTAINER_NAME,
+};
 use std::{
     collections::HashSet,
     fs::create_dir_all,
     sync::{mpsc::Receiver, Arc, Mutex},
-};
-
-use crate::{
-    lockfile::{DependencyGraph, DownloadedDependencyGraphNode, DownloadedGraph},
-    source::{PackageRef, PackageSource, PackageSources},
-    Project, PACKAGES_CONTAINER_NAME,
 };
 
 type MultithreadedGraph = Arc<Mutex<DownloadedGraph>>;
@@ -65,17 +67,24 @@ impl Project {
 
                     log::debug!("downloading {name}@{version_id}");
 
-                    let target =
-                        match source.download(&node.pkg_ref, &container_folder, &project, &reqwest)
-                        {
-                            Ok(target) => target,
-                            Err(e) => {
-                                tx.send(Err(e.into())).unwrap();
-                                return;
-                            }
-                        };
+                    let (fs, target) = match source.download(&node.pkg_ref, &project, &reqwest) {
+                        Ok(target) => target,
+                        Err(e) => {
+                            tx.send(Err(e.into())).unwrap();
+                            return;
+                        }
+                    };
 
                     log::debug!("downloaded {name}@{version_id}");
+
+                    match fs.write_to(container_folder, project.cas_dir(), true) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            tx.send(Err(errors::DownloadGraphError::WriteFailed(e)))
+                                .unwrap();
+                            return;
+                        }
+                    };
 
                     let mut downloaded_graph = downloaded_graph.lock().unwrap();
                     downloaded_graph
@@ -109,5 +118,8 @@ pub mod errors {
 
         #[error("failed to download package")]
         DownloadFailed(#[from] crate::source::errors::DownloadError),
+
+        #[error("failed to write package contents")]
+        WriteFailed(std::io::Error),
     }
 }

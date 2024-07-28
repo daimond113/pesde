@@ -7,7 +7,9 @@ pub mod version;
 
 use crate::cli::auth::get_token;
 use anyhow::Context;
-use pesde::{lockfile::DownloadedGraph, names::PackageNames, source::VersionId, Project};
+use pesde::{
+    lockfile::DownloadedGraph, names::PackageNames, source::version_id::VersionId, Project,
+};
 use std::{collections::HashSet, str::FromStr};
 
 pub const HOME_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));

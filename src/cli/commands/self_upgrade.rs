@@ -1,6 +1,5 @@
 use crate::cli::{config::read_config, version::get_or_download_version};
 use clap::Args;
-use pesde::Project;
 
 #[derive(Debug, Args)]
 pub struct SelfUpgradeCommand {
@@ -10,8 +9,8 @@ pub struct SelfUpgradeCommand {
 }
 
 impl SelfUpgradeCommand {
-    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        let config = read_config(project.data_dir())?;
+    pub fn run(self, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
+        let config = read_config()?;
 
         get_or_download_version(&reqwest, &config.last_checked_updates.unwrap().1)?;
 

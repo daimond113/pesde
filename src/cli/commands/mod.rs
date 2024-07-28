@@ -60,7 +60,7 @@ impl Subcommand {
     ) -> anyhow::Result<()> {
         match self {
             Subcommand::Auth(auth) => auth.run(project, reqwest),
-            Subcommand::Config(config) => config.run(project),
+            Subcommand::Config(config) => config.run(),
             Subcommand::Init(init) => init.run(project),
             Subcommand::Run(run) => run.run(project),
             Subcommand::Install(install) => install.run(project, multi, reqwest),
@@ -70,7 +70,7 @@ impl Subcommand {
             Subcommand::Patch(patch) => patch.run(project, reqwest),
             #[cfg(feature = "patches")]
             Subcommand::PatchCommit(patch_commit) => patch_commit.run(project),
-            Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(project, reqwest),
+            Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(reqwest),
         }
     }
 }

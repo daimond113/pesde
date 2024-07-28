@@ -2,16 +2,15 @@ use crate::cli::config::{read_config, write_config};
 use anyhow::Context;
 use keyring::Entry;
 use serde::Deserialize;
-use std::path::Path;
 
-pub fn get_token<P: AsRef<Path>>(data_dir: P) -> anyhow::Result<Option<String>> {
+pub fn get_token() -> anyhow::Result<Option<String>> {
     match std::env::var("PESDE_TOKEN") {
         Ok(token) => return Ok(Some(token)),
         Err(std::env::VarError::NotPresent) => {}
         Err(e) => return Err(e.into()),
     }
 
-    let config = read_config(data_dir)?;
+    let config = read_config()?;
     if let Some(token) = config.token {
         return Ok(Some(token));
     }
@@ -29,7 +28,7 @@ pub fn get_token<P: AsRef<Path>>(data_dir: P) -> anyhow::Result<Option<String>> 
     Ok(None)
 }
 
-pub fn set_token<P: AsRef<Path>>(data_dir: P, token: Option<&str>) -> anyhow::Result<()> {
+pub fn set_token(token: Option<&str>) -> anyhow::Result<()> {
     let entry = match Entry::new("token", env!("CARGO_PKG_NAME")) {
         Ok(entry) => entry,
         Err(e) => return Err(e.into()),
@@ -47,9 +46,9 @@ pub fn set_token<P: AsRef<Path>>(data_dir: P, token: Option<&str>) -> anyhow::Re
         Err(e) => return Err(e.into()),
     }
 
-    let mut config = read_config(&data_dir)?;
+    let mut config = read_config()?;
     config.token = token.map(|s| s.to_string());
-    write_config(data_dir, &config)?;
+    write_config(&config)?;
 
     Ok(())
 }

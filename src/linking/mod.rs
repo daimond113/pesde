@@ -4,19 +4,28 @@ use crate::{
     manifest::target::Target,
     names::PackageNames,
     scripts::{execute_script, ScriptName},
-    source::{PackageRef, VersionId},
+    source::{fs::store_in_cas, traits::PackageRef, version_id::VersionId},
+    util::hash,
     Project, PACKAGES_CONTAINER_NAME,
 };
-use std::{collections::BTreeMap, fs::create_dir_all};
+use std::{
+    collections::BTreeMap,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+};
 
 pub mod generator;
 
-fn create_and_canonicalize<P: AsRef<std::path::Path>>(
-    path: P,
-) -> std::io::Result<std::path::PathBuf> {
+fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
     let p = path.as_ref();
     create_dir_all(p)?;
     p.canonicalize()
+}
+
+fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
+    let cas_path = store_in_cas(cas_dir, contents)?.1;
+
+    std::fs::hard_link(cas_path, destination)
 }
 
 impl Project {
@@ -117,34 +126,34 @@ impl Project {
                     .and_then(|types| node.node.direct.as_ref().map(|(alias, _)| (alias, types)))
                 {
                     if let Some(lib_file) = node.target.lib_path() {
-                        let linker_file = base_folder.join(format!("{alias}.luau"));
-
-                        let module = generator::generate_lib_linking_module(
-                            &generator::get_lib_require_path(
-                                &node.target.kind(),
-                                &base_folder,
-                                lib_file,
-                                &container_folder,
-                                node.node.pkg_ref.use_new_structure(),
+                        write_cas(
+                            base_folder.join(format!("{alias}.luau")),
+                            self.cas_dir(),
+                            &generator::generate_lib_linking_module(
+                                &generator::get_lib_require_path(
+                                    &node.target.kind(),
+                                    &base_folder,
+                                    lib_file,
+                                    &container_folder,
+                                    node.node.pkg_ref.use_new_structure(),
+                                ),
+                                types,
                             ),
-                            types,
-                        );
-
-                        std::fs::write(linker_file, module)?;
+                        )?;
                     };
 
                     if let Some(bin_file) = node.target.bin_path() {
-                        let linker_file = base_folder.join(format!("{alias}.bin.luau"));
-
-                        let module = generator::generate_bin_linking_module(
-                            &generator::get_bin_require_path(
-                                &base_folder,
-                                bin_file,
-                                &container_folder,
+                        write_cas(
+                            base_folder.join(format!("{alias}.bin.luau")),
+                            self.cas_dir(),
+                            &generator::generate_bin_linking_module(
+                                &generator::get_bin_require_path(
+                                    &base_folder,
+                                    bin_file,
+                                    &container_folder,
+                                ),
                             ),
-                        );
-
-                        std::fs::write(linker_file, module)?;
+                        )?;
                     }
                 }
 
@@ -169,27 +178,28 @@ impl Project {
                         container_folder
                             .join(dependency_node.node.base_folder(node.target.kind(), false)),
                     )?;
-                    let linker_file = linker_folder.join(format!("{dependency_alias}.luau"));
 
-                    let module = generator::generate_lib_linking_module(
-                        &generator::get_lib_require_path(
-                            &dependency_node.target.kind(),
-                            &linker_folder,
-                            lib_file,
-                            &dependency_node.node.container_folder(
-                                &packages_container_folder,
-                                dependency_name,
-                                dependency_version_id.version(),
+                    write_cas(
+                        linker_folder.join(format!("{dependency_alias}.luau")),
+                        self.cas_dir(),
+                        &generator::generate_lib_linking_module(
+                            &generator::get_lib_require_path(
+                                &dependency_node.target.kind(),
+                                &linker_folder,
+                                lib_file,
+                                &dependency_node.node.container_folder(
+                                    &packages_container_folder,
+                                    dependency_name,
+                                    dependency_version_id.version(),
+                                ),
+                                node.node.pkg_ref.use_new_structure(),
                             ),
-                            node.node.pkg_ref.use_new_structure(),
+                            package_types
+                                .get(dependency_name)
+                                .and_then(|v| v.get(dependency_version_id))
+                                .unwrap(),
                         ),
-                        package_types
-                            .get(dependency_name)
-                            .and_then(|v| v.get(dependency_version_id))
-                            .unwrap(),
-                    );
-
-                    std::fs::write(linker_file, module)?;
+                    )?;
                 }
             }
         }

@@ -2,6 +2,7 @@ use crate::cli::{
     auth::get_token,
     home_dir,
     version::{check_for_updates, current_version, get_or_download_version, max_installed_version},
+    HOME_DIR,
 };
 use anyhow::Context;
 use clap::Parser;
@@ -9,7 +10,7 @@ use colored::Colorize;
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
 use pesde::{AuthConfig, Project};
-use std::fs::create_dir_all;
+use std::{fs::create_dir_all, path::PathBuf};
 
 mod cli;
 pub mod util;
@@ -24,6 +25,39 @@ struct Cli {
 
     #[command(subcommand)]
     subcommand: cli::commands::Subcommand,
+}
+
+#[cfg(windows)]
+fn get_root(path: &std::path::Path) -> PathBuf {
+    match path.components().next().unwrap() {
+        std::path::Component::Prefix(prefix) => {
+            let mut string = prefix.as_os_str().to_string_lossy().to_string();
+            if string.ends_with(':') {
+                string.push(std::path::MAIN_SEPARATOR);
+            }
+
+            std::path::PathBuf::from(&string)
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[cfg(unix)]
+fn get_root(path: &std::path::Path) -> PathBuf {
+    use std::os::unix::fs::MetadataExt;
+
+    let path = std::fs::canonicalize(path).unwrap();
+    let mut current = path.as_path();
+
+    while let Some(parent) = current.parent() {
+        if std::fs::metadata(parent).unwrap().dev() != std::fs::metadata(current).unwrap().dev() {
+            break;
+        }
+
+        current = parent;
+    }
+
+    current.to_path_buf()
 }
 
 fn run() -> anyhow::Result<()> {
@@ -73,11 +107,20 @@ fn run() -> anyhow::Result<()> {
     let data_dir = home_dir()?.join("data");
     create_dir_all(&data_dir).expect("failed to create data directory");
 
-    let token = get_token(&data_dir)?;
+    let token = get_token()?;
+
+    let home_cas_dir = data_dir.join("cas");
+    let project_root = get_root(&cwd);
+    let cas_dir = if get_root(&home_cas_dir) == project_root {
+        home_cas_dir
+    } else {
+        project_root.join(HOME_DIR).join("cas")
+    };
 
     let project = Project::new(
         cwd,
-        &data_dir,
+        data_dir,
+        cas_dir,
         AuthConfig::new().with_pesde_token(token.as_ref()),
     );
 
@@ -109,7 +152,7 @@ fn run() -> anyhow::Result<()> {
             .build()?
     };
 
-    check_for_updates(&reqwest, &data_dir)?;
+    check_for_updates(&reqwest)?;
 
     let target_version = project
         .deser_manifest()

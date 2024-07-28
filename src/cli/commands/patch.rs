@@ -4,7 +4,7 @@ use clap::Args;
 use colored::Colorize;
 use pesde::{
     patches::setup_patches_repo,
-    source::{PackageRef, PackageSource},
+    source::traits::{PackageRef, PackageSource},
     Project, MANIFEST_FILE_NAME,
 };
 
@@ -39,7 +39,11 @@ impl PatchCommand {
             .join(chrono::Utc::now().timestamp().to_string());
         std::fs::create_dir_all(&directory)?;
 
-        source.download(&node.node.pkg_ref, &directory, &project, &reqwest)?;
+        source
+            .download(&node.node.pkg_ref, &project, &reqwest)?
+            .0
+            .write_to(&directory, project.cas_dir(), false)
+            .context("failed to write package contents")?;
 
         // TODO: if MANIFEST_FILE_NAME does not exist, try to convert it
 

@@ -62,18 +62,21 @@ pub struct Project {
     path: PathBuf,
     data_dir: PathBuf,
     auth_config: AuthConfig,
+    cas_dir: PathBuf,
 }
 
 impl Project {
-    pub fn new<P: AsRef<Path>, Q: AsRef<Path>>(
+    pub fn new<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
         path: P,
         data_dir: Q,
+        cas_dir: R,
         auth_config: AuthConfig,
     ) -> Self {
         Project {
             path: path.as_ref().to_path_buf(),
             data_dir: data_dir.as_ref().to_path_buf(),
             auth_config,
+            cas_dir: cas_dir.as_ref().to_path_buf(),
         }
     }
 
@@ -87,6 +90,10 @@ impl Project {
 
     pub fn auth_config(&self) -> &AuthConfig {
         &self.auth_config
+    }
+
+    pub fn cas_dir(&self) -> &Path {
+        &self.cas_dir
     }
 
     pub fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {

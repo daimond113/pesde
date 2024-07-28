@@ -1,14 +1,13 @@
 use crate::cli::{auth::get_token_login, get_token};
 use clap::Args;
 use colored::Colorize;
-use pesde::Project;
 
 #[derive(Debug, Args)]
 pub struct WhoAmICommand {}
 
 impl WhoAmICommand {
-    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        let token = match get_token(project.data_dir())? {
+    pub fn run(self, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
+        let token = match get_token()? {
             Some(token) => token,
             None => {
                 println!("not logged in");

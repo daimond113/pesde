@@ -79,7 +79,7 @@ pub fn update_scripts_folder(project: &Project) -> anyhow::Result<()> {
     } else {
         std::fs::create_dir_all(&scripts_dir).context("failed to create scripts directory")?;
 
-        let cli_config = read_config(project.data_dir())?;
+        let cli_config = read_config()?;
 
         gix::prepare_clone(cli_config.scripts_repo, &scripts_dir)
             .context("failed to prepare scripts repository clone")?

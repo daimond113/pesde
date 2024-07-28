@@ -3,8 +3,11 @@ use crate::{
     manifest::DependencyType,
     names::PackageNames,
     source::{
-        pesde::PesdePackageSource, DependencySpecifiers, PackageRef, PackageSource, PackageSources,
-        VersionId,
+        pesde::PesdePackageSource,
+        specifiers::DependencySpecifiers,
+        traits::{PackageRef, PackageSource},
+        version_id::VersionId,
+        PackageSources,
     },
     Project, DEFAULT_INDEX_NAME,
 };

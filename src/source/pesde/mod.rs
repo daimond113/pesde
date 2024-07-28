@@ -1,7 +1,7 @@
-use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::Path};
-
 use gix::remote::Direction;
+use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash, io::Read};
 
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
@@ -12,8 +12,11 @@ use crate::{
         DependencyType,
     },
     names::{PackageName, PackageNames},
-    source::{hash, DependencySpecifiers, PackageSource, ResolveResult, VersionId},
-    util::authenticate_conn,
+    source::{
+        fs::{store_in_cas, FSEntry, PackageFS},
+        DependencySpecifiers, PackageSource, ResolveResult, VersionId,
+    },
+    util::{authenticate_conn, hash},
     Project,
 };
 
@@ -32,8 +35,12 @@ impl PesdePackageSource {
         Self { repo_url }
     }
 
+    fn as_bytes(&self) -> Vec<u8> {
+        self.repo_url.to_bstring().to_vec()
+    }
+
     pub fn path(&self, project: &Project) -> std::path::PathBuf {
-        project.data_dir.join("indices").join(hash(self))
+        project.data_dir.join("indices").join(hash(self.as_bytes()))
     }
 
     pub(crate) fn tree<'a>(
@@ -349,11 +356,30 @@ impl PackageSource for PesdePackageSource {
     fn download(
         &self,
         pkg_ref: &Self::Ref,
-        destination: &Path,
         project: &Project,
         reqwest: &reqwest::blocking::Client,
-    ) -> Result<Target, Self::DownloadError> {
+    ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let config = self.config(project)?;
+        let index_file = project
+            .cas_dir
+            .join("index")
+            .join(pkg_ref.name.escaped())
+            .join(pkg_ref.version.to_string())
+            .join(pkg_ref.target.to_string());
+
+        match std::fs::read_to_string(&index_file) {
+            Ok(s) => {
+                log::debug!(
+                    "using cached index file for package {}@{} {}",
+                    pkg_ref.name,
+                    pkg_ref.version,
+                    pkg_ref.target
+                );
+                return Ok((toml::from_str::<PackageFS>(&s)?, pkg_ref.target.clone()));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
+        }
 
         let (scope, name) = pkg_ref.name.as_str();
         let url = config
@@ -375,9 +401,35 @@ impl PackageSource for PesdePackageSource {
         let mut decoder = flate2::read::GzDecoder::new(bytes.as_ref());
         let mut archive = tar::Archive::new(&mut decoder);
 
-        archive.unpack(destination)?;
+        let mut entries = BTreeMap::new();
 
-        Ok(pkg_ref.target.clone())
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            let path = RelativePathBuf::from_path(entry.path()?).unwrap();
+
+            if entry.header().entry_type().is_dir() {
+                entries.insert(path, FSEntry::Directory);
+
+                continue;
+            }
+
+            let mut contents = String::new();
+            entry.read_to_string(&mut contents)?;
+
+            let hash = store_in_cas(&project.cas_dir, &contents)?.0;
+            entries.insert(path, FSEntry::File(hash));
+        }
+
+        let fs = PackageFS(entries);
+
+        if let Some(parent) = index_file.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(&index_file, toml::to_string(&fs)?)
+            .map_err(errors::DownloadError::WriteIndex)?;
+
+        Ok((fs, pkg_ref.target.clone()))
     }
 }
 
@@ -575,5 +627,17 @@ pub mod errors {
 
         #[error("error unpacking package")]
         Unpack(#[from] std::io::Error),
+
+        #[error("error writing index file")]
+        WriteIndex(#[source] std::io::Error),
+
+        #[error("error serializing index file")]
+        SerializeIndex(#[from] toml::ser::Error),
+
+        #[error("error deserializing index file")]
+        DeserializeIndex(#[from] toml::de::Error),
+
+        #[error("error reading index file")]
+        ReadIndex(#[source] std::io::Error),
     }
 }

@@ -20,8 +20,8 @@ impl AuthCommands {
     pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
         match self {
             AuthCommands::Login(login) => login.run(project, reqwest),
-            AuthCommands::Logout(logout) => logout.run(project),
-            AuthCommands::WhoAmI(whoami) => whoami.run(project, reqwest),
+            AuthCommands::Logout(logout) => logout.run(),
+            AuthCommands::WhoAmI(whoami) => whoami.run(reqwest),
         }
     }
 }

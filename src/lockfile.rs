@@ -5,7 +5,10 @@ use crate::{
         DependencyType,
     },
     names::{PackageName, PackageNames},
-    source::{DependencySpecifiers, PackageRef, PackageRefs, VersionId},
+    source::{
+        refs::PackageRefs, specifiers::DependencySpecifiers, traits::PackageRef,
+        version_id::VersionId,
+    },
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};

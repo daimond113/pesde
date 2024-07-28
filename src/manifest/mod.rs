@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     manifest::{overrides::OverrideKey, target::Target},
     names::{PackageName, PackageNames},
-    source::{DependencySpecifiers, VersionId},
+    source::{specifiers::DependencySpecifiers, version_id::VersionId},
 };
 
 pub mod overrides;

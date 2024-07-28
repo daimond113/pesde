@@ -1,6 +1,5 @@
 use crate::cli::config::{read_config, write_config, CliConfig};
 use clap::Args;
-use pesde::Project;
 
 #[derive(Debug, Args)]
 pub struct DefaultIndexCommand {
@@ -14,8 +13,8 @@ pub struct DefaultIndexCommand {
 }
 
 impl DefaultIndexCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
-        let mut config = read_config(project.data_dir())?;
+    pub fn run(self) -> anyhow::Result<()> {
+        let mut config = read_config()?;
 
         let index = if self.reset {
             Some(CliConfig::default().default_index)
@@ -26,7 +25,7 @@ impl DefaultIndexCommand {
         match index {
             Some(index) => {
                 config.default_index = index.clone();
-                write_config(project.data_dir(), &config)?;
+                write_config(&config)?;
                 println!("default index set to: {index}");
             }
             None => {

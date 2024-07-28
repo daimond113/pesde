@@ -1,6 +1,7 @@
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+
+use crate::cli::home_dir;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliConfig {
@@ -37,8 +38,8 @@ impl Default for CliConfig {
     }
 }
 
-pub fn read_config<P: AsRef<Path>>(data_dir: P) -> anyhow::Result<CliConfig> {
-    let config_string = match std::fs::read_to_string(data_dir.as_ref().join("config.toml")) {
+pub fn read_config() -> anyhow::Result<CliConfig> {
+    let config_string = match std::fs::read_to_string(home_dir()?.join("config.toml")) {
         Ok(config_string) => config_string,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(CliConfig::default());
@@ -51,9 +52,9 @@ pub fn read_config<P: AsRef<Path>>(data_dir: P) -> anyhow::Result<CliConfig> {
     Ok(config)
 }
 
-pub fn write_config<P: AsRef<Path>>(data_dir: P, config: &CliConfig) -> anyhow::Result<()> {
+pub fn write_config(config: &CliConfig) -> anyhow::Result<()> {
     let config_string = toml::to_string(config).context("failed to serialize config")?;
-    std::fs::write(data_dir.as_ref().join("config.toml"), config_string)
+    std::fs::write(home_dir()?.join("config.toml"), config_string)
         .context("failed to write config file")?;
 
     Ok(())

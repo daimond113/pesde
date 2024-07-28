@@ -1,6 +1,5 @@
 use crate::cli::config::{read_config, write_config, CliConfig};
 use clap::Args;
-use pesde::Project;
 
 #[derive(Debug, Args)]
 pub struct ScriptsRepoCommand {
@@ -14,8 +13,8 @@ pub struct ScriptsRepoCommand {
 }
 
 impl ScriptsRepoCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
-        let mut config = read_config(project.data_dir())?;
+    pub fn run(self) -> anyhow::Result<()> {
+        let mut config = read_config()?;
 
         let repo = if self.reset {
             Some(CliConfig::default().scripts_repo)
@@ -26,7 +25,7 @@ impl ScriptsRepoCommand {
         match repo {
             Some(repo) => {
                 config.scripts_repo = repo.clone();
-                write_config(project.data_dir(), &config)?;
+                write_config(&config)?;
                 println!("scripts repo set to: {repo}");
             }
             None => {

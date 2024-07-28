@@ -1,6 +1,7 @@
 use crate::AuthConfig;
 use gix::bstr::BStr;
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serializer};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 pub fn authenticate_conn(
@@ -58,4 +59,10 @@ pub fn deserialize_gix_url_map<'de, D: Deserializer<'de>>(
                 .map_err(serde::de::Error::custom)
         })
         .collect()
+}
+
+pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(struc.as_ref());
+    format!("{:x}", hasher.finalize())
 }

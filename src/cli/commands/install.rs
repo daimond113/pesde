@@ -33,9 +33,9 @@ fn bin_link_file(alias: &str) -> String {
         .collect::<Vec<_>>()
         .join(", ");
 
-    #[cfg(windows)]
+    #[cfg(not(unix))]
     let prefix = String::new();
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     let prefix = "#!/usr/bin/env -S lune run\n";
 
     format!(

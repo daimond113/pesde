@@ -2,8 +2,8 @@ use crate::cli::IsUpToDate;
 use anyhow::Context;
 use clap::Args;
 use pesde::{
-    manifest::Manifest, names::PackageNames, patches::create_patch, source::VersionId, Project,
-    MANIFEST_FILE_NAME,
+    manifest::Manifest, names::PackageNames, patches::create_patch, source::version_id::VersionId,
+    Project, MANIFEST_FILE_NAME,
 };
 use std::{path::PathBuf, str::FromStr};
 

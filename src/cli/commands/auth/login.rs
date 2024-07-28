@@ -7,7 +7,7 @@ use clap::Args;
 use colored::Colorize;
 use pesde::{
     errors::ManifestReadError,
-    source::{pesde::PesdePackageSource, PackageSource},
+    source::{pesde::PesdePackageSource, traits::PackageSource},
     Project,
 };
 use serde::Deserialize;
@@ -71,7 +71,7 @@ impl LoginCommand {
             },
             None => match manifest {
                 Some(_) => None,
-                None => Some(read_config(project.data_dir())?.default_index),
+                None => Some(read_config()?.default_index),
             },
         };
 
@@ -182,7 +182,7 @@ impl LoginCommand {
 
         println!("logged in as {}", get_token_login(&reqwest, &token)?.bold());
 
-        set_token(project.data_dir(), Some(&token))?;
+        set_token(Some(&token))?;
 
         Ok(())
     }

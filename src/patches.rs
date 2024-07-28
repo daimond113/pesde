@@ -1,5 +1,6 @@
 use crate::{lockfile::DownloadedGraph, Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME};
-use git2::{ApplyLocation, Diff, DiffFormat, DiffLineType, Repository, Signature};
+use git2::{ApplyLocation, ApplyOptions, Diff, DiffFormat, DiffLineType, Repository, Signature};
+use relative_path::RelativePathBuf;
 use std::{fs::read, path::Path};
 
 pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Error> {
@@ -94,7 +95,37 @@ impl Project {
 
                 {
                     let repo = setup_patches_repo(&container_folder)?;
-                    repo.apply(&patch, ApplyLocation::Both, None)?;
+                    let mut apply_opts = ApplyOptions::new();
+                    apply_opts.delta_callback(|delta| {
+                        let Some(delta) = delta else {
+                            return true;
+                        };
+
+                        if !matches!(delta.status(), git2::Delta::Modified) {
+                            return true;
+                        }
+
+                        let file = delta.new_file();
+                        let Some(relative_path) = file.path() else {
+                            return true;
+                        };
+
+                        let relative_path = RelativePathBuf::from_path(relative_path).unwrap();
+                        let path = relative_path.to_path(&container_folder);
+
+                        if !path.is_file() {
+                            return true;
+                        }
+
+                        // there is no way (as far as I know) to check if it's hardlinked
+                        // so, we always unlink it
+                        let content = read(&path).unwrap();
+                        std::fs::remove_file(&path).unwrap();
+                        std::fs::write(path, content).unwrap();
+
+                        true
+                    });
+                    repo.apply(&patch, ApplyLocation::Both, Some(&mut apply_opts))?;
                 }
 
                 log::debug!("patch applied to {name}@{version_id}, removing .git directory");
@@ -112,7 +143,7 @@ impl Project {
 pub mod errors {
     use std::path::PathBuf;
 
-    use crate::{names::PackageNames, source::VersionId};
+    use crate::{names::PackageNames, source::version_id::VersionId};
     use thiserror::Error;
 
     #[derive(Debug, Error)]

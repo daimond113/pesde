@@ -1,5 +1,4 @@
 use clap::Subcommand;
-use pesde::Project;
 
 mod default_index;
 mod scripts_repo;
@@ -14,10 +13,10 @@ pub enum ConfigCommands {
 }
 
 impl ConfigCommands {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
+    pub fn run(self) -> anyhow::Result<()> {
         match self {
-            ConfigCommands::DefaultIndex(default_index) => default_index.run(project),
-            ConfigCommands::ScriptsRepo(scripts_repo) => scripts_repo.run(project),
+            ConfigCommands::DefaultIndex(default_index) => default_index.run(),
+            ConfigCommands::ScriptsRepo(scripts_repo) => scripts_repo.run(),
         }
     }
 }
