@@ -2,8 +2,12 @@ use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use pesde::{
-    manifest::target::Target, scripts::ScriptName, Project, MANIFEST_FILE_NAME, MAX_ARCHIVE_SIZE,
+    manifest::target::Target,
+    scripts::ScriptName,
+    source::{pesde::PesdePackageSource, traits::PackageSource},
+    Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME, MAX_ARCHIVE_SIZE,
 };
+use reqwest::StatusCode;
 use std::path::Component;
 
 #[derive(Debug, Args)]
@@ -14,7 +18,7 @@ pub struct PublishCommand {
 }
 
 impl PublishCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
+    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
         let mut manifest = project
             .deser_manifest()
             .context("failed to read manifest")?;
@@ -258,10 +262,12 @@ impl PublishCommand {
             );
 
             if !self.dry_run && !inquire::Confirm::new("is this information correct?").prompt()? {
-                println!("{}", "publish aborted".red().bold());
+                println!("\n{}", "publish aborted".red().bold());
 
                 return Ok(());
             }
+
+            println!();
         }
 
         let temp_manifest_path = project
@@ -308,6 +314,56 @@ impl PublishCommand {
             return Ok(());
         }
 
-        todo!("publishing to registry");
+        let source = PesdePackageSource::new(
+            manifest
+                .indices
+                .get(DEFAULT_INDEX_NAME)
+                .context("missing default index")?
+                .clone(),
+        );
+        source
+            .refresh(&project)
+            .context("failed to refresh source")?;
+        let config = source
+            .config(&project)
+            .context("failed to get source config")?;
+
+        match reqwest
+            .post(format!("{}/v0/packages", config.api()))
+            .multipart(reqwest::blocking::multipart::Form::new().part(
+                "tarball",
+                reqwest::blocking::multipart::Part::bytes(archive).file_name("package.tar.gz"),
+            ))
+            .send()
+            .context("failed to send request")?
+            .error_for_status()
+            .and_then(|response| response.text())
+        {
+            Ok(response) => {
+                println!("{response}");
+
+                Ok(())
+            }
+            Err(e)
+                if e.status()
+                    .is_some_and(|status| status == StatusCode::CONFLICT) =>
+            {
+                println!("{}", "package version already exists".red().bold());
+
+                Ok(())
+            }
+            Err(e)
+                if e.status()
+                    .is_some_and(|status| status == StatusCode::FORBIDDEN) =>
+            {
+                println!(
+                    "{}",
+                    "unauthorized to publish under this scope".red().bold()
+                );
+
+                Ok(())
+            }
+            Err(e) => Err(e).context("failed to get response"),
+        }
     }
 }

@@ -67,6 +67,8 @@ pub fn get_token_login(
         .header("Authorization", format!("Bearer {access_token}"))
         .send()
         .context("failed to send user request")?
+        .error_for_status()
+        .context("failed to get user")?
         .json::<UserResponse>()
         .context("failed to parse user response")?;
 

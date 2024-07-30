@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     manifest::{overrides::OverrideKey, target::Target},
-    names::{PackageName, PackageNames},
-    source::{specifiers::DependencySpecifiers, version_id::VersionId},
+    names::PackageName,
+    source::specifiers::DependencySpecifiers,
 };
 
 pub mod overrides;
@@ -50,7 +50,10 @@ pub struct Manifest {
     pub includes: BTreeSet<String>,
     #[cfg(feature = "patches")]
     #[serde(default, skip_serializing)]
-    pub patches: BTreeMap<PackageNames, BTreeMap<VersionId, RelativePathBuf>>,
+    pub patches: BTreeMap<
+        crate::names::PackageNames,
+        BTreeMap<crate::source::version_id::VersionId, RelativePathBuf>,
+    >,
     #[serde(default, skip_serializing)]
     pub pesde_version: Option<Version>,
 

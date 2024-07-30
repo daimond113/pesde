@@ -102,6 +102,8 @@ impl LoginCommand {
             )?)
             .send()
             .context("failed to send device code request")?
+            .error_for_status()
+            .context("failed to get device code response")?
             .json::<DeviceCodeResponse>()
             .context("failed to parse device code response")?;
 
@@ -146,6 +148,8 @@ impl LoginCommand {
                 )?)
                 .send()
                 .context("failed to send access token request")?
+                .error_for_status()
+                .context("failed to get access token response")?
                 .json::<AccessTokenResponse>()
                 .context("failed to parse access token response")?;
 

@@ -13,14 +13,13 @@ kill_timeout = '5s'
 [env]
 ADDRESS = '0.0.0.0'
 PORT = '8080'
-INDEX_REPO_URL = 'https://github.com/daimond113/pesde-index'
-COMMITTER_GIT_NAME = 'Pesde Index Updater'
+COMMITTER_GIT_NAME = 'pesde index updater'
 COMMITTER_GIT_EMAIL = 'pesde@daimond113.com'
 
 [http_service]
 internal_port = 8080
 force_https = true
-auto_stop_machines = true
+auto_stop_machines = "suspend"
 auto_start_machines = true
 min_machines_running = 0
 processes = ['app']

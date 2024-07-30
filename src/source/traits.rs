@@ -1,3 +1,8 @@
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+};
+
 use crate::{
     manifest::{
         target::{Target, TargetKind},
@@ -5,10 +10,6 @@ use crate::{
     },
     source::{DependencySpecifiers, PackageFS, PackageSources, ResolveResult},
     Project,
-};
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display},
 };
 
 pub trait DependencySpecifier: Debug + Display {}

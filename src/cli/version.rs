@@ -56,6 +56,8 @@ pub fn check_for_updates(reqwest: &reqwest::blocking::Client) -> anyhow::Result<
             ))
             .send()
             .context("failed to send request to GitHub API")?
+            .error_for_status()
+            .context("failed to get GitHub API response")?
             .json::<Vec<Release>>()
             .context("failed to parse GitHub API response")?;
 
@@ -108,6 +110,8 @@ pub fn download_github_release(
         ))
         .send()
         .context("failed to send request to GitHub API")?
+        .error_for_status()
+        .context("failed to get GitHub API response")?
         .json::<Release>()
         .context("failed to parse GitHub API response")?;
 
@@ -128,6 +132,8 @@ pub fn download_github_release(
         .header(ACCEPT, "application/octet-stream")
         .send()
         .context("failed to send request to download asset")?
+        .error_for_status()
+        .context("failed to download asset")?
         .bytes()
         .context("failed to download asset")?;
 

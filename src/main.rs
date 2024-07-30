@@ -152,7 +152,15 @@ fn run() -> anyhow::Result<()> {
             .build()?
     };
 
-    check_for_updates(&reqwest)?;
+    match check_for_updates(&reqwest) {
+        Ok(_) => {}
+        Err(e) => {
+            println!(
+                "{}",
+                format!("failed to check for updates: {e}\n\n").red().bold()
+            );
+        }
+    }
 
     let target_version = project
         .deser_manifest()

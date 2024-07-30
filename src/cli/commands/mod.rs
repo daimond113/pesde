@@ -75,7 +75,7 @@ impl Subcommand {
             Subcommand::Init(init) => init.run(project),
             Subcommand::Run(run) => run.run(project),
             Subcommand::Install(install) => install.run(project, multi, reqwest),
-            Subcommand::Publish(publish) => publish.run(project),
+            Subcommand::Publish(publish) => publish.run(project, reqwest),
             Subcommand::SelfInstall(self_install) => self_install.run(project),
             #[cfg(feature = "patches")]
             Subcommand::Patch(patch) => patch.run(project, reqwest),
