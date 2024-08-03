@@ -14,6 +14,7 @@ use crate::{
 use std::collections::{HashMap, HashSet, VecDeque};
 
 impl Project {
+    /// Create a dependency graph from the project's manifest
     pub fn dependency_graph(
         &self,
         previous_graph: Option<&DependencyGraph>,
@@ -293,27 +294,35 @@ impl Project {
     }
 }
 
+/// Errors that can occur when resolving dependencies
 pub mod errors {
     use thiserror::Error;
 
+    /// Errors that can occur when creating a dependency graph
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DependencyGraphError {
+        /// An error occurred while deserializing the manifest
         #[error("failed to deserialize manifest")]
         ManifestRead(#[from] crate::errors::ManifestReadError),
-
+        
+        /// An error occurred while reading all dependencies from the manifest
         #[error("error getting all project dependencies")]
         AllDependencies(#[from] crate::manifest::errors::AllDependenciesError),
 
+        /// An index was not found in the manifest
         #[error("index named {0} not found in manifest")]
         IndexNotFound(String),
 
+        /// An error occurred while refreshing a package source
         #[error("error refreshing package source")]
         Refresh(#[from] crate::source::errors::RefreshError),
-
+        
+        /// An error occurred while resolving a package
         #[error("error resolving package")]
         Resolve(#[from] crate::source::errors::ResolveError),
 
+        /// No matching version was found for a specifier
         #[error("no matching version found for {0}")]
         NoMatchingVersion(String),
     }

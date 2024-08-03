@@ -4,6 +4,7 @@ use std::{
     str::FromStr,
 };
 
+/// An override key
 #[derive(
     Debug, DeserializeFromStr, SerializeDisplay, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
@@ -46,12 +47,15 @@ impl Display for OverrideKey {
     }
 }
 
+/// Errors that can occur when interacting with override keys
 pub mod errors {
     use thiserror::Error;
 
+    /// Errors that can occur when parsing an override key
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum OverrideKeyFromStr {
+        /// The override key is empty
         #[error("empty override key")]
         Empty,
     }

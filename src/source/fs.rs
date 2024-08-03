@@ -6,14 +6,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// A file system entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FSEntry {
+    /// A file with the given hash
     #[serde(rename = "f")]
     File(String),
+    /// A directory
     #[serde(rename = "d")]
     Directory,
 }
 
+/// A package's file system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PackageFS(pub(crate) BTreeMap<RelativePathBuf, FSEntry>);
@@ -37,6 +41,7 @@ pub(crate) fn store_in_cas<P: AsRef<Path>>(
 }
 
 impl PackageFS {
+    /// Write the package to the given destination
     pub fn write_to<P: AsRef<Path>, Q: AsRef<Path>>(
         &self,
         destination: P,

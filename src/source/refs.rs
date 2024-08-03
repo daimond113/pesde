@@ -5,9 +5,11 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// All possible package references
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "ref_ty")]
 pub enum PackageRefs {
+    /// A pesde package reference
     Pesde(pesde::pkg_ref::PesdePackageRef),
 }
 

@@ -41,6 +41,7 @@ impl Visitor for TypeVisitor {
     }
 }
 
+/// Get the types exported by a file
 pub fn get_file_types(file: &str) -> Result<Vec<String>, Vec<full_moon::Error>> {
     let ast = full_moon::parse(file)?;
     let mut visitor = TypeVisitor { types: vec![] };
@@ -49,6 +50,7 @@ pub fn get_file_types(file: &str) -> Result<Vec<String>, Vec<full_moon::Error>> 
     Ok(visitor.types)
 }
 
+/// Generate a linking module for a library
 pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
     path: &str,
     types: I,
@@ -80,6 +82,7 @@ fn luau_style_path(path: &Path) -> String {
     format!("{require:?}")
 }
 
+/// Get the require path for a library
 pub fn get_lib_require_path(
     target: &TargetKind,
     base_dir: &Path,
@@ -121,10 +124,12 @@ pub fn get_lib_require_path(
     luau_style_path(&path)
 }
 
+/// Generate a linking module for a binary
 pub fn generate_bin_linking_module(path: &str) -> String {
     format!("return require({path})")
 }
 
+/// Get the require path for a binary
 pub fn get_bin_require_path(
     base_dir: &Path,
     bin_file: &RelativePathBuf,

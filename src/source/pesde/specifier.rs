@@ -3,12 +3,17 @@ use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
+/// The specifier for a pesde dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct PesdeDependencySpecifier {
+    /// The name of the package
     pub name: PackageName,
+    /// The version requirement for the package
     pub version: VersionReq,
+    /// The index to use for the package
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<String>,
+    /// The target to use for the package
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<TargetKind>,
 }

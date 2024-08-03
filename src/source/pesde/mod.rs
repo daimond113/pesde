@@ -25,22 +25,29 @@ use crate::{
     Project,
 };
 
+/// The pesde package reference
 pub mod pkg_ref;
+/// The pesde dependency specifier
 pub mod specifier;
 
+/// The pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct PesdePackageSource {
     repo_url: gix::Url,
 }
 
+/// The file containing scope information
 pub const SCOPE_INFO_FILE: &str = "scope.toml";
 
+/// Information about a scope
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScopeInfo {
+    /// The people authorized to publish packages to this scope
     pub owners: BTreeSet<u64>,
 }
 
 impl PesdePackageSource {
+    /// Creates a new pesde package source
     pub fn new(repo_url: gix::Url) -> Self {
         Self { repo_url }
     }
@@ -49,10 +56,12 @@ impl PesdePackageSource {
         self.repo_url.to_bstring().to_vec()
     }
 
+    /// The path to the index
     pub fn path(&self, project: &Project) -> std::path::PathBuf {
         project.data_dir.join("indices").join(hash(self.as_bytes()))
     }
 
+    /// The URL of the repository
     pub fn repo_url(&self) -> &gix::Url {
         &self.repo_url
     }
@@ -108,6 +117,7 @@ impl PesdePackageSource {
         }
     }
 
+    /// Reads a file from the index
     pub fn read_file<
         I: IntoIterator<Item = P> + Clone,
         P: ToString + PartialEq<gix::bstr::BStr>,
@@ -154,6 +164,7 @@ impl PesdePackageSource {
         Ok(Some(string))
     }
 
+    /// Reads the config file
     pub fn config(&self, project: &Project) -> Result<IndexConfig, errors::ConfigError> {
         let file = self.read_file(["config.toml"], project).map_err(Box::new)?;
 
@@ -171,6 +182,7 @@ impl PesdePackageSource {
         Ok(config)
     }
 
+    /// Reads all packages from the index
     pub fn all_packages(
         &self,
         project: &Project,
@@ -253,6 +265,7 @@ impl PesdePackageSource {
         Ok(packages)
     }
 
+    /// The git2 repository for the index
     #[cfg(feature = "git2")]
     pub fn repo_git2(&self, project: &Project) -> Result<git2::Repository, git2::Error> {
         let path = self.path(project);
@@ -262,8 +275,8 @@ impl PesdePackageSource {
 }
 
 impl PackageSource for PesdePackageSource {
-    type Ref = PesdePackageRef;
     type Specifier = PesdeDependencySpecifier;
+    type Ref = PesdePackageRef;
     type RefreshError = errors::RefreshError;
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
@@ -446,23 +459,31 @@ impl PackageSource for PesdePackageSource {
     }
 }
 
+/// The configuration for the pesde index
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct IndexConfig {
+    /// The URL of the API
     pub api: url::Url,
+    /// The URL to download packages from
     pub download: Option<String>,
+    /// Whether git is allowed as a source for publishing packages
     #[serde(default)]
     pub git_allowed: bool,
+    /// Whether other registries are allowed as a source for publishing packages
     #[serde(default)]
     pub other_registries_allowed: bool,
+    /// The OAuth client ID for GitHub
     pub github_oauth_client_id: String,
 }
 
 impl IndexConfig {
+    /// The URL of the API
     pub fn api(&self) -> &str {
         self.api.as_str().trim_end_matches('/')
     }
 
+    /// The URL to download packages from
     pub fn download(&self) -> String {
         self.download
             .as_deref()
@@ -471,181 +492,239 @@ impl IndexConfig {
     }
 }
 
+/// The entry in a package's index file
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct IndexFileEntry {
+    /// The target for this package
     pub target: Target,
+    /// When this package was published
     #[serde(default = "chrono::Utc::now")]
     pub published_at: chrono::DateTime<chrono::Utc>,
 
+    /// The description of this package
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// The license of this package
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
 
+    /// The dependencies of this package
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
 }
 
+/// The index file for a package
 pub type IndexFile = BTreeMap<VersionId, IndexFileEntry>;
 
+/// Errors that can occur when interacting with the pesde package source
 pub mod errors {
     use std::path::PathBuf;
 
     use thiserror::Error;
 
+    /// Errors that can occur when refreshing the pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum RefreshError {
+        /// Error interacting with the filesystem
         #[error("error interacting with the filesystem")]
         Io(#[from] std::io::Error),
 
+        /// Error opening the repository
         #[error("error opening repository at {0}")]
         Open(PathBuf, #[source] gix::open::Error),
-
+        
+        /// No default remote found in repository
         #[error("no default remote found in repository at {0}")]
         NoDefaultRemote(PathBuf),
 
+        /// Error getting default remote from repository
         #[error("error getting default remote from repository at {0}")]
         GetDefaultRemote(PathBuf, #[source] gix::remote::find::existing::Error),
 
+        /// Error connecting to remote repository
         #[error("error connecting to remote repository at {0}")]
         Connect(gix::Url, #[source] gix::remote::connect::Error),
 
+        /// Error preparing fetch from remote repository
         #[error("error preparing fetch from remote repository at {0}")]
         PrepareFetch(gix::Url, #[source] gix::remote::fetch::prepare::Error),
 
+        /// Error reading from remote repository
         #[error("error reading from remote repository at {0}")]
         Read(gix::Url, #[source] gix::remote::fetch::Error),
 
+        /// Error cloning repository
         #[error("error cloning repository from {0}")]
         Clone(gix::Url, #[source] gix::clone::Error),
 
+        /// Error fetching repository
         #[error("error fetching repository from {0}")]
         Fetch(gix::Url, #[source] gix::clone::fetch::Error),
     }
 
+    /// Errors that can occur when reading the pesde package source's tree
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum TreeError {
+        /// Error interacting with the filesystem
         #[error("error interacting with the filesystem")]
         Io(#[from] std::io::Error),
 
+        /// No default remote found in repository
         #[error("no default remote found in repository at {0}")]
         NoDefaultRemote(PathBuf),
 
+        /// Error getting default remote from repository
         #[error("error getting default remote from repository at {0}")]
         GetDefaultRemote(PathBuf, #[source] Box<gix::remote::find::existing::Error>),
 
+        /// Error getting refspec from remote repository
         #[error("no refspecs found in repository at {0}")]
         NoRefSpecs(PathBuf),
 
+        /// Error getting local refspec from remote repository
         #[error("no local refspec found in repository at {0}")]
         NoLocalRefSpec(PathBuf),
 
+        /// Error finding reference in repository
         #[error("no reference found for local refspec {0}")]
         NoReference(String, #[source] gix::reference::find::existing::Error),
 
+        /// Error peeling reference in repository
         #[error("cannot peel reference {0}")]
         CannotPeel(String, #[source] gix::reference::peel::Error),
 
+        /// Error converting id to object in repository
         #[error("error converting id {0} to object")]
         CannotConvertToObject(String, #[source] gix::object::find::existing::Error),
 
+        /// Error peeling object to tree in repository
         #[error("error peeling object {0} to tree")]
         CannotPeelToTree(String, #[source] gix::object::peel::to_kind::Error),
     }
 
+    /// Errors that can occur when reading a file from the pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ReadFile {
+        /// Error opening the repository
         #[error("error opening repository at {0}")]
         Open(PathBuf, #[source] Box<gix::open::Error>),
 
+        /// Error reading tree from repository
         #[error("error getting tree from repository at {0}")]
         Tree(PathBuf, #[source] Box<TreeError>),
 
+        /// Error looking up entry in tree
         #[error("error looking up entry {0} in tree")]
         Lookup(String, #[source] gix::object::find::existing::Error),
 
+        /// Error reading file as utf8
         #[error("error parsing file for {0} as utf8")]
         Utf8(String, #[source] std::string::FromUtf8Error),
     }
 
+    /// Errors that can occur when resolving a package from the pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ResolveError {
+        /// Error interacting with the filesystem
         #[error("error interacting with the filesystem")]
         Io(#[from] std::io::Error),
 
+        /// Package not found in index
         #[error("package {0} not found")]
         NotFound(String),
 
+        /// Error reading file for package
         #[error("error reading file for {0}")]
         Read(String, #[source] Box<ReadFile>),
 
+        /// Error parsing file for package
         #[error("error parsing file for {0}")]
         Parse(String, #[source] toml::de::Error),
 
+        /// Error parsing file for package as utf8
         #[error("error parsing file for {0} to utf8")]
         Utf8(String, #[source] std::string::FromUtf8Error),
     }
 
+    /// Errors that can occur when reading the config file for the pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ConfigError {
+        /// Error reading file
         #[error("error reading config file")]
         ReadFile(#[from] Box<ReadFile>),
 
+        /// Error parsing config file
         #[error("error parsing config file")]
         Parse(#[from] toml::de::Error),
 
+        /// The config file is missing
         #[error("missing config file for index at {0}")]
         Missing(Box<gix::Url>),
     }
 
+    /// Errors that can occur when reading all packages from the pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum AllPackagesError {
+        /// Error opening the repository
         #[error("error opening repository at {0}")]
         Open(PathBuf, #[source] Box<gix::open::Error>),
 
+        /// Error reading tree from repository
         #[error("error getting tree from repository at {0}")]
         Tree(PathBuf, #[source] Box<TreeError>),
 
+        /// Error decoding entry in repository
         #[error("error decoding entry in repository at {0}")]
         Decode(PathBuf, #[source] gix::objs::decode::Error),
 
+        /// Error converting entry in repository
         #[error("error converting entry in repository at {0}")]
         Convert(PathBuf, #[source] gix::object::find::existing::Error),
 
+        /// Error deserializing file in repository
         #[error("error deserializing file {0} in repository at {1}")]
         Deserialize(String, PathBuf, #[source] Box<toml::de::Error>),
 
+        /// Error parsing file in repository as utf8
         #[error("error parsing file for {0} as utf8")]
         Utf8(String, #[source] std::string::FromUtf8Error),
     }
 
+    /// Errors that can occur when downloading a package from the pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadError {
+        /// Error reading index file
         #[error("error reading config file")]
         ReadFile(#[from] Box<ConfigError>),
 
+        /// Error downloading package
         #[error("error downloading package")]
         Download(#[from] reqwest::Error),
 
+        /// Error unpacking package
         #[error("error unpacking package")]
         Unpack(#[from] std::io::Error),
 
+        /// Error writing index file
         #[error("error writing index file")]
         WriteIndex(#[source] std::io::Error),
 
+        /// Error serializing index file
         #[error("error serializing index file")]
         SerializeIndex(#[from] toml::ser::Error),
 
+        /// Error deserializing index file
         #[error("error deserializing index file")]
         DeserializeIndex(#[from] toml::de::Error),
 
+        /// Error writing index file
         #[error("error reading index file")]
         ReadIndex(#[source] std::io::Error),
     }

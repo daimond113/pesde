@@ -10,23 +10,32 @@ use crate::{
     Project,
 };
 
+/// Packages' filesystems
 pub mod fs;
+/// The pesde package source
 pub mod pesde;
+/// Package references
 pub mod refs;
+/// Dependency specifiers
 pub mod specifiers;
+/// Traits for sources and packages
 pub mod traits;
+/// Version IDs
 pub mod version_id;
 
+/// The result of resolving a package
 pub type ResolveResult<Ref> = (PackageNames, BTreeMap<VersionId, Ref>);
 
+/// All possible package sources
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PackageSources {
+    /// A pesde package source
     Pesde(pesde::PesdePackageSource),
 }
 
 impl PackageSource for PackageSources {
-    type Ref = PackageRefs;
     type Specifier = DependencySpecifiers;
+    type Ref = PackageRefs;
     type RefreshError = errors::RefreshError;
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
@@ -77,32 +86,41 @@ impl PackageSource for PackageSources {
     }
 }
 
+/// Errors that can occur when interacting with a package source
 pub mod errors {
     use thiserror::Error;
 
+    /// Errors that occur when refreshing a package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum RefreshError {
+        /// The pesde package source failed to refresh
         #[error("error refreshing pesde package source")]
         Pesde(#[from] crate::source::pesde::errors::RefreshError),
     }
 
+    /// Errors that can occur when resolving a package
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ResolveError {
+        /// The dependency specifier does not match the source (if using the CLI, this is a bug - file an issue)
         #[error("mismatched dependency specifier for source")]
         Mismatch,
 
+        /// The pesde package source failed to resolve
         #[error("error resolving pesde package")]
         Pesde(#[from] crate::source::pesde::errors::ResolveError),
     }
 
+    /// Errors that can occur when downloading a package
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadError {
+        /// The package ref does not match the source (if using the CLI, this is a bug - file an issue)
         #[error("mismatched package ref for source")]
         Mismatch,
 
+        /// The pesde package source failed to download
         #[error("error downloading pesde package")]
         Pesde(#[from] crate::source::pesde::errors::DownloadError),
     }

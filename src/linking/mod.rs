@@ -13,6 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Generates linking modules for a project
 pub mod generator;
 
 fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
@@ -28,6 +29,7 @@ fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::R
 }
 
 impl Project {
+    /// Links the dependencies of the project
     pub fn link_dependencies(&self, graph: &DownloadedGraph) -> Result<(), errors::LinkingError> {
         let manifest = self.deser_manifest()?;
 
@@ -207,27 +209,35 @@ impl Project {
     }
 }
 
+/// Errors that can occur while linking dependencies
 pub mod errors {
     use thiserror::Error;
 
+    /// Errors that can occur while linking dependencies
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum LinkingError {
+        /// An error occurred while deserializing the project manifest
         #[error("error deserializing project manifest")]
         Manifest(#[from] crate::errors::ManifestReadError),
 
+        /// An error occurred while interacting with the filesystem
         #[error("error interacting with filesystem")]
         Io(#[from] std::io::Error),
 
+        /// A dependency was not found
         #[error("dependency not found: {0}@{1}")]
         DependencyNotFound(String, String),
 
+        /// The library file was not found
         #[error("library file at {0} not found")]
         LibFileNotFound(String),
 
+        /// An error occurred while parsing a Luau script
         #[error("error parsing Luau script at {0}")]
         FullMoon(String, Vec<full_moon::Error>),
 
+        /// An error occurred while generating a Roblox sync config
         #[cfg(feature = "roblox")]
         #[error("error generating roblox sync config for {0}")]
         GenerateRobloxSyncConfig(String, #[source] std::io::Error),

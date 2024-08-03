@@ -29,19 +29,21 @@ impl SelfInstallCommand {
                 .0;
             let path: String = env.get_value("Path").context("failed to get Path value")?;
 
+            let bin_dir = bin_dir.to_string_lossy();
+            
             let exists = path
                 .split(';')
-                .any(|part| part == bin_dir.to_string_lossy().as_ref());
+                .any(|part| *part == bin_dir);
 
             if !exists {
-                let new_path = format!("{path};{}", bin_dir.to_string_lossy());
+                let new_path = format!("{path};{bin_dir}");
                 env.set_value("Path", &new_path)
                     .context("failed to set Path value")?;
             }
 
             println!(
                 "installed {} {}!",
-                env!("CARGO_PKG_NAME").cyan(),
+                env!("CARGO_BIN_NAME").cyan(),
                 env!("CARGO_PKG_VERSION").yellow(),
             );
 
@@ -59,13 +61,13 @@ impl SelfInstallCommand {
         #[cfg(unix)]
         {
             println!(
-                r#"installed {} {}! in order to be able to run binary exports as programs, add the following line to your shell profile:
+                r#"installed {} {}! add the following line to your shell profile in order to get the binary and binary exports as executables usable from anywhere:
 
 {}
 
 and then restart your shell.
 "#,
-                env!("CARGO_PKG_NAME").cyan(),
+                env!("CARGO_BIN_NAME").cyan(),
                 env!("CARGO_PKG_VERSION").yellow(),
                 format!(r#"export PATH="$PATH:~/{}/bin""#, HOME_DIR)
                     .bold()

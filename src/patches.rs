@@ -3,6 +3,7 @@ use git2::{ApplyLocation, ApplyOptions, Diff, DiffFormat, DiffLineType, Reposito
 use relative_path::RelativePathBuf;
 use std::{fs::read, path::Path};
 
+/// Set up a git repository for patches
 pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Error> {
     let repo = Repository::init(&dir)?;
 
@@ -31,6 +32,7 @@ pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Er
     Ok(repo)
 }
 
+/// Create a patch from the current state of the repository
 pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
     let mut patches = vec![];
     let repo = Repository::open(dir.as_ref())?;
@@ -65,6 +67,7 @@ pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
 }
 
 impl Project {
+    /// Apply patches to the project's dependencies
     pub fn apply_patches(&self, graph: &DownloadedGraph) -> Result<(), errors::ApplyPatchesError> {
         let manifest = self.deser_manifest()?;
 
@@ -140,27 +143,34 @@ impl Project {
     }
 }
 
+/// Errors that can occur when using patches
 pub mod errors {
     use std::path::PathBuf;
 
     use crate::{names::PackageNames, source::version_id::VersionId};
     use thiserror::Error;
 
+    /// Errors that can occur when applying patches
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ApplyPatchesError {
+        /// Error deserializing the project manifest
         #[error("error deserializing project manifest")]
         ManifestDeserializationFailed(#[from] crate::errors::ManifestReadError),
 
+        /// Error interacting with git
         #[error("error interacting with git")]
         GitError(#[from] git2::Error),
 
+        /// Error reading the patch file
         #[error("error reading patch file at {0}")]
         PatchReadError(PathBuf, #[source] std::io::Error),
 
+        /// Error removing the .git directory
         #[error("error removing .git directory")]
         GitDirectoryRemovalError(PathBuf, #[source] std::io::Error),
 
+        /// Package not found in the graph
         #[error("package {0}@{1} not found in graph")]
         PackageNotFound(PackageNames, VersionId),
     }

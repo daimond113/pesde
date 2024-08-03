@@ -8,10 +8,13 @@ use std::{
 
 use std::fmt::{Display, Formatter};
 
+/// Script names used by pesde
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ScriptName {
+    /// Generates a config for syncing tools for Roblox. For example, for Rojo it should create a `default.project.json` file
     #[cfg(feature = "roblox")]
     RobloxSyncConfigGenerator,
+    /// Prints a sourcemap for a Wally package, used for finding the library export file
     #[cfg(feature = "wally-compat")]
     SourcemapGenerator,
 }
@@ -27,6 +30,7 @@ impl Display for ScriptName {
     }
 }
 
+/// Executes a script with the given arguments
 pub fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>>(
     script_name: Option<&str>,
     script_path: &Path,

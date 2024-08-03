@@ -2,9 +2,12 @@ use std::{fmt::Display, str::FromStr};
 
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
+/// The invalid part of a package name
 #[derive(Debug)]
 pub enum ErrorReason {
+    /// The scope of the package name is invalid
     Scope,
+    /// The name of the package name is invalid
     Name,
 }
 
@@ -17,6 +20,7 @@ impl Display for ErrorReason {
     }
 }
 
+/// A pesde package name
 #[derive(
     Debug, DeserializeFromStr, SerializeDisplay, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
@@ -59,29 +63,35 @@ impl Display for PackageName {
 }
 
 impl PackageName {
+    /// Returns the parts of the package name
     pub fn as_str(&self) -> (&str, &str) {
         (&self.0, &self.1)
     }
 
+    /// Returns the package name as a string suitable for use in the filesystem
     pub fn escaped(&self) -> String {
         format!("{}+{}", self.0, self.1)
     }
 }
 
+/// All possible package names
 #[derive(
     Debug, DeserializeFromStr, SerializeDisplay, Clone, Hash, PartialEq, Eq, PartialOrd, Ord,
 )]
 pub enum PackageNames {
+    /// A pesde package name
     Pesde(PackageName),
 }
 
 impl PackageNames {
+    /// Returns the parts of the package name
     pub fn as_str(&self) -> (&str, &str) {
         match self {
             PackageNames::Pesde(name) => name.as_str(),
         }
     }
 
+    /// Returns the package name as a string suitable for use in the filesystem
     pub fn escaped(&self) -> String {
         match self {
             PackageNames::Pesde(name) => name.escaped(),
@@ -109,32 +119,41 @@ impl FromStr for PackageNames {
     }
 }
 
+/// Errors that can occur when working with package names
 pub mod errors {
     use thiserror::Error;
 
     use crate::names::ErrorReason;
 
+    /// Errors that can occur when working with pesde package names
     #[derive(Debug, Error)]
     pub enum PackageNameError {
+        /// The package name is not in the format `scope/name`
         #[error("package name `{0}` is not in the format `scope/name`")]
         InvalidFormat(String),
 
+        /// The package name is outside the allowed characters: a-z, 0-9, and _
         #[error("package {0} `{1}` contains characters outside a-z, 0-9, and _")]
         InvalidCharacters(ErrorReason, String),
 
+        /// The package name contains only digits
         #[error("package {0} `{1}` contains only digits")]
         OnlyDigits(ErrorReason, String),
 
+        /// The package name starts or ends with an underscore
         #[error("package {0} `{1}` starts or ends with an underscore")]
         PrePostfixUnderscore(ErrorReason, String),
 
+        /// The package name is not within 3-32 characters long
         #[error("package {0} `{1}` is not within 3-32 characters long")]
         InvalidLength(ErrorReason, String),
     }
 
+    /// Errors that can occur when working with package names
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum PackageNamesError {
+        /// The pesde package name is invalid
         #[error("invalid package name {0}")]
         InvalidPackageName(String),
     }

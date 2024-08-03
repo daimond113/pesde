@@ -20,6 +20,7 @@ type MultithreadDownloadJob = (
 );
 
 impl Project {
+    /// Downloads a graph of dependencies
     pub fn download_graph(
         &self,
         graph: &DependencyGraph,
@@ -101,24 +102,31 @@ impl Project {
     }
 }
 
+/// Errors that can occur when downloading a graph
 pub mod errors {
     use thiserror::Error;
 
+    /// Errors that can occur when downloading a graph
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadGraphError {
+        /// Error occurred deserializing the project manifest
         #[error("error deserializing project manifest")]
         ManifestDeserializationFailed(#[from] crate::errors::ManifestReadError),
 
+        /// Error occurred refreshing a package source
         #[error("failed to refresh package source")]
         RefreshFailed(#[from] Box<crate::source::errors::RefreshError>),
 
+        /// Error interacting with the filesystem
         #[error("error interacting with filesystem")]
         Io(#[from] std::io::Error),
 
+        /// Error downloading a package
         #[error("failed to download package")]
         DownloadFailed(#[from] crate::source::errors::DownloadError),
 
+        /// Error writing package contents
         #[error("failed to write package contents")]
         WriteFailed(std::io::Error),
     }

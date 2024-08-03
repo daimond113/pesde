@@ -68,7 +68,7 @@ fn run() -> anyhow::Result<()> {
             parent.as_os_str() != "bin"
                 || parent
                     .parent()
-                    .is_some_and(|parent| parent.as_os_str() != cli::HOME_DIR)
+                    .is_some_and(|parent| parent.as_os_str() != HOME_DIR)
         }) {
             break 'scripts;
         }
