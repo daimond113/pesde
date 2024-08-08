@@ -1,10 +1,14 @@
-use crate::util::hash;
-use relative_path::RelativePathBuf;
-use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
+
+use relative_path::RelativePathBuf;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use crate::util::hash;
 
 /// A file system entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +42,43 @@ pub(crate) fn store_in_cas<P: AsRef<Path>>(
     }
 
     Ok((hash, cas_path))
+}
+
+pub(crate) fn store_reader_in_cas<P: AsRef<Path>>(
+    cas_dir: P,
+    contents: &mut dyn Read,
+) -> std::io::Result<String> {
+    let tmp_dir = cas_dir.as_ref().join(".tmp");
+    std::fs::create_dir_all(&tmp_dir)?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0; 8 * 1024];
+    let mut file_writer = BufWriter::new(tempfile::NamedTempFile::new_in(&tmp_dir)?);
+
+    loop {
+        let bytes_read = contents.read(&mut buf)?;
+        if bytes_read == 0 {
+            break;
+        }
+
+        let bytes = &buf[..bytes_read];
+        hasher.update(bytes);
+        file_writer.write_all(bytes)?;
+    }
+
+    let hash = format!("{:x}", hasher.finalize());
+    let (prefix, rest) = hash.split_at(2);
+
+    let folder = cas_dir.as_ref().join(prefix);
+    std::fs::create_dir_all(&folder)?;
+
+    let cas_path = folder.join(rest);
+    match file_writer.into_inner()?.persist_noclobber(cas_path) {
+        Ok(_) => {}
+        Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e.error),
+    };
+
+    Ok(hash)
 }
 
 impl PackageFS {

@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, VecDeque},
-    io::Read,
     path::PathBuf,
 };
 
@@ -13,7 +12,7 @@ use crate::{
     manifest::target::{Target, TargetKind},
     names::PackageNames,
     source::{
-        fs::{store_in_cas, FSEntry, PackageFS},
+        fs::{store_reader_in_cas, FSEntry, PackageFS},
         git_index::GitBasedSource,
         traits::PackageSource,
         version_id::VersionId,
@@ -213,10 +212,7 @@ impl PackageSource for WallyPackageSource {
             }
 
             let mut file = std::fs::File::open(entry.path())?;
-            let mut contents = vec![];
-            file.read_to_end(&mut contents)?;
-
-            let hash = store_in_cas(&project.cas_dir, &contents)?.0;
+            let hash = store_reader_in_cas(project.cas_dir(), &mut file)?;
             entries.insert(path, FSEntry::File(hash));
         }
 

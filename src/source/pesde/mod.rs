@@ -5,7 +5,7 @@ use crate::{
     },
     names::{PackageName, PackageNames},
     source::{
-        fs::{store_in_cas, FSEntry, PackageFS},
+        fs::{store_reader_in_cas, FSEntry, PackageFS},
         git_index::GitBasedSource,
         DependencySpecifiers, PackageSource, ResolveResult, VersionId,
     },
@@ -22,7 +22,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     hash::Hash,
-    io::Read,
     path::PathBuf,
 };
 
@@ -296,10 +295,7 @@ impl PackageSource for PesdePackageSource {
                 continue;
             }
 
-            let mut contents = vec![];
-            entry.read_to_end(&mut contents)?;
-
-            let hash = store_in_cas(&project.cas_dir, &contents)?.0;
+            let hash = store_reader_in_cas(project.cas_dir(), &mut entry)?;
             entries.insert(path, FSEntry::File(hash));
         }
 

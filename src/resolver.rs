@@ -173,7 +173,7 @@ impl Project {
                             // specifiers in indices store the index url in this field
                             .unwrap()
                     };
-                    
+
                     PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))
                 }
             };
