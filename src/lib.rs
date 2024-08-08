@@ -38,13 +38,12 @@ pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";
 pub const DEFAULT_INDEX_NAME: &str = "default";
 /// The name of the packages container
 pub const PACKAGES_CONTAINER_NAME: &str = ".pesde";
-/// Maximum size of a package's archive
-pub const MAX_ARCHIVE_SIZE: usize = 4 * 1024 * 1024;
+pub(crate) const LINK_LIB_NO_FILE_FOUND: &str = "____pesde_no_export_file_found";
 
 /// Struct containing the authentication configuration
 #[derive(Debug, Default, Clone)]
 pub struct AuthConfig {
-    pesde_token: Option<String>,
+    github_token: Option<String>,
     git_credentials: Option<gix::sec::identity::Account>,
 }
 
@@ -54,9 +53,9 @@ impl AuthConfig {
         AuthConfig::default()
     }
 
-    /// Access the pesde token
-    pub fn pesde_token(&self) -> Option<&str> {
-        self.pesde_token.as_deref()
+    /// Access the GitHub token
+    pub fn github_token(&self) -> Option<&str> {
+        self.github_token.as_deref()
     }
 
     /// Access the git credentials
@@ -64,9 +63,9 @@ impl AuthConfig {
         self.git_credentials.as_ref()
     }
 
-    /// Set the pesde token
-    pub fn with_pesde_token<S: AsRef<str>>(mut self, token: Option<S>) -> Self {
-        self.pesde_token = token.map(|s| s.as_ref().to_string());
+    /// Set the GitHub token
+    pub fn with_github_token<S: AsRef<str>>(mut self, token: Option<S>) -> Self {
+        self.github_token = token.map(|s| s.as_ref().to_string());
         self
     }
 

@@ -110,11 +110,11 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadGraphError {
-        /// Error occurred deserializing the project manifest
+        /// An error occurred deserializing the project manifest
         #[error("error deserializing project manifest")]
         ManifestDeserializationFailed(#[from] crate::errors::ManifestReadError),
 
-        /// Error occurred refreshing a package source
+        /// An error occurred refreshing a package source
         #[error("failed to refresh package source")]
         RefreshFailed(#[from] Box<crate::source::errors::RefreshError>),
 

@@ -152,6 +152,30 @@ impl Project {
 
                     PackageSources::Pesde(PesdePackageSource::new(index_url))
                 }
+                #[cfg(feature = "wally-compat")]
+                DependencySpecifiers::Wally(specifier) => {
+                    let index_url = if depth == 0 || overridden {
+                        let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
+
+                        manifest
+                            .wally_indices
+                            .get(index_name)
+                            .ok_or(errors::DependencyGraphError::WallyIndexNotFound(
+                                index_name.to_string(),
+                            ))?
+                            .clone()
+                    } else {
+                        let index_url = specifier.index.clone().unwrap();
+
+                        index_url
+                            .clone()
+                            .try_into()
+                            // specifiers in indices store the index url in this field
+                            .unwrap()
+                    };
+                    
+                    PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))
+                }
             };
 
             if refreshed_sources.insert(source.clone()) {
@@ -305,19 +329,24 @@ pub mod errors {
         /// An error occurred while deserializing the manifest
         #[error("failed to deserialize manifest")]
         ManifestRead(#[from] crate::errors::ManifestReadError),
-        
+
         /// An error occurred while reading all dependencies from the manifest
         #[error("error getting all project dependencies")]
         AllDependencies(#[from] crate::manifest::errors::AllDependenciesError),
 
         /// An index was not found in the manifest
-        #[error("index named {0} not found in manifest")]
+        #[error("index named `{0}` not found in manifest")]
         IndexNotFound(String),
+
+        /// A Wally index was not found in the manifest
+        #[cfg(feature = "wally-compat")]
+        #[error("wally index named `{0}` not found in manifest")]
+        WallyIndexNotFound(String),
 
         /// An error occurred while refreshing a package source
         #[error("error refreshing package source")]
         Refresh(#[from] crate::source::errors::RefreshError),
-        
+
         /// An error occurred while resolving a package
         #[error("error resolving package")]
         Resolve(#[from] crate::source::errors::ResolveError),

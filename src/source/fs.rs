@@ -24,9 +24,9 @@ pub struct PackageFS(pub(crate) BTreeMap<RelativePathBuf, FSEntry>);
 
 pub(crate) fn store_in_cas<P: AsRef<Path>>(
     cas_dir: P,
-    contents: &str,
+    contents: &[u8],
 ) -> std::io::Result<(String, PathBuf)> {
-    let hash = hash(contents.as_bytes());
+    let hash = hash(contents);
     let (prefix, rest) = hash.split_at(2);
 
     let folder = cas_dir.as_ref().join(prefix);
@@ -73,5 +73,16 @@ impl PackageFS {
         }
 
         Ok(())
+    }
+
+    /// Returns the contents of the file with the given hash
+    pub fn read_file<P: AsRef<Path>, H: AsRef<str>>(
+        &self,
+        file_hash: H,
+        cas_path: P,
+    ) -> Option<String> {
+        let (prefix, rest) = file_hash.as_ref().split_at(2);
+        let cas_file_path = cas_path.as_ref().join(prefix).join(rest);
+        std::fs::read_to_string(cas_file_path).ok()
     }
 }

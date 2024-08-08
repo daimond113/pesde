@@ -5,12 +5,15 @@ use rusty_s3::{actions::GetObject, S3Action};
 use semver::Version;
 use serde::{Deserialize, Deserializer};
 
-use pesde::{manifest::target::TargetKind, names::PackageName, source::pesde::IndexFile};
-
 use crate::{
     error::Error,
     package::{s3_name, PackageResponse, S3_SIGN_DURATION},
     AppState,
+};
+use pesde::{
+    manifest::target::TargetKind,
+    names::PackageName,
+    source::{git_index::GitBasedSource, pesde::IndexFile},
 };
 
 #[derive(Debug)]

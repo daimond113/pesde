@@ -3,8 +3,9 @@ use std::{
     io::{Cursor, Read, Write},
 };
 
-use actix_multipart::form::{bytes::Bytes, MultipartForm};
+use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
+use actix_web_lab::__reexports::futures_util::StreamExt;
 use flate2::read::GzDecoder;
 use git2::{Remote, Repository, Signature};
 use rusty_s3::{actions::PutObject, S3Action};
@@ -13,9 +14,9 @@ use tar::Archive;
 use pesde::{
     manifest::Manifest,
     source::{
+        git_index::GitBasedSource,
         pesde::{IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
         specifiers::DependencySpecifiers,
-        traits::PackageSource,
         version_id::VersionId,
     },
     DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
@@ -29,12 +30,6 @@ use crate::{
     search::update_version,
     AppState,
 };
-
-#[derive(MultipartForm)]
-pub struct PublishBody {
-    #[multipart(limit = "4 MiB")]
-    tarball: Bytes,
-}
 
 fn signature<'a>() -> Signature<'a> {
     Signature::now(
@@ -63,10 +58,24 @@ const FORBIDDEN_DIRECTORIES: &[&str] = &[".git"];
 
 pub async fn publish_package(
     app_state: web::Data<AppState>,
-    body: MultipartForm<PublishBody>,
+    mut body: Multipart,
     user_id: web::ReqData<UserId>,
 ) -> Result<impl Responder, Error> {
-    let bytes = body.tarball.data.to_vec();
+    let max_archive_size = {
+        let source = app_state.source.lock().unwrap();
+        source.refresh(&app_state.project).map_err(Box::new)?;
+        source.config(&app_state.project)?.max_archive_size
+    };
+
+    let bytes = body
+        .next()
+        .await
+        .ok_or(Error::InvalidArchive)?
+        .map_err(|_| Error::InvalidArchive)?
+        .bytes(max_archive_size)
+        .await
+        .map_err(|_| Error::InvalidArchive)?
+        .map_err(|_| Error::InvalidArchive)?;
     let mut decoder = GzDecoder::new(Cursor::new(&bytes));
     let mut archive = Archive::new(&mut decoder);
 
@@ -136,6 +145,11 @@ pub async fn publish_package(
                         .read_file([dep_scope, dep_name], &app_state.project)?
                         .is_none()
                     {
+                        return Err(Error::InvalidArchive);
+                    }
+                }
+                DependencySpecifiers::Wally(_) => {
+                    if !config.wally_allowed {
                         return Err(Error::InvalidArchive);
                     }
                 }

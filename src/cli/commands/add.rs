@@ -67,6 +67,22 @@ impl AddCommand {
 
                 PackageSources::Pesde(PesdePackageSource::new(index))
             }
+            #[cfg(feature = "wally-compat")]
+            PackageNames::Wally(_) => {
+                let index = manifest
+                    .wally_indices
+                    .get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
+                    .cloned();
+
+                if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
+                    log::error!("wally index {index} not found");
+                    return Ok(());
+                }
+
+                let index = index.unwrap_or(read_config()?.default_index);
+
+                PackageSources::Wally(pesde::source::wally::WallyPackageSource::new(index))
+            }
         };
         source
             .refresh(&project)
@@ -79,6 +95,14 @@ impl AddCommand {
                 index: self.index,
                 target: self.target,
             }),
+            #[cfg(feature = "wally-compat")]
+            PackageNames::Wally(name) => DependencySpecifiers::Wally(
+                pesde::source::wally::specifier::WallyDependencySpecifier {
+                    name: name.clone(),
+                    version: self.name.1.unwrap_or(VersionReq::STAR),
+                    index: self.index,
+                },
+            ),
         };
 
         let Some(version_id) = source
@@ -136,6 +160,24 @@ impl AddCommand {
                     spec.name,
                     version_id.version(),
                     version_id.target(),
+                    dependency_key
+                );
+            }
+            #[cfg(feature = "wally-compat")]
+            DependencySpecifiers::Wally(spec) => {
+                manifest[dependency_key][alias]["name"] =
+                    toml_edit::value(spec.name.clone().to_string());
+                manifest[dependency_key][alias]["version"] =
+                    toml_edit::value(format!("^{}", version_id.version()));
+
+                if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {
+                    manifest[dependency_key][alias]["index"] = toml_edit::value(index);
+                }
+
+                println!(
+                    "added wally {}@{} to {}",
+                    spec.name,
+                    version_id.version(),
                     dependency_key
                 );
             }

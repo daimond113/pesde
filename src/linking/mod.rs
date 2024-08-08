@@ -1,3 +1,9 @@
+use std::{
+    collections::BTreeMap,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+};
+
 use crate::{
     linking::generator::get_file_types,
     lockfile::DownloadedGraph,
@@ -5,12 +11,7 @@ use crate::{
     names::PackageNames,
     scripts::{execute_script, ScriptName},
     source::{fs::store_in_cas, traits::PackageRef, version_id::VersionId},
-    Project, PACKAGES_CONTAINER_NAME,
-};
-use std::{
-    collections::BTreeMap,
-    fs::create_dir_all,
-    path::{Path, PathBuf},
+    Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME,
 };
 
 /// Generates linking modules for a project
@@ -23,7 +24,7 @@ fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> 
 }
 
 fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
-    let cas_path = store_in_cas(cas_dir, contents)?.1;
+    let cas_path = store_in_cas(cas_dir, contents.as_bytes())?.1;
 
     std::fs::hard_link(cas_path, destination)
 }
@@ -50,29 +51,35 @@ impl Project {
                     version_id.version(),
                 );
 
-                let lib_file = lib_file.to_path(&container_folder);
+                let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
+                    let lib_file = lib_file.to_path(&container_folder);
 
-                let contents = match std::fs::read_to_string(&lib_file) {
-                    Ok(contents) => contents,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        return Err(errors::LinkingError::LibFileNotFound(
-                            lib_file.display().to_string(),
-                        ));
-                    }
-                    Err(e) => return Err(e.into()),
+                    let contents = match std::fs::read_to_string(&lib_file) {
+                        Ok(contents) => contents,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            return Err(errors::LinkingError::LibFileNotFound(
+                                lib_file.display().to_string(),
+                            ));
+                        }
+                        Err(e) => return Err(e.into()),
+                    };
+
+                    let types = match get_file_types(&contents) {
+                        Ok(types) => types,
+                        Err(e) => {
+                            return Err(errors::LinkingError::FullMoon(
+                                lib_file.display().to_string(),
+                                e,
+                            ))
+                        }
+                    };
+
+                    log::debug!("{name}@{version_id} has {} exported types", types.len());
+
+                    types
+                } else {
+                    vec![]
                 };
-
-                let types = match get_file_types(&contents) {
-                    Ok(types) => types,
-                    Err(e) => {
-                        return Err(errors::LinkingError::FullMoon(
-                            lib_file.display().to_string(),
-                            e,
-                        ))
-                    }
-                };
-
-                log::debug!("{name}@{version_id} has {} exported types", types.len());
 
                 package_types
                     .entry(name)
@@ -80,7 +87,9 @@ impl Project {
                     .insert(version_id, types);
 
                 #[cfg(feature = "roblox")]
-                if let Target::Roblox { build_files, .. } = &node.target {
+                if let Some(Target::Roblox { build_files, .. }) =
+                    Some(&node.target).filter(|_| !node.node.pkg_ref.is_wally())
+                {
                     let script_name = ScriptName::RobloxSyncConfigGenerator.to_string();
 
                     let Some(script_path) = manifest.scripts.get(&script_name) else {

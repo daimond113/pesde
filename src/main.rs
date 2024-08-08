@@ -1,6 +1,7 @@
 use crate::cli::{
     auth::get_token,
     home_dir,
+    scripts::update_scripts_folder,
     version::{check_for_updates, current_version, get_or_download_version, max_installed_version},
     HOME_DIR,
 };
@@ -121,7 +122,7 @@ fn run() -> anyhow::Result<()> {
         cwd,
         data_dir,
         cas_dir,
-        AuthConfig::new().with_pesde_token(token.as_ref()),
+        AuthConfig::new().with_github_token(token.as_ref()),
     );
 
     let reqwest = {
@@ -158,6 +159,15 @@ fn run() -> anyhow::Result<()> {
             println!(
                 "{}",
                 format!("failed to check for updates: {e}\n\n").red().bold()
+            );
+        }
+    }
+    match update_scripts_folder(&project) {
+        Ok(_) => {}
+        Err(e) => {
+            println!(
+                "{}",
+                format!("failed to update scripts: {e}\n\n").red().bold()
             );
         }
     }

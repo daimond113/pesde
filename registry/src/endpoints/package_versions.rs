@@ -1,8 +1,10 @@
 use actix_web::{web, HttpResponse, Responder};
 
-use pesde::{names::PackageName, source::pesde::IndexFile};
-
 use crate::{error::Error, package::PackageResponse, AppState};
+use pesde::{
+    names::PackageName,
+    source::{git_index::GitBasedSource, pesde::IndexFile},
+};
 
 pub async fn get_package_versions(
     app_state: web::Data<AppState>,

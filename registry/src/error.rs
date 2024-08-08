@@ -1,6 +1,6 @@
 use actix_web::{body::BoxBody, HttpResponse, ResponseError};
 use log::error;
-use pesde::source::pesde::errors::ReadFile;
+use pesde::source::git_index::errors::{ReadFile, RefreshError};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -31,7 +31,7 @@ pub enum Error {
     Git(#[from] git2::Error),
 
     #[error("failed to refresh source")]
-    Refresh(#[from] Box<pesde::source::pesde::errors::RefreshError>),
+    Refresh(#[from] Box<RefreshError>),
 
     #[error("failed to serialize struct")]
     Serialize(#[from] toml::ser::Error),

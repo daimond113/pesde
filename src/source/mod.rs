@@ -12,6 +12,8 @@ use crate::{
 
 /// Packages' filesystems
 pub mod fs;
+/// Git index-based package source utilities
+pub mod git_index;
 /// The pesde package source
 pub mod pesde;
 /// Package references
@@ -22,6 +24,9 @@ pub mod specifiers;
 pub mod traits;
 /// Version IDs
 pub mod version_id;
+/// The Wally package source
+#[cfg(feature = "wally-compat")]
+pub mod wally;
 
 /// The result of resolving a package
 pub type ResolveResult<Ref> = (PackageNames, BTreeMap<VersionId, Ref>);
@@ -31,6 +36,9 @@ pub type ResolveResult<Ref> = (PackageNames, BTreeMap<VersionId, Ref>);
 pub enum PackageSources {
     /// A pesde package source
     Pesde(pesde::PesdePackageSource),
+    /// A Wally package source
+    #[cfg(feature = "wally-compat")]
+    Wally(wally::WallyPackageSource),
 }
 
 impl PackageSource for PackageSources {
@@ -43,6 +51,8 @@ impl PackageSource for PackageSources {
     fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
         match self {
             PackageSources::Pesde(source) => source.refresh(project).map_err(Into::into),
+            #[cfg(feature = "wally-compat")]
+            PackageSources::Wally(source) => source.refresh(project).map_err(Into::into),
         }
     }
 
@@ -66,6 +76,20 @@ impl PackageSource for PackageSources {
                 })
                 .map_err(Into::into),
 
+            #[cfg(feature = "wally-compat")]
+            (PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => source
+                .resolve(specifier, project, project_target)
+                .map(|(name, results)| {
+                    (
+                        name,
+                        results
+                            .into_iter()
+                            .map(|(version, pkg_ref)| (version, PackageRefs::Wally(pkg_ref)))
+                            .collect(),
+                    )
+                })
+                .map_err(Into::into),
+
             _ => Err(errors::ResolveError::Mismatch),
         }
     }
@@ -78,6 +102,11 @@ impl PackageSource for PackageSources {
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         match (self, pkg_ref) {
             (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => source
+                .download(pkg_ref, project, reqwest)
+                .map_err(Into::into),
+
+            #[cfg(feature = "wally-compat")]
+            (PackageSources::Wally(source), PackageRefs::Wally(pkg_ref)) => source
                 .download(pkg_ref, project, reqwest)
                 .map_err(Into::into),
 
@@ -94,9 +123,9 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum RefreshError {
-        /// The pesde package source failed to refresh
+        /// A git-based package source failed to refresh
         #[error("error refreshing pesde package source")]
-        Pesde(#[from] crate::source::pesde::errors::RefreshError),
+        GitBased(#[from] crate::source::git_index::errors::RefreshError),
     }
 
     /// Errors that can occur when resolving a package
@@ -107,9 +136,14 @@ pub mod errors {
         #[error("mismatched dependency specifier for source")]
         Mismatch,
 
-        /// The pesde package source failed to resolve
+        /// A pesde package source failed to resolve
         #[error("error resolving pesde package")]
         Pesde(#[from] crate::source::pesde::errors::ResolveError),
+
+        /// A Wally package source failed to resolve
+        #[cfg(feature = "wally-compat")]
+        #[error("error resolving wally package")]
+        Wally(#[from] crate::source::wally::errors::ResolveError),
     }
 
     /// Errors that can occur when downloading a package
@@ -120,8 +154,13 @@ pub mod errors {
         #[error("mismatched package ref for source")]
         Mismatch,
 
-        /// The pesde package source failed to download
+        /// A pesde package source failed to download
         #[error("error downloading pesde package")]
         Pesde(#[from] crate::source::pesde::errors::DownloadError),
+
+        /// A Wally package source failed to download
+        #[cfg(feature = "wally-compat")]
+        #[error("error downloading wally package")]
+        Wally(#[from] crate::source::wally::errors::DownloadError),
     }
 }

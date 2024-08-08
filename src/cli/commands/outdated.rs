@@ -46,6 +46,10 @@ impl OutdatedCommand {
                         DependencySpecifiers::Pesde(ref mut spec) => {
                             spec.version = VersionReq::STAR;
                         }
+                        #[cfg(feature = "wally-compat")]
+                        DependencySpecifiers::Wally(ref mut spec) => {
+                            spec.version = VersionReq::STAR;
+                        }
                     };
                 }
 

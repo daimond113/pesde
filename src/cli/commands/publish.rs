@@ -1,14 +1,20 @@
+use std::{
+    io::{Seek, Write},
+    path::Component,
+};
+
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
+use reqwest::StatusCode;
+use tempfile::tempfile;
+
 use pesde::{
     manifest::target::Target,
     scripts::ScriptName,
     source::{pesde::PesdePackageSource, traits::PackageSource},
-    Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME, MAX_ARCHIVE_SIZE,
+    Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
-use reqwest::StatusCode;
-use std::path::Component;
 
 #[derive(Debug, Args)]
 pub struct PublishCommand {
@@ -270,49 +276,25 @@ impl PublishCommand {
             println!();
         }
 
-        let temp_manifest_path = project
-            .data_dir()
-            .join(format!("temp_manifest_{}", chrono::Utc::now().timestamp()));
-
-        std::fs::write(
-            &temp_manifest_path,
-            toml::to_string(&manifest).context("failed to serialize manifest")?,
-        )
-        .context("failed to write temp manifest file")?;
-
-        let mut temp_manifest = std::fs::File::open(&temp_manifest_path)
-            .context("failed to open temp manifest file")?;
+        let mut temp_manifest = tempfile().context("failed to create temp manifest file")?;
+        temp_manifest
+            .write_all(
+                toml::to_string(&manifest)
+                    .context("failed to serialize manifest")?
+                    .as_bytes(),
+            )
+            .context("failed to write temp manifest file")?;
+        temp_manifest
+            .rewind()
+            .context("failed to rewind temp manifest file")?;
 
         archive.append_file(MANIFEST_FILE_NAME, &mut temp_manifest)?;
-
-        drop(temp_manifest);
-
-        std::fs::remove_file(temp_manifest_path)?;
 
         let archive = archive
             .into_inner()
             .context("failed to encode archive")?
             .finish()
             .context("failed to get archive bytes")?;
-
-        if archive.len() > MAX_ARCHIVE_SIZE {
-            anyhow::bail!(
-                "archive size exceeds maximum size of {} bytes by {} bytes",
-                MAX_ARCHIVE_SIZE,
-                archive.len() - MAX_ARCHIVE_SIZE
-            );
-        }
-
-        if self.dry_run {
-            std::fs::write("package.tar.gz", archive)?;
-
-            println!(
-                "{}",
-                "(dry run) package written to package.tar.gz".green().bold()
-            );
-
-            return Ok(());
-        }
 
         let source = PesdePackageSource::new(
             manifest
@@ -327,6 +309,25 @@ impl PublishCommand {
         let config = source
             .config(&project)
             .context("failed to get source config")?;
+
+        if archive.len() > config.max_archive_size {
+            anyhow::bail!(
+                "archive size exceeds maximum size of {} bytes by {} bytes",
+                config.max_archive_size,
+                archive.len() - config.max_archive_size
+            );
+        }
+
+        if self.dry_run {
+            std::fs::write("package.tar.gz", archive)?;
+
+            println!(
+                "{}",
+                "(dry run) package written to package.tar.gz".green().bold()
+            );
+
+            return Ok(());
+        }
 
         match reqwest
             .post(format!("{}/v0/packages", config.api()))

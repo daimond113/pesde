@@ -1,9 +1,7 @@
-use crate::cli::{bin_dir, scripts::update_scripts_folder, version::update_bin_exe, HOME_DIR};
+use crate::cli::{bin_dir, version::update_bin_exe, HOME_DIR};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
-use pesde::Project;
-
 #[derive(Debug, Args)]
 pub struct SelfInstallCommand {
     /// Skip adding the bin directory to the PATH
@@ -13,9 +11,7 @@ pub struct SelfInstallCommand {
 }
 
 impl SelfInstallCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
-        update_scripts_folder(&project)?;
-
+    pub fn run(self) -> anyhow::Result<()> {
         let bin_dir = bin_dir()?;
 
         #[cfg(windows)]
@@ -30,10 +26,8 @@ impl SelfInstallCommand {
             let path: String = env.get_value("Path").context("failed to get Path value")?;
 
             let bin_dir = bin_dir.to_string_lossy();
-            
-            let exists = path
-                .split(';')
-                .any(|part| *part == bin_dir);
+
+            let exists = path.split(';').any(|part| *part == bin_dir);
 
             if !exists {
                 let new_path = format!("{path};{bin_dir}");

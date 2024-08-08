@@ -1,12 +1,11 @@
 use std::{
     ffi::OsStr,
+    fmt::{Display, Formatter},
     io::{BufRead, BufReader},
     path::Path,
     process::{Command, Stdio},
     thread::spawn,
 };
-
-use std::fmt::{Display, Formatter};
 
 /// Script names used by pesde
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -41,6 +40,7 @@ pub fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>
     match Command::new("lune")
         .arg("run")
         .arg(script_path.as_os_str())
+        .arg("--")
         .args(args)
         .current_dir(cwd)
         .stdin(Stdio::null())
@@ -78,11 +78,11 @@ pub fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>
             for line in stdout.lines() {
                 match line {
                     Ok(line) => {
-                        log::info!("[{script_2}]: {line}");
-
                         if return_stdout {
                             stdout_str.push_str(&line);
                             stdout_str.push('\n');
+                        } else {
+                            log::info!("[{script_2}]: {line}");
                         }
                     }
                     Err(e) => {
