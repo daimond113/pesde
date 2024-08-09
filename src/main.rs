@@ -153,25 +153,6 @@ fn run() -> anyhow::Result<()> {
             .build()?
     };
 
-    match check_for_updates(&reqwest) {
-        Ok(_) => {}
-        Err(e) => {
-            println!(
-                "{}",
-                format!("failed to check for updates: {e}\n\n").red().bold()
-            );
-        }
-    }
-    match update_scripts_folder(&project) {
-        Ok(_) => {}
-        Err(e) => {
-            println!(
-                "{}",
-                format!("failed to update scripts: {e}\n\n").red().bold()
-            );
-        }
-    }
-
     let target_version = project
         .deser_manifest()
         .ok()
@@ -198,6 +179,26 @@ fn run() -> anyhow::Result<()> {
             .expect("failed to run new version");
 
         std::process::exit(status.code().unwrap());
+    }
+
+    match check_for_updates(&reqwest) {
+        Ok(_) => {}
+        Err(e) => {
+            println!(
+                "{}",
+                format!("failed to check for updates: {e}\n\n").red().bold()
+            );
+        }
+    }
+
+    match update_scripts_folder(&project) {
+        Ok(_) => {}
+        Err(e) => {
+            println!(
+                "{}",
+                format!("failed to update scripts: {e}\n\n").red().bold()
+            );
+        }
     }
 
     Cli::parse().subcommand.run(project, multi, reqwest)

@@ -155,7 +155,7 @@ impl Project {
     }
 }
 
-/// Errors that can occur when reading or writing files
+/// Errors that can occur when using the pesde library
 pub mod errors {
     use thiserror::Error;
 
