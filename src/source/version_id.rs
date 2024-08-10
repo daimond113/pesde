@@ -29,6 +29,11 @@ impl VersionId {
     pub fn escaped(&self) -> String {
         format!("{}+{}", self.0, self.1)
     }
+
+    /// The reverse of `escaped`
+    pub fn from_escaped(s: &str) -> Result<Self, errors::VersionIdParseError> {
+        VersionId::from_str(s.replacen('+', " ", 1).as_str())
+    }
 }
 
 impl Display for VersionId {

@@ -45,8 +45,6 @@ impl PatchCommand {
             .write_to(&directory, project.cas_dir(), false)
             .context("failed to write package contents")?;
 
-        // TODO: if MANIFEST_FILE_NAME does not exist, try to convert it
-
         setup_patches_repo(&directory)?;
 
         println!(

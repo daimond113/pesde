@@ -104,6 +104,11 @@ impl PackageNames {
             PackageNames::Wally(name) => name.escaped(),
         }
     }
+
+    /// The reverse of `escaped`
+    pub fn from_escaped(s: &str) -> Result<Self, errors::PackageNamesError> {
+        PackageNames::from_str(s.replacen('+', "/", 1).as_str())
+    }
 }
 
 impl Display for PackageNames {

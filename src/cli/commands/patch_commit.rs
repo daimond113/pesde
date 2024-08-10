@@ -1,10 +1,7 @@
 use crate::cli::IsUpToDate;
 use anyhow::Context;
 use clap::Args;
-use pesde::{
-    manifest::Manifest, names::PackageNames, patches::create_patch, source::version_id::VersionId,
-    Project, MANIFEST_FILE_NAME,
-};
+use pesde::{names::PackageNames, patches::create_patch, source::version_id::VersionId, Project};
 use std::{path::PathBuf, str::FromStr};
 
 #[derive(Debug, Args)]
@@ -22,17 +19,28 @@ impl PatchCommitCommand {
             anyhow::bail!("outdated lockfile, please run the install command first")
         };
 
-        let (name, version_id) = {
-            let patched_manifest = std::fs::read_to_string(self.directory.join(MANIFEST_FILE_NAME))
-                .context("failed to read patched manifest")?;
-            let patched_manifest: Manifest =
-                toml::from_str(&patched_manifest).context("failed to parse patched manifest")?;
-
-            (
-                PackageNames::Pesde(patched_manifest.name),
-                VersionId::new(patched_manifest.version, patched_manifest.target.kind()),
-            )
-        };
+        let (name, version_id) = (
+            PackageNames::from_escaped(
+                self.directory
+                    .parent()
+                    .context("directory has no parent")?
+                    .parent()
+                    .context("directory has no grandparent")?
+                    .file_name()
+                    .context("directory grandparent has no name")?
+                    .to_str()
+                    .context("directory grandparent name is not valid")?,
+            )?,
+            VersionId::from_escaped(
+                self.directory
+                    .parent()
+                    .context("directory has no parent")?
+                    .file_name()
+                    .context("directory parent has no name")?
+                    .to_str()
+                    .context("directory parent name is not valid")?,
+            )?,
+        );
 
         graph
             .get(&name)
