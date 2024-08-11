@@ -17,6 +17,7 @@ use crate::{
         traits::PackageSource,
         version_id::VersionId,
         wally::{compat_util::get_target, manifest::WallyManifest, pkg_ref::WallyPackageRef},
+        IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project,
@@ -202,14 +203,18 @@ impl PackageSource for WallyPackageSource {
             let path =
                 RelativePathBuf::from_path(entry.path().strip_prefix(tempdir.path())?).unwrap();
 
-            if path == ".git" {
-                continue;
-            }
-
             if entry.file_type()?.is_dir() {
+                if IGNORED_DIRS.contains(&path.as_str()) {
+                    continue;
+                }
+
                 entries.insert(path, FSEntry::Directory);
                 dir_entries.extend(std::fs::read_dir(entry.path())?);
 
+                continue;
+            }
+
+            if IGNORED_FILES.contains(&path.as_str()) {
                 continue;
             }
 

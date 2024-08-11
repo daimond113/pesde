@@ -12,7 +12,10 @@ use tempfile::tempfile;
 use pesde::{
     manifest::target::Target,
     scripts::ScriptName,
-    source::{pesde::PesdePackageSource, specifiers::DependencySpecifiers, traits::PackageSource},
+    source::{
+        pesde::PesdePackageSource, specifiers::DependencySpecifiers, traits::PackageSource,
+        IGNORED_DIRS, IGNORED_FILES,
+    },
     Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
 
@@ -96,6 +99,19 @@ impl PublishCommand {
                 "warn".yellow().bold(),
                 ScriptName::RobloxSyncConfigGenerator
             );
+        }
+
+        for ignored_path in IGNORED_FILES.iter().chain(IGNORED_DIRS.iter()) {
+            if manifest.includes.remove(*ignored_path) {
+                println!(
+                    r#"{}: {ignored_path} was in includes, removing it.
+{}: if this was a toolchain manager's manifest file, do not include it due to it possibly messing with user scripts
+{}: otherwise, the file was deemed unnecessary, if you don't understand why, please contact the maintainers"#,
+                    "warn".yellow().bold(),
+                    "info".blue().bold(),
+                    "info".blue().bold()
+                );
+            }
         }
 
         for (name, path) in [("lib path", lib_path), ("bin path", bin_path)] {

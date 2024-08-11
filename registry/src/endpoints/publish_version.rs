@@ -18,6 +18,7 @@ use pesde::{
         pesde::{IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
         specifiers::DependencySpecifiers,
         version_id::VersionId,
+        IGNORED_DIRS, IGNORED_FILES,
     },
     DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
@@ -53,8 +54,7 @@ fn get_refspec(repo: &Repository, remote: &mut Remote) -> Result<String, git2::E
     Ok(refspec.to_string())
 }
 
-const FORBIDDEN_FILES: &[&str] = &[".DS_Store", "default.project.json"];
-const FORBIDDEN_DIRECTORIES: &[&str] = &[".git"];
+const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 
 pub async fn publish_package(
     app_state: web::Data<AppState>,
@@ -85,17 +85,22 @@ pub async fn publish_package(
     for entry in entries {
         let mut entry = entry?;
         let path = entry.path()?;
-        let path = path.to_str().ok_or(Error::InvalidArchive)?;
 
         if entry.header().entry_type().is_dir() {
-            if FORBIDDEN_DIRECTORIES.contains(&path) {
+            if path.components().next().is_some_and(|ct| {
+                ct.as_os_str()
+                    .to_str()
+                    .map_or(true, |s| IGNORED_DIRS.contains(&s))
+            }) {
                 return Err(Error::InvalidArchive);
             }
 
             continue;
         }
 
-        if FORBIDDEN_FILES.contains(&path) {
+        let path = path.to_str().ok_or(Error::InvalidArchive)?;
+
+        if IGNORED_FILES.contains(&path) || ADDITIONAL_FORBIDDEN_FILES.contains(&path) {
             return Err(Error::InvalidArchive);
         }
 

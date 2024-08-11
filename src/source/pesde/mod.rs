@@ -1,3 +1,18 @@
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+    hash::Hash,
+    path::PathBuf,
+};
+
+use gix::Url;
+use relative_path::RelativePathBuf;
+use reqwest::header::ACCEPT;
+use serde::{Deserialize, Serialize};
+
+use pkg_ref::PesdePackageRef;
+use specifier::PesdeDependencySpecifier;
+
 use crate::{
     manifest::{
         target::{Target, TargetKind},
@@ -7,22 +22,10 @@ use crate::{
     source::{
         fs::{store_reader_in_cas, FSEntry, PackageFS},
         git_index::GitBasedSource,
-        DependencySpecifiers, PackageSource, ResolveResult, VersionId,
+        DependencySpecifiers, PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project,
-};
-use gix::Url;
-use pkg_ref::PesdePackageRef;
-use relative_path::RelativePathBuf;
-use reqwest::header::ACCEPT;
-use serde::{Deserialize, Serialize};
-use specifier::PesdeDependencySpecifier;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-    hash::Hash,
-    path::PathBuf,
 };
 
 /// The pesde package reference
@@ -292,8 +295,20 @@ impl PackageSource for PesdePackageSource {
             let path = RelativePathBuf::from_path(entry.path()?).unwrap();
 
             if entry.header().entry_type().is_dir() {
+                if path
+                    .components()
+                    .next()
+                    .is_some_and(|ct| IGNORED_DIRS.contains(&ct.as_str()))
+                {
+                    continue;
+                }
+
                 entries.insert(path, FSEntry::Directory);
 
+                continue;
+            }
+
+            if IGNORED_FILES.contains(&path.as_str()) {
                 continue;
             }
 
@@ -385,8 +400,9 @@ pub type IndexFile = BTreeMap<VersionId, IndexFileEntry>;
 pub mod errors {
     use std::path::PathBuf;
 
-    use crate::source::git_index::errors::{ReadFile, TreeError};
     use thiserror::Error;
+
+    use crate::source::git_index::errors::{ReadFile, TreeError};
 
     /// Errors that can occur when resolving a package from a pesde package source
     #[derive(Debug, Error)]

@@ -10,7 +10,7 @@ use crate::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
         git_index::GitBasedSource,
-        PackageSource, ResolveResult, VersionId,
+        PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project, MANIFEST_FILE_NAME,
@@ -282,8 +282,20 @@ impl PackageSource for GitPackageSource {
             })?;
 
             if matches!(object.kind, gix::object::Kind::Tree) {
+                if path
+                    .components()
+                    .next()
+                    .is_some_and(|ct| IGNORED_DIRS.contains(&ct.as_str()))
+                {
+                    continue;
+                }
+
                 entries.insert(path, FSEntry::Directory);
 
+                continue;
+            }
+
+            if IGNORED_FILES.contains(&path.as_str()) {
                 continue;
             }
 

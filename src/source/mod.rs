@@ -30,6 +30,12 @@ pub mod version_id;
 #[cfg(feature = "wally-compat")]
 pub mod wally;
 
+/// Files that will not be stored when downloading a package. These are only files which break pesde's functionality, or are meaningless and possibly heavy (e.g. `.DS_Store`)
+pub const IGNORED_FILES: &[&str] = &["foreman.toml", "aftman.toml", "rokit.toml", ".DS_Store"];
+
+/// Directories that will not be stored when downloading a package. These are only directories which break pesde's functionality, or are meaningless and possibly heavy
+pub const IGNORED_DIRS: &[&str] = &[".git"];
+
 /// The result of resolving a package
 pub type ResolveResult<Ref> = (PackageNames, BTreeMap<VersionId, Ref>);
 
