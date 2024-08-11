@@ -14,14 +14,17 @@ pub enum PackageRefs {
     /// A Wally package reference
     #[cfg(feature = "wally-compat")]
     Wally(crate::source::wally::pkg_ref::WallyPackageRef),
+    /// A Git package reference
+    Git(crate::source::git::pkg_ref::GitPackageRef),
 }
 
 impl PackageRefs {
-    /// Returns whether this package reference is a Wally package reference
-    pub fn is_wally(&self) -> bool {
+    /// Returns whether this package reference should be treated as a Wally package
+    pub fn like_wally(&self) -> bool {
         match self {
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(_) => true,
+            PackageRefs::Git(git) => !git.use_new_structure(),
             _ => false,
         }
     }
@@ -33,6 +36,7 @@ impl PackageRef for PackageRefs {
             PackageRefs::Pesde(pkg_ref) => pkg_ref.dependencies(),
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(pkg_ref) => pkg_ref.dependencies(),
+            PackageRefs::Git(pkg_ref) => pkg_ref.dependencies(),
         }
     }
 
@@ -41,6 +45,7 @@ impl PackageRef for PackageRefs {
             PackageRefs::Pesde(pkg_ref) => pkg_ref.use_new_structure(),
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(pkg_ref) => pkg_ref.use_new_structure(),
+            PackageRefs::Git(pkg_ref) => pkg_ref.use_new_structure(),
         }
     }
 
@@ -49,6 +54,7 @@ impl PackageRef for PackageRefs {
             PackageRefs::Pesde(pkg_ref) => pkg_ref.target_kind(),
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(pkg_ref) => pkg_ref.target_kind(),
+            PackageRefs::Git(pkg_ref) => pkg_ref.target_kind(),
         }
     }
 
@@ -57,6 +63,7 @@ impl PackageRef for PackageRefs {
             PackageRefs::Pesde(pkg_ref) => pkg_ref.source(),
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(pkg_ref) => pkg_ref.source(),
+            PackageRefs::Git(pkg_ref) => pkg_ref.source(),
         }
     }
 }

@@ -68,7 +68,9 @@ impl PesdePackageSource {
 
     /// Reads the config file
     pub fn config(&self, project: &Project) -> Result<IndexConfig, errors::ConfigError> {
-        let file = self.read_file(["config.toml"], project).map_err(Box::new)?;
+        let file = self
+            .read_file(["config.toml"], project, None)
+            .map_err(Box::new)?;
 
         let string = match file {
             Some(s) => s,
@@ -192,7 +194,7 @@ impl PackageSource for PesdePackageSource {
         project_target: TargetKind,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (scope, name) = specifier.name.as_str();
-        let string = match self.read_file([scope, name], project) {
+        let string = match self.read_file([scope, name], project, None) {
             Ok(Some(s)) => s,
             Ok(None) => return Err(Self::ResolveError::NotFound(specifier.name.to_string())),
             Err(e) => {

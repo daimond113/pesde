@@ -35,6 +35,10 @@ impl OutdatedCommand {
                     continue;
                 };
 
+                if matches!(specifier, DependencySpecifiers::Git(_)) {
+                    continue;
+                }
+
                 let source = node.node.pkg_ref.source();
 
                 if refreshed_sources.insert(source.clone()) {
@@ -50,6 +54,7 @@ impl OutdatedCommand {
                         DependencySpecifiers::Wally(ref mut spec) => {
                             spec.version = VersionReq::STAR;
                         }
+                        DependencySpecifiers::Git(_) => {}
                     };
                 }
 

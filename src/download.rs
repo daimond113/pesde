@@ -71,7 +71,7 @@ impl Project {
                     let (fs, target) = match source.download(&node.pkg_ref, &project, &reqwest) {
                         Ok(target) => target,
                         Err(e) => {
-                            tx.send(Err(e.into())).unwrap();
+                            tx.send(Err(Box::new(e).into())).unwrap();
                             return;
                         }
                     };
@@ -124,7 +124,7 @@ pub mod errors {
 
         /// Error downloading a package
         #[error("failed to download package")]
-        DownloadFailed(#[from] crate::source::errors::DownloadError),
+        DownloadFailed(#[from] Box<crate::source::errors::DownloadError>),
 
         /// Error writing package contents
         #[error("failed to write package contents")]

@@ -64,6 +64,7 @@ pub trait GitBasedSource {
         &self,
         file_path: I,
         project: &Project,
+        tree: Option<gix::Tree>,
     ) -> Result<Option<String>, errors::ReadFile> {
         let path = self.path(project);
 
@@ -72,7 +73,7 @@ pub trait GitBasedSource {
             Err(e) => return Err(errors::ReadFile::Open(path, Box::new(e))),
         };
 
-        let tree = match self.tree(&repo) {
+        let tree = match tree.map_or_else(|| self.tree(&repo), Ok) {
             Ok(tree) => tree,
             Err(e) => return Err(errors::ReadFile::Tree(path, Box::new(e))),
         };

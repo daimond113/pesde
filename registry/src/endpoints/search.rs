@@ -73,7 +73,7 @@ pub async fn search_packages(
 
             let mut versions: IndexFile = toml::de::from_str(
                 &source
-                    .read_file([scope, name], &app_state.project)
+                    .read_file([scope, name], &app_state.project, None)
                     .unwrap()
                     .unwrap(),
             )

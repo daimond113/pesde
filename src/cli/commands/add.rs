@@ -181,6 +181,9 @@ impl AddCommand {
                     dependency_key
                 );
             }
+            DependencySpecifiers::Git(_) => {
+                unreachable!("git dependencies are not supported in the add command");
+            }
         }
 
         project

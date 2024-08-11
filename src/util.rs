@@ -61,6 +61,18 @@ pub fn deserialize_gix_url_map<'de, D: Deserializer<'de>>(
         .collect()
 }
 
+pub fn deserialize_git_like_url<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<gix::Url, D::Error> {
+    let s = String::deserialize(deserializer)?;
+    if s.contains(':') {
+        gix::Url::from_bytes(BStr::new(&s)).map_err(serde::de::Error::custom)
+    } else {
+        gix::Url::from_bytes(BStr::new(format!("https://github.com/{s}").as_bytes()))
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
     let mut hasher = Sha256::new();
     hasher.update(struc.as_ref());

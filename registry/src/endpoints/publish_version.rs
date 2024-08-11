@@ -142,7 +142,7 @@ pub async fn publish_package(
 
                     let (dep_scope, dep_name) = specifier.name.as_str();
                     if source
-                        .read_file([dep_scope, dep_name], &app_state.project)?
+                        .read_file([dep_scope, dep_name], &app_state.project, None)?
                         .is_none()
                     {
                         return Err(Error::InvalidArchive);
@@ -150,6 +150,11 @@ pub async fn publish_package(
                 }
                 DependencySpecifiers::Wally(_) => {
                     if !config.wally_allowed {
+                        return Err(Error::InvalidArchive);
+                    }
+                }
+                DependencySpecifiers::Git(_) => {
+                    if !config.git_allowed {
                         return Err(Error::InvalidArchive);
                     }
                 }
@@ -161,7 +166,7 @@ pub async fn publish_package(
         let (scope, name) = manifest.name.as_str();
         let mut oids = vec![];
 
-        match source.read_file([scope, SCOPE_INFO_FILE], &app_state.project)? {
+        match source.read_file([scope, SCOPE_INFO_FILE], &app_state.project, None)? {
             Some(info) => {
                 let info: ScopeInfo = toml::de::from_str(&info)?;
                 if !info.owners.contains(&user_id.0) {
@@ -181,7 +186,7 @@ pub async fn publish_package(
 
         let mut entries: IndexFile = toml::de::from_str(
             &source
-                .read_file([scope, name], &app_state.project)?
+                .read_file([scope, name], &app_state.project, None)?
                 .unwrap_or_default(),
         )?;
 

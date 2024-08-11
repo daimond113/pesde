@@ -88,7 +88,7 @@ impl Project {
 
                 #[cfg(feature = "roblox")]
                 if let Some(Target::Roblox { build_files, .. }) =
-                    Some(&node.target).filter(|_| !node.node.pkg_ref.is_wally())
+                    Some(&node.target).filter(|_| !node.node.pkg_ref.like_wally())
                 {
                     let script_name = ScriptName::RobloxSyncConfigGenerator.to_string();
 

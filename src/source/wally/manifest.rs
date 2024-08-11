@@ -5,12 +5,14 @@ use serde::{Deserialize, Deserializer};
 
 use crate::{
     manifest::{errors, DependencyType},
+    names::wally::WallyPackageName,
     source::{specifiers::DependencySpecifiers, wally::specifier::WallyDependencySpecifier},
 };
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct WallyPackage {
+    pub name: WallyPackageName,
     pub version: Version,
 }
 

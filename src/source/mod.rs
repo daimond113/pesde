@@ -12,6 +12,8 @@ use crate::{
 
 /// Packages' filesystems
 pub mod fs;
+/// The Git package source
+pub mod git;
 /// Git index-based package source utilities
 pub mod git_index;
 /// The pesde package source
@@ -39,6 +41,8 @@ pub enum PackageSources {
     /// A Wally package source
     #[cfg(feature = "wally-compat")]
     Wally(wally::WallyPackageSource),
+    /// A Git package source
+    Git(git::GitPackageSource),
 }
 
 impl PackageSource for PackageSources {
@@ -53,6 +57,7 @@ impl PackageSource for PackageSources {
             PackageSources::Pesde(source) => source.refresh(project).map_err(Into::into),
             #[cfg(feature = "wally-compat")]
             PackageSources::Wally(source) => source.refresh(project).map_err(Into::into),
+            PackageSources::Git(source) => source.refresh(project).map_err(Into::into),
         }
     }
 
@@ -90,6 +95,19 @@ impl PackageSource for PackageSources {
                 })
                 .map_err(Into::into),
 
+            (PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => source
+                .resolve(specifier, project, project_target)
+                .map(|(name, results)| {
+                    (
+                        name,
+                        results
+                            .into_iter()
+                            .map(|(version, pkg_ref)| (version, PackageRefs::Git(pkg_ref)))
+                            .collect(),
+                    )
+                })
+                .map_err(Into::into),
+
             _ => Err(errors::ResolveError::Mismatch),
         }
     }
@@ -107,6 +125,10 @@ impl PackageSource for PackageSources {
 
             #[cfg(feature = "wally-compat")]
             (PackageSources::Wally(source), PackageRefs::Wally(pkg_ref)) => source
+                .download(pkg_ref, project, reqwest)
+                .map_err(Into::into),
+
+            (PackageSources::Git(source), PackageRefs::Git(pkg_ref)) => source
                 .download(pkg_ref, project, reqwest)
                 .map_err(Into::into),
 
@@ -144,6 +166,10 @@ pub mod errors {
         #[cfg(feature = "wally-compat")]
         #[error("error resolving wally package")]
         Wally(#[from] crate::source::wally::errors::ResolveError),
+
+        /// A Git package source failed to resolve
+        #[error("error resolving git package")]
+        Git(#[from] crate::source::git::errors::ResolveError),
     }
 
     /// Errors that can occur when downloading a package
@@ -162,5 +188,9 @@ pub mod errors {
         #[cfg(feature = "wally-compat")]
         #[error("error downloading wally package")]
         Wally(#[from] crate::source::wally::errors::DownloadError),
+
+        /// A Git package source failed to download
+        #[error("error downloading git package")]
+        Git(#[from] crate::source::git::errors::DownloadError),
     }
 }

@@ -11,6 +11,8 @@ pub enum DependencySpecifiers {
     /// A Wally dependency specifier
     #[cfg(feature = "wally-compat")]
     Wally(crate::source::wally::specifier::WallyDependencySpecifier),
+    /// A Git dependency specifier
+    Git(crate::source::git::specifier::GitDependencySpecifier),
 }
 impl DependencySpecifier for DependencySpecifiers {}
 
@@ -20,6 +22,7 @@ impl Display for DependencySpecifiers {
             DependencySpecifiers::Pesde(specifier) => write!(f, "{specifier}"),
             #[cfg(feature = "wally-compat")]
             DependencySpecifiers::Wally(specifier) => write!(f, "{specifier}"),
+            DependencySpecifiers::Git(specifier) => write!(f, "{specifier}"),
         }
     }
 }

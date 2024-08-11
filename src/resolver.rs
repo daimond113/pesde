@@ -4,6 +4,7 @@ use crate::{
     names::PackageNames,
     source::{
         pesde::PesdePackageSource,
+        refs::PackageRefs,
         specifiers::DependencySpecifiers,
         traits::{PackageRef, PackageSource},
         version_id::VersionId,
@@ -176,6 +177,9 @@ impl Project {
 
                     PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))
                 }
+                DependencySpecifiers::Git(specifier) => PackageSources::Git(
+                    crate::source::git::GitPackageSource::new(specifier.repo.clone()),
+                ),
             };
 
             if refreshed_sources.insert(source.clone()) {
@@ -219,6 +223,8 @@ impl Project {
                     });
             }
 
+            let pkg_ref = &resolved[&target_version_id];
+
             if let Some(already_resolved) = graph
                 .get_mut(&name)
                 .and_then(|versions| versions.get_mut(&target_version_id))
@@ -230,6 +236,14 @@ impl Project {
                     target_version_id
                 );
 
+                if matches!(already_resolved.pkg_ref, PackageRefs::Git(_))
+                    != matches!(pkg_ref, PackageRefs::Git(_))
+                {
+                    log::warn!(
+                        "resolved package {name}@{target_version_id} has a different source than the previously resolved one, this may cause issues",
+                    );
+                }
+
                 if already_resolved.ty == DependencyType::Peer && ty == DependencyType::Standard {
                     already_resolved.ty = ty;
                 }
@@ -237,7 +251,6 @@ impl Project {
                 continue;
             }
 
-            let pkg_ref = &resolved[&target_version_id];
             let node = DependencyGraphNode {
                 direct: if depth == 0 {
                     Some((alias.clone(), specifier.clone()))

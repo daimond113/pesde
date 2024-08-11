@@ -72,7 +72,7 @@ pub async fn get_package_version(
     let versions: IndexFile = {
         let source = app_state.source.lock().unwrap();
 
-        match source.read_file([scope, name_part], &app_state.project)? {
+        match source.read_file([scope, name_part], &app_state.project, None)? {
             Some(versions) => toml::de::from_str(&versions)?,
             None => return Ok(HttpResponse::NotFound().finish()),
         }

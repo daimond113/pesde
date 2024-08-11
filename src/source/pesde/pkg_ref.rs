@@ -48,15 +48,3 @@ impl PackageRef for PesdePackageRef {
         PackageSources::Pesde(PesdePackageSource::new(self.index_url.clone()))
     }
 }
-
-impl Ord for PesdePackageRef {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.version.cmp(&other.version)
-    }
-}
-
-impl PartialOrd for PesdePackageRef {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
