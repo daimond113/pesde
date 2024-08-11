@@ -4,10 +4,12 @@ use anyhow::Context;
 use clap::Args;
 use semver::VersionReq;
 
+use crate::cli::{config::read_config, NamedVersionable, VersionedPackageName};
 use pesde::{
     manifest::target::TargetKind,
     names::PackageNames,
     source::{
+        git::{specifier::GitDependencySpecifier, GitPackageSource},
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
         traits::PackageSource,
@@ -16,13 +18,11 @@ use pesde::{
     Project, DEFAULT_INDEX_NAME,
 };
 
-use crate::cli::{config::read_config, VersionedPackageName};
-
 #[derive(Debug, Args)]
 pub struct AddCommand {
     /// The package name to add
     #[arg(index = 1)]
-    name: VersionedPackageName<VersionReq>,
+    name: NamedVersionable<VersionReq>,
 
     /// The index in which to search for the package
     #[arg(short, long)]
@@ -51,59 +51,69 @@ impl AddCommand {
             .deser_manifest()
             .context("failed to read manifest")?;
 
-        let source = match &self.name.0 {
-            PackageNames::Pesde(_) => {
-                let index = manifest
-                    .indices
-                    .get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
-                    .cloned();
+        let (source, specifier) = match &self.name {
+            NamedVersionable::PackageName(versioned) => match &versioned {
+                VersionedPackageName(PackageNames::Pesde(name), version) => {
+                    let index = manifest
+                        .indices
+                        .get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
+                        .cloned();
 
-                if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
-                    log::error!("index {index} not found");
-                    return Ok(());
+                    if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
+                        log::error!("index {index} not found");
+                        return Ok(());
+                    }
+
+                    let index = index.unwrap_or(read_config()?.default_index);
+
+                    let source = PackageSources::Pesde(PesdePackageSource::new(index));
+                    let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
+                        name: name.clone(),
+                        version: version.clone().unwrap_or(VersionReq::STAR),
+                        index: self.index,
+                        target: self.target,
+                    });
+
+                    (source, specifier)
                 }
+                #[cfg(feature = "wally-compat")]
+                VersionedPackageName(PackageNames::Wally(name), version) => {
+                    let index = manifest
+                        .wally_indices
+                        .get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
+                        .cloned();
 
-                let index = index.unwrap_or(read_config()?.default_index);
+                    if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
+                        log::error!("wally index {index} not found");
+                        return Ok(());
+                    }
 
-                PackageSources::Pesde(PesdePackageSource::new(index))
-            }
-            #[cfg(feature = "wally-compat")]
-            PackageNames::Wally(_) => {
-                let index = manifest
-                    .wally_indices
-                    .get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
-                    .cloned();
+                    let index = index.unwrap_or(read_config()?.default_index);
 
-                if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
-                    log::error!("wally index {index} not found");
-                    return Ok(());
+                    let source =
+                        PackageSources::Wally(pesde::source::wally::WallyPackageSource::new(index));
+                    let specifier = DependencySpecifiers::Wally(
+                        pesde::source::wally::specifier::WallyDependencySpecifier {
+                            name: name.clone(),
+                            version: version.clone().unwrap_or(VersionReq::STAR),
+                            index: self.index,
+                        },
+                    );
+
+                    (source, specifier)
                 }
-
-                let index = index.unwrap_or(read_config()?.default_index);
-
-                PackageSources::Wally(pesde::source::wally::WallyPackageSource::new(index))
-            }
+            },
+            NamedVersionable::Url((url, rev)) => (
+                PackageSources::Git(GitPackageSource::new(url.clone())),
+                DependencySpecifiers::Git(GitDependencySpecifier {
+                    repo: url.clone(),
+                    rev: rev.to_string(),
+                }),
+            ),
         };
         source
             .refresh(&project)
             .context("failed to refresh package source")?;
-
-        let specifier = match &self.name.0 {
-            PackageNames::Pesde(name) => DependencySpecifiers::Pesde(PesdeDependencySpecifier {
-                name: name.clone(),
-                version: self.name.1.unwrap_or(VersionReq::STAR),
-                index: self.index,
-                target: self.target,
-            }),
-            #[cfg(feature = "wally-compat")]
-            PackageNames::Wally(name) => DependencySpecifiers::Wally(
-                pesde::source::wally::specifier::WallyDependencySpecifier {
-                    name: name.clone(),
-                    version: self.name.1.unwrap_or(VersionReq::STAR),
-                    index: self.index,
-                },
-            ),
-        };
 
         let Some(version_id) = source
             .resolve(&specifier, &project, manifest.target.kind())
@@ -112,11 +122,7 @@ impl AddCommand {
             .pop_last()
             .map(|(v_id, _)| v_id)
         else {
-            log::error!(
-                "no versions found for package: {} (current target: {}, try a different one)",
-                self.name.0,
-                manifest.target.kind()
-            );
+            log::error!("no versions found for package {specifier}");
 
             return Ok(());
         };
@@ -134,25 +140,31 @@ impl AddCommand {
             "dependencies"
         };
 
-        let alias = self
-            .alias
-            .as_deref()
-            .unwrap_or_else(|| self.name.0.as_str().1);
+        let alias = self.alias.unwrap_or_else(|| match self.name {
+            NamedVersionable::PackageName(versioned) => versioned.0.as_str().1.to_string(),
+            NamedVersionable::Url((url, _)) => url
+                .path
+                .to_string()
+                .split('/')
+                .last()
+                .map(|s| s.to_string())
+                .unwrap_or(url.path.to_string()),
+        });
 
         match specifier {
             DependencySpecifiers::Pesde(spec) => {
-                manifest[dependency_key][alias]["name"] =
+                manifest[dependency_key][&alias]["name"] =
                     toml_edit::value(spec.name.clone().to_string());
-                manifest[dependency_key][alias]["version"] =
+                manifest[dependency_key][&alias]["version"] =
                     toml_edit::value(format!("^{}", version_id.version()));
 
                 if *version_id.target() != project_target {
-                    manifest[dependency_key][alias]["target"] =
+                    manifest[dependency_key][&alias]["target"] =
                         toml_edit::value(version_id.target().to_string());
                 }
 
                 if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {
-                    manifest[dependency_key][alias]["index"] = toml_edit::value(index);
+                    manifest[dependency_key][&alias]["index"] = toml_edit::value(index);
                 }
 
                 println!(
@@ -165,13 +177,13 @@ impl AddCommand {
             }
             #[cfg(feature = "wally-compat")]
             DependencySpecifiers::Wally(spec) => {
-                manifest[dependency_key][alias]["wally"] =
+                manifest[dependency_key][&alias]["wally"] =
                     toml_edit::value(spec.name.clone().to_string());
-                manifest[dependency_key][alias]["version"] =
+                manifest[dependency_key][&alias]["version"] =
                     toml_edit::value(format!("^{}", version_id.version()));
 
                 if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {
-                    manifest[dependency_key][alias]["index"] = toml_edit::value(index);
+                    manifest[dependency_key][&alias]["index"] = toml_edit::value(index);
                 }
 
                 println!(
@@ -181,8 +193,12 @@ impl AddCommand {
                     dependency_key
                 );
             }
-            DependencySpecifiers::Git(_) => {
-                unreachable!("git dependencies are not supported in the add command");
+            DependencySpecifiers::Git(spec) => {
+                manifest[dependency_key][&alias]["repo"] =
+                    toml_edit::value(spec.repo.to_bstring().to_string());
+                manifest[dependency_key][&alias]["rev"] = toml_edit::value(spec.rev.clone());
+
+                println!("added git {}#{} to {}", spec.repo, spec.rev, dependency_key);
             }
         }
 

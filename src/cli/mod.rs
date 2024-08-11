@@ -1,16 +1,19 @@
+use std::{collections::HashSet, fs::create_dir_all, str::FromStr};
+
+use anyhow::Context;
+
+use pesde::{
+    lockfile::DownloadedGraph, names::PackageNames, source::version_id::VersionId, Project,
+};
+
+use crate::cli::auth::get_token;
+
 pub mod auth;
 pub mod commands;
 pub mod config;
 pub mod files;
 pub mod scripts;
 pub mod version;
-
-use crate::cli::auth::get_token;
-use anyhow::Context;
-use pesde::{
-    lockfile::DownloadedGraph, names::PackageNames, source::version_id::VersionId, Project,
-};
-use std::{collections::HashSet, fs::create_dir_all, str::FromStr};
 
 pub const HOME_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));
 
@@ -132,6 +135,33 @@ impl VersionedPackageName {
         };
 
         Ok((self.0, version_id))
+    }
+}
+
+#[derive(Debug, Clone)]
+enum NamedVersionable<V: FromStr = VersionId, N: FromStr = PackageNames> {
+    PackageName(VersionedPackageName<V, N>),
+    Url((gix::Url, String)),
+}
+
+impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>
+    FromStr for NamedVersionable<V, N>
+{
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.contains("gh#") {
+            let s = s.replacen("gh#", "https://github.com/", 1);
+            let (repo, rev) = s.split_once('#').unwrap();
+
+            Ok(NamedVersionable::Url((repo.try_into()?, rev.to_string())))
+        } else if s.contains(':') {
+            let (url, rev) = s.split_once('#').unwrap();
+
+            Ok(NamedVersionable::Url((url.try_into()?, rev.to_string())))
+        } else {
+            Ok(NamedVersionable::PackageName(s.parse()?))
+        }
     }
 }
 
