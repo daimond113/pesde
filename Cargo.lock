@@ -2382,7 +2382,7 @@ dependencies = [
 [[package]]
 name = "gix-worktree-state"
 version = "0.11.1"
-source = "git+https://github.com/daimond113/gitoxide?rev=753961c2cc23982a7d8c327dbc68c4dd26bce193#753961c2cc23982a7d8c327dbc68c4dd26bce193"
+source = "git+https://github.com/daimond113/gitoxide?rev=0447211a773f4da62b9bb9e7db73d047e09aed66#0447211a773f4da62b9bb9e7db73d047e09aed66"
 dependencies = [
  "bstr",
  "gix-features",

@@ -135,12 +135,27 @@ impl InitCommand {
                     ScriptName::RobloxSyncConfigGenerator
                 ))),
             )
-            .context("failed to write script file")?;
+            .context("failed to write sync config generator script file")?;
+
+            std::fs::write(
+                folder.join(format!("{}.luau", ScriptName::SourcemapGenerator)),
+                script_contents(Path::new(&format!(
+                    "lune/rojo/{}.luau",
+                    ScriptName::SourcemapGenerator
+                ))),
+            )
+            .context("failed to write sourcemap generator script file")?;
 
             manifest["scripts"][&ScriptName::RobloxSyncConfigGenerator.to_string()] =
                 toml_edit::value(format!(
                     concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
                     ScriptName::RobloxSyncConfigGenerator
+                ));
+
+            manifest["scripts"][&ScriptName::SourcemapGenerator.to_string()] =
+                toml_edit::value(format!(
+                    concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
+                    ScriptName::SourcemapGenerator
                 ));
         }
 
