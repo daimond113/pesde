@@ -111,6 +111,7 @@ fn run() -> anyhow::Result<()> {
     let token = get_token()?;
 
     let home_cas_dir = data_dir.join("cas");
+    create_dir_all(&home_cas_dir).expect("failed to create cas directory");
     let project_root = get_root(&cwd);
     let cas_dir = if get_root(&home_cas_dir) == project_root {
         home_cas_dir
