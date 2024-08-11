@@ -12,7 +12,7 @@ use tempfile::tempfile;
 use pesde::{
     manifest::target::Target,
     scripts::ScriptName,
-    source::{pesde::PesdePackageSource, traits::PackageSource},
+    source::{pesde::PesdePackageSource, specifiers::DependencySpecifiers, traits::PackageSource},
     Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
 
@@ -316,6 +316,26 @@ impl PublishCommand {
                 config.max_archive_size,
                 archive.len() - config.max_archive_size
             );
+        }
+
+        let dependencies = manifest
+            .all_dependencies()
+            .context("failed to get dependencies")?;
+        if !config.git_allowed
+            && dependencies
+                .iter()
+                .any(|(_, (spec, _))| matches!(spec, DependencySpecifiers::Git(_)))
+        {
+            anyhow::bail!("git dependencies are not allowed on this index");
+        }
+
+        #[cfg(feature = "wally-compat")]
+        if !config.wally_allowed
+            && dependencies
+                .iter()
+                .any(|(_, (spec, _))| matches!(spec, DependencySpecifiers::Wally(_)))
+        {
+            anyhow::bail!("wally dependencies are not allowed on this index");
         }
 
         if self.dry_run {

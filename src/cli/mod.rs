@@ -85,9 +85,11 @@ impl IsUpToDate for Project {
 }
 
 #[derive(Debug, Clone)]
-struct VersionedPackageName<T: FromStr = VersionId>(PackageNames, Option<T>);
+struct VersionedPackageName<V: FromStr = VersionId, N: FromStr = PackageNames>(N, Option<V>);
 
-impl<T: FromStr<Err = E>, E: Into<anyhow::Error>> FromStr for VersionedPackageName<T> {
+impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>
+    FromStr for VersionedPackageName<V, N>
+{
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -99,7 +101,10 @@ impl<T: FromStr<Err = E>, E: Into<anyhow::Error>> FromStr for VersionedPackageNa
             .transpose()
             .map_err(Into::into)?;
 
-        Ok(VersionedPackageName(name.parse()?, version))
+        Ok(VersionedPackageName(
+            name.parse().map_err(Into::into)?,
+            version,
+        ))
     }
 }
 

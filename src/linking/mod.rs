@@ -98,7 +98,7 @@ impl Project {
                     };
 
                     execute_script(
-                        Some(&script_name),
+                        ScriptName::RobloxSyncConfigGenerator,
                         &script_path.to_path(self.path()),
                         build_files,
                         &container_folder,

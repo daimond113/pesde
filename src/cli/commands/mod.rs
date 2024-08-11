@@ -4,6 +4,7 @@ use pesde::Project;
 mod add;
 mod auth;
 mod config;
+mod execute;
 mod init;
 mod install;
 mod outdated;
@@ -60,6 +61,10 @@ pub enum Subcommand {
 
     /// Checks for outdated dependencies
     Outdated(outdated::OutdatedCommand),
+
+    /// Executes a binary package without needing to be run in a project directory
+    #[clap(name = "x", visible_alias = "execute", visible_alias = "exec")]
+    Execute(execute::ExecuteCommand),
 }
 
 impl Subcommand {
@@ -88,6 +93,7 @@ impl Subcommand {
                 update.run(project, multi, reqwest)
             }
             Subcommand::Outdated(outdated) => outdated.run(project),
+            Subcommand::Execute(execute) => execute.run(project, reqwest),
         }
     }
 }

@@ -32,7 +32,7 @@ pub(crate) fn find_lib_path(
     };
 
     let result = execute_script(
-        Some(&ScriptName::SourcemapGenerator.to_string()),
+        ScriptName::SourcemapGenerator,
         &script_path.to_path(&project.path),
         ["--wally"],
         cwd,

@@ -29,9 +29,8 @@ impl Display for ScriptName {
     }
 }
 
-/// Executes a script with the given arguments
-pub fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>>(
-    script_name: Option<&str>,
+pub(crate) fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>>(
+    script_name: ScriptName,
     script_path: &Path,
     args: A,
     cwd: P,
@@ -52,11 +51,7 @@ pub fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>
             let stdout = BufReader::new(child.stdout.take().unwrap());
             let stderr = BufReader::new(child.stderr.take().unwrap());
 
-            let script = match script_name {
-                Some(script) => script.to_string(),
-                None => script_path.to_string_lossy().to_string(),
-            };
-
+            let script = script_name.to_string();
             let script_2 = script.to_string();
 
             spawn(move || {

@@ -1,12 +1,15 @@
-use crate::cli::IsUpToDate;
+use std::{ffi::OsString, path::PathBuf, process::Command};
+
 use anyhow::Context;
 use clap::Args;
+use relative_path::RelativePathBuf;
+
 use pesde::{
     names::{PackageName, PackageNames},
-    scripts::execute_script,
     Project, PACKAGES_CONTAINER_NAME,
 };
-use relative_path::RelativePathBuf;
+
+use crate::cli::IsUpToDate;
 
 #[derive(Debug, Args)]
 pub struct RunCommand {
@@ -16,11 +19,24 @@ pub struct RunCommand {
 
     /// Arguments to pass to the script
     #[arg(index = 2, last = true)]
-    args: Vec<String>,
+    args: Vec<OsString>,
 }
 
 impl RunCommand {
     pub fn run(self, project: Project) -> anyhow::Result<()> {
+        let run = |path: PathBuf| {
+            let status = Command::new("lune")
+                .arg("run")
+                .arg(path)
+                .arg("--")
+                .args(&self.args)
+                .current_dir(project.path())
+                .status()
+                .expect("failed to run script");
+
+            std::process::exit(status.code().unwrap_or(1))
+        };
+
         if let Ok(pkg_name) = self.package_or_script.parse::<PackageName>() {
             let graph = if project.is_up_to_date(true)? {
                 project.deser_lockfile()?.graph
@@ -51,31 +67,13 @@ impl RunCommand {
                     version_id.version(),
                 );
 
-                let path = bin_path.to_path(&container_folder);
-
-                execute_script(
-                    Some(pkg_name.as_str().1),
-                    &path,
-                    &self.args,
-                    project.path(),
-                    false,
-                )
-                .context("failed to execute script")?;
+                run(bin_path.to_path(&container_folder))
             }
         }
 
         if let Ok(manifest) = project.deser_manifest() {
             if let Some(script_path) = manifest.scripts.get(&self.package_or_script) {
-                execute_script(
-                    Some(&self.package_or_script),
-                    &script_path.to_path(project.path()),
-                    &self.args,
-                    project.path(),
-                    false,
-                )
-                .context("failed to execute script")?;
-
-                return Ok(());
+                run(script_path.to_path(project.path()))
             }
         };
 
@@ -86,8 +84,7 @@ impl RunCommand {
             anyhow::bail!("path does not exist: {}", path.display());
         }
 
-        execute_script(None, &path, &self.args, project.path(), false)
-            .context("failed to execute script")?;
+        run(path);
 
         Ok(())
     }
