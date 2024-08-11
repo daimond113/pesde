@@ -1,3 +1,13 @@
+use std::{fs::create_dir_all, path::PathBuf};
+
+use anyhow::Context;
+use clap::Parser;
+use colored::Colorize;
+use indicatif::MultiProgress;
+use indicatif_log_bridge::LogWrapper;
+
+use pesde::{AuthConfig, Project, MANIFEST_FILE_NAME};
+
 use crate::cli::{
     auth::get_token,
     home_dir,
@@ -5,13 +15,6 @@ use crate::cli::{
     version::{check_for_updates, current_version, get_or_download_version, max_installed_version},
     HOME_DIR,
 };
-use anyhow::Context;
-use clap::Parser;
-use colored::Colorize;
-use indicatif::MultiProgress;
-use indicatif_log_bridge::LogWrapper;
-use pesde::{AuthConfig, Project};
-use std::{fs::create_dir_all, path::PathBuf};
 
 mod cli;
 pub mod util;
@@ -62,14 +65,30 @@ fn get_root(path: &std::path::Path) -> PathBuf {
 }
 
 fn run() -> anyhow::Result<()> {
+    let cwd = std::env::current_dir().expect("failed to get current working directory");
+    let project_root_dir = 'finder: {
+        let mut project_root = cwd.clone();
+
+        while project_root.components().count() > 1 {
+            if project_root.join(MANIFEST_FILE_NAME).exists() {
+                break 'finder project_root;
+            }
+
+            project_root = project_root.parent().unwrap().to_path_buf();
+        }
+
+        cwd.clone()
+    };
+
     #[cfg(windows)]
     'scripts: {
         let exe = std::env::current_exe().expect("failed to get current executable path");
         if exe.parent().is_some_and(|parent| {
-            parent.as_os_str() != "bin"
+            parent.file_name().is_some_and(|parent| parent != "bin")
                 || parent
                     .parent()
-                    .is_some_and(|parent| parent.as_os_str() != HOME_DIR)
+                    .and_then(|parent| parent.file_name())
+                    .is_some_and(|parent| parent != HOME_DIR)
         }) {
             break 'scripts;
         }
@@ -85,7 +104,7 @@ fn run() -> anyhow::Result<()> {
             .arg("run")
             .arg(exe.with_extension("luau"))
             .args(std::env::args_os().skip(1))
-            .current_dir(std::env::current_dir().unwrap())
+            .current_dir(project_root_dir)
             .status()
             .expect("failed to run lune");
 
@@ -103,8 +122,6 @@ fn run() -> anyhow::Result<()> {
         multi
     };
 
-    let cwd = std::env::current_dir().expect("failed to get current working directory");
-
     let data_dir = home_dir()?.join("data");
     create_dir_all(&data_dir).expect("failed to create data directory");
 
@@ -112,7 +129,7 @@ fn run() -> anyhow::Result<()> {
 
     let home_cas_dir = data_dir.join("cas");
     create_dir_all(&home_cas_dir).expect("failed to create cas directory");
-    let project_root = get_root(&cwd);
+    let project_root = get_root(&project_root_dir);
     let cas_dir = if get_root(&home_cas_dir) == project_root {
         home_cas_dir
     } else {
@@ -120,7 +137,7 @@ fn run() -> anyhow::Result<()> {
     };
 
     let project = Project::new(
-        cwd,
+        project_root_dir,
         data_dir,
         cas_dir,
         AuthConfig::new().with_github_token(token.as_ref()),

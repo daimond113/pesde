@@ -1,3 +1,4 @@
+use crate::Project;
 use std::{
     ffi::OsStr,
     fmt::{Display, Formatter},
@@ -29,11 +30,11 @@ impl Display for ScriptName {
     }
 }
 
-pub(crate) fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRef<Path>>(
+pub(crate) fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
     script_name: ScriptName,
     script_path: &Path,
     args: A,
-    cwd: P,
+    project: &Project,
     return_stdout: bool,
 ) -> Result<Option<String>, std::io::Error> {
     match Command::new("lune")
@@ -41,7 +42,7 @@ pub(crate) fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>, P: AsRe
         .arg(script_path.as_os_str())
         .arg("--")
         .args(args)
-        .current_dir(cwd)
+        .current_dir(project.path())
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

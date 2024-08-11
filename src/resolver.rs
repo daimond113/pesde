@@ -203,7 +203,7 @@ impl Project {
                 .cloned()
             else {
                 return Err(Box::new(errors::DependencyGraphError::NoMatchingVersion(
-                    format!("{specifier} ({})", manifest.target.kind()),
+                    format!("{specifier} ({target})"),
                 )));
             };
 

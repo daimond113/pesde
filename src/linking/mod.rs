@@ -1,9 +1,3 @@
-use std::{
-    collections::BTreeMap,
-    fs::create_dir_all,
-    path::{Path, PathBuf},
-};
-
 use crate::{
     linking::generator::get_file_types,
     lockfile::DownloadedGraph,
@@ -12,6 +6,12 @@ use crate::{
     scripts::{execute_script, ScriptName},
     source::{fs::store_in_cas, traits::PackageRef, version_id::VersionId},
     Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME,
+};
+use std::{
+    collections::BTreeMap,
+    ffi::OsStr,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
 };
 
 /// Generates linking modules for a project
@@ -100,8 +100,9 @@ impl Project {
                     execute_script(
                         ScriptName::RobloxSyncConfigGenerator,
                         &script_path.to_path(self.path()),
-                        build_files,
-                        &container_folder,
+                        std::iter::once(container_folder.as_os_str())
+                            .chain(build_files.iter().map(OsStr::new)),
+                        self,
                         false,
                     )
                     .map_err(|e| {

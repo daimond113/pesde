@@ -8,7 +8,7 @@ use anyhow::Context;
 use clap::Args;
 use indicatif::MultiProgress;
 
-use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project};
+use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project, MANIFEST_FILE_NAME};
 
 use crate::cli::{bin_dir, files::make_executable, IsUpToDate};
 
@@ -48,9 +48,20 @@ fn bin_link_file(alias: &str) -> String {
     format!(
         r#"{prefix}local process = require("@lune/process")
 local fs = require("@lune/fs")
-    
+
+local project_root = process.cwd
+local path_components = string.split(string.gsub(project_root, "\\", "/"), "/")
+
+for i = #path_components, 1, -1 do
+    local path = table.concat(path_components, "/", 1, i)
+    if fs.isFile(path .. "/{MANIFEST_FILE_NAME}") then
+        project_root = path
+        break
+    end
+end
+
 for _, packages_folder in {{ {all_folders} }} do
-    local path = `{{process.cwd}}/{{packages_folder}}/{alias}.bin.luau`
+    local path = `{{project_root}}/{{packages_folder}}/{alias}.bin.luau`
     
     if fs.isFile(path) then
         require(path)

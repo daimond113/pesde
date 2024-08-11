@@ -19,7 +19,7 @@ struct SourcemapNode {
 
 pub(crate) fn find_lib_path(
     project: &Project,
-    cwd: &Path,
+    package_dir: &Path,
 ) -> Result<Option<RelativePathBuf>, errors::FindLibPathError> {
     let manifest = project.deser_manifest()?;
 
@@ -34,12 +34,12 @@ pub(crate) fn find_lib_path(
     let result = execute_script(
         ScriptName::SourcemapGenerator,
         &script_path.to_path(&project.path),
-        ["--wally"],
-        cwd,
+        [package_dir],
+        project,
         true,
     )?;
 
-    if let Some(result) = result {
+    if let Some(result) = result.filter(|result| !result.is_empty()) {
         let node: SourcemapNode = serde_json::from_str(&result)?;
         Ok(node.file_paths.into_iter().find(|path| {
             path.extension()
