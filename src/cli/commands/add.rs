@@ -165,7 +165,7 @@ impl AddCommand {
             }
             #[cfg(feature = "wally-compat")]
             DependencySpecifiers::Wally(spec) => {
-                manifest[dependency_key][alias]["name"] =
+                manifest[dependency_key][alias]["wally"] =
                     toml_edit::value(spec.name.clone().to_string());
                 manifest[dependency_key][alias]["version"] =
                     toml_edit::value(format!("^{}", version_id.version()));
