@@ -37,7 +37,7 @@ fn get_repo() -> (String, String) {
     )
 }
 
-const CHECK_INTERVAL: chrono::Duration = chrono::Duration::seconds(30);
+const CHECK_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
 
 pub fn check_for_updates(reqwest: &reqwest::blocking::Client) -> anyhow::Result<()> {
     let (owner, repo) = get_repo();
