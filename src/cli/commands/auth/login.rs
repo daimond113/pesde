@@ -20,7 +20,7 @@ pub struct LoginCommand {
     /// The index to use. Defaults to `default`, or the configured default index if current directory doesn't have a manifest
     #[arg(short, long)]
     index: Option<String>,
-    
+
     /// The token to use for authentication, skipping login
     #[arg(short, long, conflicts_with = "index")]
     token: Option<String>,
