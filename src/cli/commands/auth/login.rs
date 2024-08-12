@@ -1,23 +1,29 @@
-use crate::cli::{
-    auth::{get_token_login, set_token},
-    config::read_config,
-};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
+use serde::Deserialize;
+use url::Url;
+
 use pesde::{
     errors::ManifestReadError,
     source::{pesde::PesdePackageSource, traits::PackageSource},
     Project,
 };
-use serde::Deserialize;
-use url::Url;
+
+use crate::cli::{
+    auth::{get_token_login, set_token},
+    config::read_config,
+};
 
 #[derive(Debug, Args)]
 pub struct LoginCommand {
     /// The index to use. Defaults to `default`, or the configured default index if current directory doesn't have a manifest
     #[arg(short, long)]
     index: Option<String>,
+
+    /// Whether to not prefix the token with `Bearer `
+    #[arg(short, long, conflicts_with = "token")]
+    no_bearer: bool,
 
     /// The token to use for authentication, skipping login
     #[arg(short, long, conflicts_with = "index")]
@@ -184,7 +190,15 @@ impl LoginCommand {
             None => self.authenticate_device_flow(&project, &reqwest)?,
         };
 
-        println!("logged in as {}", get_token_login(&reqwest, &token)?.bold());
+        let token = if self.no_bearer {
+            println!("set token");
+            token
+        } else {
+            let token = format!("Bearer {token}");
+            println!("logged in as {}", get_token_login(&reqwest, &token)?.bold());
+
+            token
+        };
 
         set_token(Some(&token))?;
 

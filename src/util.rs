@@ -30,6 +30,13 @@ pub fn serialize_gix_url<S: Serializer>(url: &gix::Url, serializer: S) -> Result
     serializer.serialize_str(&url.to_bstring().to_string())
 }
 
+pub fn deserialize_gix_url<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<gix::Url, D::Error> {
+    let s = String::deserialize(deserializer)?;
+    gix::Url::from_bytes(BStr::new(&s)).map_err(serde::de::Error::custom)
+}
+
 pub fn serialize_gix_url_map<S: Serializer>(
     url: &BTreeMap<String, gix::Url>,
     serializer: S,
@@ -39,13 +46,6 @@ pub fn serialize_gix_url_map<S: Serializer>(
         map.serialize_entry(k, &v.to_bstring().to_string())?;
     }
     map.end()
-}
-
-pub fn deserialize_gix_url<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<gix::Url, D::Error> {
-    let s = String::deserialize(deserializer)?;
-    gix::Url::from_bytes(BStr::new(&s)).map_err(serde::de::Error::custom)
 }
 
 pub fn deserialize_gix_url_map<'de, D: Deserializer<'de>>(

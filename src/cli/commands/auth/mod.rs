@@ -3,6 +3,7 @@ use pesde::Project;
 
 mod login;
 mod logout;
+mod set_token_override;
 mod whoami;
 
 #[derive(Debug, Subcommand)]
@@ -14,6 +15,8 @@ pub enum AuthCommands {
     /// Prints the username of the currently logged-in user
     #[clap(name = "whoami")]
     WhoAmI(whoami::WhoAmICommand),
+    /// Sets a token override for a specific repository
+    SetTokenOverride(set_token_override::SetTokenOverrideCommand),
 }
 
 impl AuthCommands {
@@ -22,6 +25,7 @@ impl AuthCommands {
             AuthCommands::Login(login) => login.run(project, reqwest),
             AuthCommands::Logout(logout) => logout.run(),
             AuthCommands::WhoAmI(whoami) => whoami.run(reqwest),
+            AuthCommands::SetTokenOverride(set_token_override) => set_token_override.run(),
         }
     }
 }

@@ -64,7 +64,7 @@ pub fn get_token_login(
 ) -> anyhow::Result<String> {
     let response = reqwest
         .get("https://api.github.com/user")
-        .header("Authorization", format!("Bearer {access_token}"))
+        .header("Authorization", access_token)
         .send()
         .context("failed to send user request")?
         .error_for_status()

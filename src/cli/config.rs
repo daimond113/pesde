@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
@@ -15,8 +17,16 @@ pub struct CliConfig {
         deserialize_with = "crate::util::deserialize_gix_url"
     )]
     pub scripts_repo: gix::Url,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        serialize_with = "crate::cli::serialize_string_url_map",
+        deserialize_with = "crate::cli::deserialize_string_url_map"
+    )]
+    pub token_overrides: BTreeMap<gix::Url, String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_checked_updates: Option<(chrono::DateTime<chrono::Utc>, semver::Version)>,
@@ -31,7 +41,9 @@ impl Default for CliConfig {
             scripts_repo: "https://github.com/daimond113/pesde-scripts"
                 .try_into()
                 .unwrap(),
+
             token: None,
+            token_overrides: Default::default(),
 
             last_checked_updates: None,
         }

@@ -10,6 +10,7 @@ use pesde::{AuthConfig, Project, MANIFEST_FILE_NAME};
 
 use crate::cli::{
     auth::get_token,
+    config::read_config,
     home_dir,
     scripts::update_scripts_folder,
     version::{check_for_updates, current_version, get_or_download_version, max_installed_version},
@@ -140,7 +141,9 @@ fn run() -> anyhow::Result<()> {
         project_root_dir,
         data_dir,
         cas_dir,
-        AuthConfig::new().with_github_token(token.as_ref()),
+        AuthConfig::new()
+            .with_default_token(token.clone())
+            .with_token_overrides(read_config()?.token_overrides),
     );
 
     let reqwest = {

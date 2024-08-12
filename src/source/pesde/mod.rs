@@ -277,9 +277,9 @@ impl PackageSource for PesdePackageSource {
 
         let mut response = reqwest.get(url).header(ACCEPT, "application/octet-stream");
 
-        if let Some(token) = &project.auth_config.github_token {
+        if let Some(token) = project.auth_config.get_token(&self.repo_url) {
             log::debug!("using token for pesde package download");
-            response = response.header("Authorization", format!("Bearer {token}"));
+            response = response.header("Authorization", token);
         }
 
         let response = response.send()?.error_for_status()?;

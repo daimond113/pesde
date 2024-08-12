@@ -1,9 +1,13 @@
-use std::{collections::HashSet, fs::create_dir_all, str::FromStr};
-
 use anyhow::Context;
-
+use gix::bstr::BStr;
 use pesde::{
     lockfile::DownloadedGraph, names::PackageNames, source::version_id::VersionId, Project,
+};
+use serde::{ser::SerializeMap, Deserialize, Deserializer, Serializer};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fs::create_dir_all,
+    str::FromStr,
 };
 
 use crate::cli::auth::get_token;
@@ -167,4 +171,28 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 
 pub fn parse_gix_url(s: &str) -> Result<gix::Url, gix::url::parse::Error> {
     s.try_into()
+}
+
+pub fn serialize_string_url_map<S: Serializer>(
+    url: &BTreeMap<gix::Url, String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let mut map = serializer.serialize_map(Some(url.len()))?;
+    for (k, v) in url {
+        map.serialize_entry(&k.to_bstring().to_string(), v)?;
+    }
+    map.end()
+}
+
+pub fn deserialize_string_url_map<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<gix::Url, String>, D::Error> {
+    BTreeMap::<String, String>::deserialize(deserializer)?
+        .into_iter()
+        .map(|(k, v)| {
+            gix::Url::from_bytes(BStr::new(&k))
+                .map(|k| (k, v))
+                .map_err(serde::de::Error::custom)
+        })
+        .collect()
 }
