@@ -135,7 +135,7 @@ pub async fn get_package_version(
     let mut response = serde_json::to_value(PackageResponse {
         name: name.to_string(),
         version: v_id.version().to_string(),
-        target: Some(entry.target.into()),
+        target: entry.target.into(),
         description: entry.description.unwrap_or_default(),
         published_at: entry.published_at,
         license: entry.license.unwrap_or_default(),

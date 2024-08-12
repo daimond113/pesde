@@ -84,7 +84,7 @@ pub async fn search_packages(
             PackageResponse {
                 name: id.to_string(),
                 version: version_id.version().to_string(),
-                target: None,
+                target: entry.target.into(),
                 description: entry.description.unwrap_or_default(),
                 published_at: entry.published_at,
                 license: entry.license.unwrap_or_default(),

@@ -34,8 +34,7 @@ impl From<Target> for TargetInfo {
 pub struct PackageResponse {
     pub name: String,
     pub version: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<TargetInfo>,
+    pub target: TargetInfo,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub description: String,
     pub published_at: DateTime<Utc>,
