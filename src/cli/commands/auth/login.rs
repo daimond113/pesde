@@ -20,11 +20,7 @@ pub struct LoginCommand {
     /// The index to use. Defaults to `default`, or the configured default index if current directory doesn't have a manifest
     #[arg(short, long)]
     index: Option<String>,
-
-    /// Whether to not prefix the token with `Bearer `
-    #[arg(short, long, conflicts_with = "token")]
-    no_bearer: bool,
-
+    
     /// The token to use for authentication, skipping login
     #[arg(short, long, conflicts_with = "index")]
     token: Option<String>,
@@ -185,12 +181,13 @@ impl LoginCommand {
     }
 
     pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
+        let token_given = self.token.is_some();
         let token = match self.token {
             Some(token) => token,
             None => self.authenticate_device_flow(&project, &reqwest)?,
         };
 
-        let token = if self.no_bearer {
+        let token = if token_given {
             println!("set token");
             token
         } else {
