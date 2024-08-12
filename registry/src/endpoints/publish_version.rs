@@ -5,8 +5,8 @@ use std::{
 
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
-use actix_web_lab::__reexports::futures_util::StreamExt;
 use flate2::read::GzDecoder;
+use futures::StreamExt;
 use git2::{Remote, Repository, Signature};
 use rusty_s3::{actions::PutObject, S3Action};
 use tar::Archive;
@@ -20,7 +20,7 @@ use pesde::{
         version_id::VersionId,
         IGNORED_DIRS, IGNORED_FILES,
     },
-    DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
+    MANIFEST_FILE_NAME,
 };
 
 use crate::{
@@ -120,15 +120,6 @@ pub async fn publish_package(
         source.refresh(&app_state.project).map_err(Box::new)?;
         let config = source.config(&app_state.project)?;
 
-        if manifest
-            .indices
-            .get(DEFAULT_INDEX_NAME)
-            .filter(|index_url| *index_url == source.repo_url())
-            .is_none()
-        {
-            return Err(Error::InvalidArchive);
-        }
-
         let dependencies = manifest
             .all_dependencies()
             .map_err(|_| Error::InvalidArchive)?;
@@ -139,8 +130,12 @@ pub async fn publish_package(
                     if specifier
                         .index
                         .as_ref()
-                        .is_some_and(|index| index != DEFAULT_INDEX_NAME)
-                        && !config.other_registries_allowed
+                        .filter(|index| match index.parse::<url::Url>() {
+                            Ok(_) if config.other_registries_allowed => true,
+                            Ok(url) => url == env!("CARGO_PKG_REPOSITORY").parse().unwrap(),
+                            Err(_) => false,
+                        })
+                        .is_none()
                     {
                         return Err(Error::InvalidArchive);
                     }
@@ -153,8 +148,17 @@ pub async fn publish_package(
                         return Err(Error::InvalidArchive);
                     }
                 }
-                DependencySpecifiers::Wally(_) => {
+                DependencySpecifiers::Wally(specifier) => {
                     if !config.wally_allowed {
+                        return Err(Error::InvalidArchive);
+                    }
+
+                    if specifier
+                        .index
+                        .as_ref()
+                        .filter(|index| index.parse::<url::Url>().is_ok())
+                        .is_none()
+                    {
                         return Err(Error::InvalidArchive);
                     }
                 }

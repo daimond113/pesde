@@ -5,9 +5,9 @@ use actix_web::{
     dev::{ServiceRequest, ServiceResponse},
     error::Error as ActixError,
     http::header::AUTHORIZATION,
+    middleware::Next,
     web, HttpMessage, HttpResponse,
 };
-use actix_web_lab::middleware::Next;
 use serde::Deserialize;
 
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, PartialEq, Eq, Ord)]

@@ -227,6 +227,56 @@ impl PublishCommand {
             }
         }
 
+        #[cfg(feature = "wally-compat")]
+        let mut has_wally = false;
+        let mut has_git = false;
+
+        for specifier in manifest
+            .dependencies
+            .values_mut()
+            .chain(manifest.dev_dependencies.values_mut())
+            .chain(manifest.peer_dependencies.values_mut())
+        {
+            match specifier {
+                DependencySpecifiers::Pesde(specifier) => {
+                    let index_name = specifier
+                        .index
+                        .as_deref()
+                        .unwrap_or(DEFAULT_INDEX_NAME)
+                        .to_string();
+                    specifier.index = Some(
+                        manifest
+                            .indices
+                            .get(&index_name)
+                            .context(format!("index {index_name} not found in indices field"))?
+                            .to_string(),
+                    );
+                }
+                #[cfg(feature = "wally-compat")]
+                DependencySpecifiers::Wally(specifier) => {
+                    has_wally = true;
+
+                    let index_name = specifier
+                        .index
+                        .as_deref()
+                        .unwrap_or(DEFAULT_INDEX_NAME)
+                        .to_string();
+                    specifier.index = Some(
+                        manifest
+                            .wally_indices
+                            .get(&index_name)
+                            .context(format!(
+                                "index {index_name} not found in wally_indices field"
+                            ))?
+                            .to_string(),
+                    );
+                }
+                DependencySpecifiers::Git(_) => {
+                    has_git = true;
+                }
+            }
+        }
+
         {
             println!("\n{}", "please confirm the following information:".bold());
             println!("name: {}", manifest.name);
@@ -334,23 +384,14 @@ impl PublishCommand {
             );
         }
 
-        let dependencies = manifest
-            .all_dependencies()
-            .context("failed to get dependencies")?;
-        if !config.git_allowed
-            && dependencies
-                .iter()
-                .any(|(_, (spec, _))| matches!(spec, DependencySpecifiers::Git(_)))
-        {
+        manifest.all_dependencies().context("dependency conflict")?;
+
+        if !config.git_allowed && has_git {
             anyhow::bail!("git dependencies are not allowed on this index");
         }
 
         #[cfg(feature = "wally-compat")]
-        if !config.wally_allowed
-            && dependencies
-                .iter()
-                .any(|(_, (spec, _))| matches!(spec, DependencySpecifiers::Wally(_)))
-        {
+        if !config.wally_allowed && has_wally {
             anyhow::bail!("wally dependencies are not allowed on this index");
         }
 

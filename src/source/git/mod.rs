@@ -1,5 +1,8 @@
 use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::PathBuf};
 
+use gix::{bstr::BStr, traverse::tree::Recorder, Url};
+use relative_path::RelativePathBuf;
+
 use crate::{
     manifest::{
         target::{Target, TargetKind},
@@ -10,13 +13,12 @@ use crate::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
         git_index::GitBasedSource,
+        specifiers::DependencySpecifiers,
         PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
-    Project, MANIFEST_FILE_NAME,
+    Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
-use gix::{bstr::BStr, traverse::tree::Recorder, Url};
-use relative_path::RelativePathBuf;
 
 /// The Git package reference
 pub mod pkg_ref;
@@ -109,9 +111,62 @@ impl PackageSource for GitPackageSource {
 
         let (name, version_id, dependencies) = match manifest {
             Some(manifest) => {
-                let dependencies = manifest.all_dependencies().map_err(|e| {
-                    errors::ResolveError::CollectDependencies(Box::new(self.repo_url.clone()), e)
-                })?;
+                let dependencies = manifest
+                    .all_dependencies()
+                    .map_err(|e| {
+                        errors::ResolveError::CollectDependencies(
+                            Box::new(self.repo_url.clone()),
+                            e,
+                        )
+                    })?
+                    .into_iter()
+                    .map(|(alias, (mut spec, ty))| {
+                        match &mut spec {
+                            DependencySpecifiers::Pesde(specifier) => {
+                                let index_name = specifier
+                                    .index
+                                    .as_deref()
+                                    .unwrap_or(DEFAULT_INDEX_NAME)
+                                    .to_string();
+                                specifier.index = Some(
+                                    manifest
+                                        .indices
+                                        .get(&index_name)
+                                        .ok_or_else(|| {
+                                            errors::ResolveError::PesdeIndexNotFound(
+                                                index_name.clone(),
+                                                Box::new(self.repo_url.clone()),
+                                            )
+                                        })?
+                                        .to_string(),
+                                );
+                            }
+                            #[cfg(feature = "wally-compat")]
+                            DependencySpecifiers::Wally(specifier) => {
+                                let index_name = specifier
+                                    .index
+                                    .as_deref()
+                                    .unwrap_or(DEFAULT_INDEX_NAME)
+                                    .to_string();
+                                specifier.index = Some(
+                                    manifest
+                                        .wally_indices
+                                        .get(&index_name)
+                                        .ok_or_else(|| {
+                                            errors::ResolveError::WallyIndexNotFound(
+                                                index_name.clone(),
+                                                Box::new(self.repo_url.clone()),
+                                            )
+                                        })?
+                                        .to_string(),
+                                );
+                            }
+                            DependencySpecifiers::Git(_) => {}
+                        }
+
+                        Ok((alias, (spec, ty)))
+                    })
+                    .collect::<Result<_, errors::ResolveError>>()?;
                 let name = PackageNames::Pesde(manifest.name);
                 let version_id = VersionId(manifest.version, manifest.target.kind());
 
@@ -409,6 +464,14 @@ pub mod errors {
         /// No manifest was found
         #[error("no manifest found in repository {0}")]
         NoManifest(Box<gix::Url>),
+
+        /// A pesde index was not found in the manifest
+        #[error("pesde index {0} not found in manifest for repository {1}")]
+        PesdeIndexNotFound(String, Box<gix::Url>),
+
+        /// A Wally index was not found in the manifest
+        #[error("wally index {0} not found in manifest for repository {1}")]
+        WallyIndexNotFound(String, Box<gix::Url>),
     }
 
     /// Errors that can occur when downloading a package from a Git package source

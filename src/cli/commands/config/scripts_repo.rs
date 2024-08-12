@@ -1,4 +1,8 @@
-use crate::cli::config::{read_config, write_config, CliConfig};
+use crate::cli::{
+    config::{read_config, write_config, CliConfig},
+    home_dir,
+};
+use anyhow::Context;
 use clap::Args;
 
 #[derive(Debug, Args)]
@@ -26,6 +30,10 @@ impl ScriptsRepoCommand {
             Some(repo) => {
                 config.scripts_repo = repo.clone();
                 write_config(&config)?;
+
+                std::fs::remove_dir_all(home_dir()?.join("scripts"))
+                    .context("failed to remove scripts directory")?;
+
                 println!("scripts repo set to: {repo}");
             }
             None => {

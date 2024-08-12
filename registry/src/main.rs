@@ -3,11 +3,10 @@ use std::{env::current_dir, fs::create_dir_all, sync::Mutex};
 use actix_cors::Cors;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::{
-    middleware::{Compress, Condition, Logger, NormalizePath, TrailingSlash},
+    middleware::{from_fn, Compress, Condition, Logger, NormalizePath, TrailingSlash},
     rt::System,
     web, App, HttpServer,
 };
-use actix_web_lab::middleware::from_fn;
 use log::info;
 use rusty_s3::{Bucket, Credentials, UrlStyle};
 

@@ -14,6 +14,7 @@ use crate::{
 pub struct WallyPackage {
     pub name: WallyPackageName,
     pub version: Version,
+    pub registry: url::Url,
 }
 
 pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(
@@ -67,11 +68,11 @@ impl WallyManifest {
             (&self.dev_dependencies, DependencyType::Dev),
         ] {
             for (alias, spec) in deps {
+                let mut spec = spec.clone();
+                spec.index = Some(self.package.registry.to_string());
+
                 if all_deps
-                    .insert(
-                        alias.clone(),
-                        (DependencySpecifiers::Wally(spec.clone()), ty),
-                    )
+                    .insert(alias.clone(), (DependencySpecifiers::Wally(spec), ty))
                     .is_some()
                 {
                     return Err(errors::AllDependenciesError::AliasConflict(alias.clone()));
