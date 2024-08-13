@@ -204,7 +204,7 @@ impl InstallCommand {
                     continue;
                 }
 
-                let bin_file = bin_folder.join(format!("{alias}.luau"));
+                let bin_file = bin_folder.join(alias);
                 std::fs::write(&bin_file, bin_link_file(alias))
                     .context("failed to write bin link file")?;
 

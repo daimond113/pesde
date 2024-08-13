@@ -103,7 +103,7 @@ fn run() -> anyhow::Result<()> {
 
         let status = std::process::Command::new("lune")
             .arg("run")
-            .arg(exe.with_extension("luau"))
+            .arg(exe.with_extension(""))
             .args(std::env::args_os().skip(1))
             .current_dir(project_root_dir)
             .status()
