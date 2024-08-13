@@ -1,12 +1,15 @@
-use crate::cli::config::read_config;
+use std::{path::Path, str::FromStr};
+
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use inquire::validator::Validation;
+
 use pesde::{
     errors::ManifestReadError, names::PackageName, scripts::ScriptName, Project, DEFAULT_INDEX_NAME,
 };
-use std::{path::Path, str::FromStr};
+
+use crate::cli::config::read_config;
 
 #[derive(Debug, Args)]
 pub struct InitCommand {}
@@ -67,11 +70,15 @@ impl InitCommand {
         .prompt()
         .unwrap();
 
-        authors
+        let authors = authors
             .split(',')
-            .map(|s| s.trim())
+            .map(str::trim)
             .filter(|s| !s.is_empty())
-            .for_each(|author| manifest["authors"].as_array_mut().unwrap().push(author));
+            .collect::<toml_edit::Array>();
+
+        if !authors.is_empty() {
+            manifest["authors"] = toml_edit::value(authors);
+        }
 
         let repo = inquire::Text::new(
             "What is the repository URL of this project? (leave empty for none)",
