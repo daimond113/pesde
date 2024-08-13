@@ -11,8 +11,16 @@ use git2::{Remote, Repository, Signature};
 use rusty_s3::{actions::PutObject, S3Action};
 use tar::Archive;
 
+use crate::{
+    auth::UserId,
+    benv,
+    error::{Error, ErrorResponse},
+    package::{s3_name, S3_SIGN_DURATION},
+    search::update_version,
+    AppState,
+};
 use pesde::{
-    manifest::Manifest,
+    manifest::{DependencyType, Manifest},
     source::{
         git_index::GitBasedSource,
         pesde::{IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
@@ -21,15 +29,6 @@ use pesde::{
         IGNORED_DIRS, IGNORED_FILES,
     },
     MANIFEST_FILE_NAME,
-};
-
-use crate::{
-    auth::UserId,
-    benv,
-    error::{Error, ErrorResponse},
-    package::{s3_name, S3_SIGN_DURATION},
-    search::update_version,
-    AppState,
 };
 
 fn signature<'a>() -> Signature<'a> {
@@ -122,53 +121,59 @@ pub async fn publish_package(
 
         let dependencies = manifest
             .all_dependencies()
-            .map_err(|_| Error::InvalidArchive)?;
+            .map_err(|_| Error::InvalidArchive)?
+            .into_iter()
+            .filter_map(|(alias, (specifier, ty))| {
+                match &specifier {
+                    DependencySpecifiers::Pesde(specifier) => {
+                        if specifier
+                            .index
+                            .as_ref()
+                            .filter(|index| match index.parse::<url::Url>() {
+                                Ok(_) if config.other_registries_allowed => true,
+                                Ok(url) => url == env!("CARGO_PKG_REPOSITORY").parse().unwrap(),
+                                Err(_) => false,
+                            })
+                            .is_none()
+                        {
+                            return Some(Err(Error::InvalidArchive));
+                        }
 
-        for (specifier, _) in dependencies.values() {
-            match specifier {
-                DependencySpecifiers::Pesde(specifier) => {
-                    if specifier
-                        .index
-                        .as_ref()
-                        .filter(|index| match index.parse::<url::Url>() {
-                            Ok(_) if config.other_registries_allowed => true,
-                            Ok(url) => url == env!("CARGO_PKG_REPOSITORY").parse().unwrap(),
-                            Err(_) => false,
-                        })
-                        .is_none()
-                    {
-                        return Err(Error::InvalidArchive);
+                        let (dep_scope, dep_name) = specifier.name.as_str();
+                        match source.read_file([dep_scope, dep_name], &app_state.project, None) {
+                            Ok(Some(_)) => {}
+                            Ok(None) => return Some(Err(Error::InvalidArchive)),
+                            Err(e) => return Some(Err(e.into())),
+                        }
                     }
+                    DependencySpecifiers::Wally(specifier) => {
+                        if !config.wally_allowed {
+                            return Some(Err(Error::InvalidArchive));
+                        }
 
-                    let (dep_scope, dep_name) = specifier.name.as_str();
-                    if source
-                        .read_file([dep_scope, dep_name], &app_state.project, None)?
-                        .is_none()
-                    {
-                        return Err(Error::InvalidArchive);
+                        if specifier
+                            .index
+                            .as_ref()
+                            .filter(|index| index.parse::<url::Url>().is_ok())
+                            .is_none()
+                        {
+                            return Some(Err(Error::InvalidArchive));
+                        }
                     }
-                }
-                DependencySpecifiers::Wally(specifier) => {
-                    if !config.wally_allowed {
-                        return Err(Error::InvalidArchive);
+                    DependencySpecifiers::Git(_) => {
+                        if !config.git_allowed {
+                            return Some(Err(Error::InvalidArchive));
+                        }
                     }
+                };
 
-                    if specifier
-                        .index
-                        .as_ref()
-                        .filter(|index| index.parse::<url::Url>().is_ok())
-                        .is_none()
-                    {
-                        return Err(Error::InvalidArchive);
-                    }
+                if ty == DependencyType::Dev {
+                    return None;
                 }
-                DependencySpecifiers::Git(_) => {
-                    if !config.git_allowed {
-                        return Err(Error::InvalidArchive);
-                    }
-                }
-            };
-        }
+
+                Some(Ok((alias, (specifier, ty))))
+            })
+            .collect::<Result<_, Error>>()?;
 
         let repo = source.repo_git2(&app_state.project)?;
 

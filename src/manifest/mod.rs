@@ -82,7 +82,7 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub peer_dependencies: BTreeMap<String, DependencySpecifiers>,
     /// The dev dependencies of the package
-    #[serde(default, skip_serializing)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dev_dependencies: BTreeMap<String, DependencySpecifiers>,
 }
 
