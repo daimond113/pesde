@@ -1,11 +1,13 @@
-use actix_web::{web, HttpResponse, Responder};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{error::Error, package::PackageResponse, AppState};
+use actix_web::{web, HttpResponse, Responder};
+
 use pesde::{
     names::PackageName,
     source::{git_index::GitBasedSource, pesde::IndexFile},
 };
+
+use crate::{error::Error, package::PackageResponse, AppState};
 
 pub async fn get_package_versions(
     app_state: web::Data<AppState>,
@@ -22,17 +24,23 @@ pub async fn get_package_versions(
             None => return Ok(HttpResponse::NotFound().finish()),
         };
 
-    Ok(HttpResponse::Ok().json(
-        versions
-            .into_iter()
-            .map(|(v_id, entry)| PackageResponse {
+    let mut responses = BTreeMap::new();
+
+    for (v_id, entry) in versions {
+        let info = responses
+            .entry(v_id.version().clone())
+            .or_insert_with(|| PackageResponse {
                 name: name.to_string(),
                 version: v_id.version().to_string(),
-                targets: BTreeSet::from([entry.target.into()]),
+                targets: BTreeSet::new(),
                 description: entry.description.unwrap_or_default(),
                 published_at: entry.published_at,
                 license: entry.license.unwrap_or_default(),
-            })
-            .collect::<Vec<_>>(),
-    ))
+            });
+
+        info.targets.insert(entry.target.into());
+        info.published_at = info.published_at.max(entry.published_at);
+    }
+
+    Ok(HttpResponse::Ok().json(responses.into_values().collect::<Vec<_>>()))
 }

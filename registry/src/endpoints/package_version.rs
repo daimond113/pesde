@@ -2,6 +2,7 @@ use actix_web::{http::header::ACCEPT, web, HttpRequest, HttpResponse, Responder}
 use rusty_s3::{actions::GetObject, S3Action};
 use semver::Version;
 use serde::{Deserialize, Deserializer};
+use std::collections::BTreeSet;
 
 use crate::{
     error::Error,
@@ -54,7 +55,9 @@ pub async fn get_package_version(
         }
     };
 
-    let mut versions = entries.iter().filter(|(v_id, _)| *v_id.target() == target);
+    let mut versions = entries
+        .into_iter()
+        .filter(|(v_id, _)| *v_id.target() == target);
 
     let version = match version {
         VersionRequest::Latest => versions.max_by_key(|(v, _)| v.version().clone()),
@@ -74,7 +77,7 @@ pub async fn get_package_version(
         let object_url = GetObject::new(
             &app_state.s3_bucket,
             Some(&app_state.s3_credentials),
-            &s3_name(&name, v_id),
+            &s3_name(&name, &v_id),
         )
         .sign(S3_SIGN_DURATION);
 
@@ -93,16 +96,9 @@ pub async fn get_package_version(
     Ok(HttpResponse::Ok().json(PackageResponse {
         name: name.to_string(),
         version: v_id.version().to_string(),
-        targets: entries
-            .values()
-            .map(|entry| (&entry.target).into())
-            .collect(),
+        targets: BTreeSet::from([entry.target.into()]),
         description: entry.description.clone().unwrap_or_default(),
-        published_at: entries
-            .values()
-            .max_by_key(|entry| entry.published_at)
-            .unwrap()
-            .published_at,
+        published_at: entry.published_at,
         license: entry.license.clone().unwrap_or_default(),
     }))
 }

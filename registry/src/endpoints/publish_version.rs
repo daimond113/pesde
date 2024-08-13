@@ -214,6 +214,8 @@ pub async fn publish_package(
         if let Some(this_version) = this_version {
             let other_entry = entries.get(this_version).unwrap();
 
+            // TODO: should different licenses be allowed?
+            // description cannot be different - which one to render in the "Recently published" list?
             if other_entry.description != new_entry.description
                 || other_entry.license != new_entry.license
             {
