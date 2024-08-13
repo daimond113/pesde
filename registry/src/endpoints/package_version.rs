@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use actix_web::{http::header::ACCEPT, web, HttpRequest, HttpResponse, Responder};
 use rusty_s3::{actions::GetObject, S3Action};
 use semver::Version;
@@ -38,38 +36,16 @@ impl<'de> Deserialize<'de> for VersionRequest {
     }
 }
 
-#[derive(Debug)]
-pub enum TargetRequest {
-    All,
-    Specific(TargetKind),
-}
-
-impl<'de> Deserialize<'de> for TargetRequest {
-    fn deserialize<D>(deserializer: D) -> Result<TargetRequest, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        if s.eq_ignore_ascii_case("all") {
-            return Ok(TargetRequest::All);
-        }
-
-        TargetKind::from_str(&s)
-            .map(TargetRequest::Specific)
-            .map_err(serde::de::Error::custom)
-    }
-}
-
 pub async fn get_package_version(
     request: HttpRequest,
     app_state: web::Data<AppState>,
-    path: web::Path<(PackageName, VersionRequest, TargetRequest)>,
+    path: web::Path<(PackageName, VersionRequest, TargetKind)>,
 ) -> Result<impl Responder, Error> {
     let (name, version, target) = path.into_inner();
 
     let (scope, name_part) = name.as_str();
 
-    let versions: IndexFile = {
+    let entries: IndexFile = {
         let source = app_state.source.lock().unwrap();
 
         match source.read_file([scope, name_part], &app_state.project, None)? {
@@ -78,32 +54,16 @@ pub async fn get_package_version(
         }
     };
 
+    let mut versions = entries.iter().filter(|(v_id, _)| *v_id.target() == target);
+
     let version = match version {
-        VersionRequest::Latest => versions
-            .iter()
-            .filter(|(v_id, _)| match target {
-                TargetRequest::All => true,
-                TargetRequest::Specific(target) => *v_id.target() == target,
-            })
-            .max_by_key(|(v, _)| v.version().clone()),
-        VersionRequest::Specific(version) => versions.iter().find(|(v, _)| {
-            *v.version() == version
-                && match target {
-                    TargetRequest::All => true,
-                    TargetRequest::Specific(target) => *v.target() == target,
-                }
-        }),
+        VersionRequest::Latest => versions.max_by_key(|(v, _)| v.version().clone()),
+        VersionRequest::Specific(version) => versions.find(|(v, _)| *v.version() == version),
     };
 
     let Some((v_id, entry)) = version else {
         return Ok(HttpResponse::NotFound().finish());
     };
-
-    let other_targets = versions
-        .iter()
-        .filter(|(v, _)| v.version() == v_id.version() && v.target() != v_id.target())
-        .map(|(v_id, _)| v_id.target().to_string())
-        .collect::<Vec<_>>();
 
     if request
         .headers()
@@ -130,20 +90,19 @@ pub async fn get_package_version(
         ));
     }
 
-    let entry = entry.clone();
-
-    let mut response = serde_json::to_value(PackageResponse {
+    Ok(HttpResponse::Ok().json(PackageResponse {
         name: name.to_string(),
         version: v_id.version().to_string(),
-        target: entry.target.into(),
-        description: entry.description.unwrap_or_default(),
-        published_at: entry.published_at,
-        license: entry.license.unwrap_or_default(),
-    })?;
-
-    if !other_targets.is_empty() {
-        response["other_targets"] = serde_json::to_value(other_targets)?;
-    }
-
-    Ok(HttpResponse::Ok().json(response))
+        targets: entries
+            .values()
+            .map(|entry| (&entry.target).into())
+            .collect(),
+        description: entry.description.clone().unwrap_or_default(),
+        published_at: entries
+            .values()
+            .max_by_key(|entry| entry.published_at)
+            .unwrap()
+            .published_at,
+        license: entry.license.clone().unwrap_or_default(),
+    }))
 }

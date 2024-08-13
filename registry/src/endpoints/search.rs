@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use actix_web::{web, HttpResponse, Responder};
 use serde::Deserialize;
-use tantivy::{query::AllQuery, schema::Value, DateTime, Order};
+use tantivy::{collector::Count, query::AllQuery, schema::Value, DateTime, Order};
 
-use crate::{error::Error, package::PackageResponse, AppState};
 use pesde::{
     names::PackageName,
     source::{git_index::GitBasedSource, pesde::IndexFile},
 };
+
+use crate::{error::Error, package::PackageResponse, AppState};
 
 #[derive(Deserialize)]
 pub struct Request {
@@ -46,12 +47,15 @@ pub async fn search_packages(
         query_parser.parse_query(query)?
     };
 
-    let top_docs = searcher
+    let (count, top_docs) = searcher
         .search(
             &query,
-            &tantivy::collector::TopDocs::with_limit(50)
-                .and_offset(request.offset.unwrap_or_default())
-                .order_by_fast_field::<DateTime>("published_at", Order::Desc),
+            &(
+                Count,
+                tantivy::collector::TopDocs::with_limit(50)
+                    .and_offset(request.offset.unwrap_or_default())
+                    .order_by_fast_field::<DateTime>("published_at", Order::Desc),
+            ),
         )
         .unwrap();
 
@@ -71,7 +75,7 @@ pub async fn search_packages(
                 .unwrap();
             let (scope, name) = id.as_str();
 
-            let mut versions: IndexFile = toml::de::from_str(
+            let versions: IndexFile = toml::de::from_str(
                 &source
                     .read_file([scope, name], &app_state.project, None)
                     .unwrap()
@@ -79,18 +83,32 @@ pub async fn search_packages(
             )
             .unwrap();
 
-            let (version_id, entry) = versions.pop_last().unwrap();
+            let (latest_version, entry) = versions
+                .iter()
+                .max_by_key(|(v_id, _)| v_id.version())
+                .unwrap();
 
             PackageResponse {
                 name: id.to_string(),
-                version: version_id.version().to_string(),
-                target: entry.target.into(),
-                description: entry.description.unwrap_or_default(),
-                published_at: entry.published_at,
-                license: entry.license.unwrap_or_default(),
+                version: latest_version.version().to_string(),
+                targets: versions
+                    .iter()
+                    .filter(|(v_id, _)| v_id.version() == latest_version.version())
+                    .map(|(_, entry)| (&entry.target).into())
+                    .collect(),
+                description: entry.description.clone().unwrap_or_default(),
+                published_at: versions
+                    .values()
+                    .max_by_key(|entry| entry.published_at)
+                    .unwrap()
+                    .published_at,
+                license: entry.license.clone().unwrap_or_default(),
             }
         })
         .collect::<Vec<_>>();
 
-    Ok(HttpResponse::Ok().json(top_docs))
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "data": top_docs,
+        "count": count,
+    })))
 }

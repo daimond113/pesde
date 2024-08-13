@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse, Responder};
+use std::collections::BTreeSet;
 
 use crate::{error::Error, package::PackageResponse, AppState};
 use pesde::{
@@ -27,7 +28,7 @@ pub async fn get_package_versions(
             .map(|(v_id, entry)| PackageResponse {
                 name: name.to_string(),
                 version: v_id.version().to_string(),
-                target: entry.target.into(),
+                targets: BTreeSet::from([entry.target.into()]),
                 description: entry.description.unwrap_or_default(),
                 published_at: entry.published_at,
                 license: entry.license.unwrap_or_default(),

@@ -5,7 +5,7 @@ use pesde::{
     source::version_id::VersionId,
 };
 use serde::Serialize;
-use std::time::Duration;
+use std::{collections::BTreeSet, time::Duration};
 
 pub const S3_SIGN_DURATION: Duration = Duration::from_secs(60 * 60);
 
@@ -13,7 +13,7 @@ pub fn s3_name(name: &PackageName, version_id: &VersionId) -> String {
     format!("{}+{}.tar.gz", name.escaped(), version_id.escaped())
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct TargetInfo {
     kind: TargetKind,
     lib: bool,
@@ -30,11 +30,33 @@ impl From<Target> for TargetInfo {
     }
 }
 
+impl From<&Target> for TargetInfo {
+    fn from(target: &Target) -> Self {
+        TargetInfo {
+            kind: target.kind(),
+            lib: target.lib_path().is_some(),
+            bin: target.bin_path().is_some(),
+        }
+    }
+}
+
+impl Ord for TargetInfo {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.kind.cmp(&other.kind)
+    }
+}
+
+impl PartialOrd for TargetInfo {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct PackageResponse {
     pub name: String,
     pub version: String,
-    pub target: TargetInfo,
+    pub targets: BTreeSet<TargetInfo>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub description: String,
     pub published_at: DateTime<Utc>,

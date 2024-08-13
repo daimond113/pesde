@@ -26,7 +26,7 @@ use pesde::{
 use crate::{
     auth::UserId,
     benv,
-    error::Error,
+    error::{Error, ErrorResponse},
     package::{s3_name, S3_SIGN_DURATION},
     search::update_version,
     AppState,
@@ -207,6 +207,22 @@ pub async fn publish_package(
 
             dependencies,
         };
+
+        let this_version = entries
+            .keys()
+            .find(|v_id| *v_id.version() == manifest.version);
+        if let Some(this_version) = this_version {
+            let other_entry = entries.get(this_version).unwrap();
+
+            if other_entry.description != new_entry.description
+                || other_entry.license != new_entry.license
+            {
+                return Ok(HttpResponse::BadRequest().json(ErrorResponse {
+                    error: "same version with different description or license already exists"
+                        .to_string(),
+                }));
+            }
+        }
 
         if entries
             .insert(

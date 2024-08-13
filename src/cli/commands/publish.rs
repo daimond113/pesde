@@ -406,34 +406,24 @@ impl PublishCommand {
             return Ok(());
         }
 
-        match reqwest
+        let response = reqwest
             .post(format!("{}/v0/packages", config.api()))
             .multipart(reqwest::blocking::multipart::Form::new().part(
                 "tarball",
                 reqwest::blocking::multipart::Part::bytes(archive).file_name("package.tar.gz"),
             ))
             .send()
-            .context("failed to send request")?
-            .error_for_status()
-            .and_then(|response| response.text())
-        {
-            Ok(response) => {
-                println!("{response}");
+            .context("failed to send request")?;
 
-                Ok(())
-            }
-            Err(e)
-                if e.status()
-                    .is_some_and(|status| status == StatusCode::CONFLICT) =>
-            {
+        let status = response.status();
+        let text = response.text().context("failed to get response text")?;
+        match status {
+            StatusCode::CONFLICT => {
                 println!("{}", "package version already exists".red().bold());
 
                 Ok(())
             }
-            Err(e)
-                if e.status()
-                    .is_some_and(|status| status == StatusCode::FORBIDDEN) =>
-            {
+            StatusCode::FORBIDDEN => {
                 println!(
                     "{}",
                     "unauthorized to publish under this scope".red().bold()
@@ -441,7 +431,19 @@ impl PublishCommand {
 
                 Ok(())
             }
-            Err(e) => Err(e).context("failed to get response"),
+            StatusCode::BAD_REQUEST => {
+                println!("{}: {text}", "invalid package".red().bold());
+
+                Ok(())
+            }
+            code if !code.is_success() => {
+                anyhow::bail!("failed to publish package: {code} ({text})");
+            }
+            _ => {
+                println!("{text}");
+
+                Ok(())
+            }
         }
     }
 }
