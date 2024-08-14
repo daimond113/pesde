@@ -1,21 +1,24 @@
-use crate::{
-    error::Error,
-    package::{s3_name, PackageResponse, S3_SIGN_DURATION},
-    AppState,
-};
+use std::collections::BTreeSet;
+
 use actix_web::{
     http::header::{ACCEPT, LOCATION},
     web, HttpRequest, HttpResponse, Responder,
 };
+use rusty_s3::{actions::GetObject, S3Action};
+use semver::Version;
+use serde::{Deserialize, Deserializer};
+
 use pesde::{
     manifest::target::TargetKind,
     names::PackageName,
     source::{git_index::GitBasedSource, pesde::IndexFile},
 };
-use rusty_s3::{actions::GetObject, S3Action};
-use semver::Version;
-use serde::{Deserialize, Deserializer};
-use std::collections::BTreeSet;
+
+use crate::{
+    error::Error,
+    package::{s3_name, PackageResponse, S3_SIGN_DURATION},
+    AppState,
+};
 
 #[derive(Debug)]
 pub enum VersionRequest {
@@ -33,8 +36,30 @@ impl<'de> Deserialize<'de> for VersionRequest {
             return Ok(VersionRequest::Latest);
         }
 
-        Version::parse(&s)
+        s.parse()
             .map(VersionRequest::Specific)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug)]
+pub enum TargetRequest {
+    Any,
+    Specific(TargetKind),
+}
+
+impl<'de> Deserialize<'de> for TargetRequest {
+    fn deserialize<D>(deserializer: D) -> Result<TargetRequest, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        if s.eq_ignore_ascii_case("any") {
+            return Ok(TargetRequest::Any);
+        }
+
+        s.parse()
+            .map(TargetRequest::Specific)
             .map_err(serde::de::Error::custom)
     }
 }
@@ -42,7 +67,7 @@ impl<'de> Deserialize<'de> for VersionRequest {
 pub async fn get_package_version(
     request: HttpRequest,
     app_state: web::Data<AppState>,
-    path: web::Path<(PackageName, VersionRequest, TargetKind)>,
+    path: web::Path<(PackageName, VersionRequest, TargetRequest)>,
 ) -> Result<impl Responder, Error> {
     let (name, version, target) = path.into_inner();
 
@@ -57,16 +82,26 @@ pub async fn get_package_version(
         }
     };
 
-    let mut versions = entries
-        .into_iter()
-        .filter(|(v_id, _)| *v_id.target() == target);
+    let Some((v_id, entry)) = ({
+        let version = match version {
+            VersionRequest::Latest => match entries.keys().map(|k| k.version()).max() {
+                Some(latest) => latest.clone(),
+                None => return Ok(HttpResponse::NotFound().finish()),
+            },
+            VersionRequest::Specific(version) => version,
+        };
 
-    let version = match version {
-        VersionRequest::Latest => versions.max_by_key(|(v, _)| v.version().clone()),
-        VersionRequest::Specific(version) => versions.find(|(v, _)| *v.version() == version),
-    };
+        let mut versions = entries
+            .into_iter()
+            .filter(|(v_id, _)| *v_id.version() == version);
 
-    let Some((v_id, entry)) = version else {
+        match target {
+            TargetRequest::Any => versions.min_by_key(|(v_id, _)| *v_id.target()),
+            TargetRequest::Specific(kind) => {
+                versions.find(|(_, entry)| entry.target.kind() == kind)
+            }
+        }
+    }) else {
         return Ok(HttpResponse::NotFound().finish());
     };
 
