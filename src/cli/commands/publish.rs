@@ -291,14 +291,19 @@ impl PublishCommand {
             );
             println!(
                 "authors: {}",
-                manifest
-                    .authors
-                    .as_ref()
-                    .map_or("(none)".to_string(), |a| a.join(", "))
+                if manifest.authors.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    manifest.authors.join(", ")
+                }
             );
             println!(
                 "repository: {}",
-                manifest.repository.as_deref().unwrap_or("(none)")
+                manifest
+                    .repository
+                    .as_ref()
+                    .map(|r| r.as_str())
+                    .unwrap_or("(none)")
             );
 
             let roblox_target = roblox_target.is_some_and(|_| true);

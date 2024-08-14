@@ -1,19 +1,21 @@
-use actix_web::{http::header::ACCEPT, web, HttpRequest, HttpResponse, Responder};
-use rusty_s3::{actions::GetObject, S3Action};
-use semver::Version;
-use serde::{Deserialize, Deserializer};
-use std::collections::BTreeSet;
-
 use crate::{
     error::Error,
     package::{s3_name, PackageResponse, S3_SIGN_DURATION},
     AppState,
+};
+use actix_web::{
+    http::header::{ACCEPT, LOCATION},
+    web, HttpRequest, HttpResponse, Responder,
 };
 use pesde::{
     manifest::target::TargetKind,
     names::PackageName,
     source::{git_index::GitBasedSource, pesde::IndexFile},
 };
+use rusty_s3::{actions::GetObject, S3Action};
+use semver::Version;
+use serde::{Deserialize, Deserializer};
+use std::collections::BTreeSet;
 
 #[derive(Debug)]
 pub enum VersionRequest {
@@ -68,29 +70,27 @@ pub async fn get_package_version(
         return Ok(HttpResponse::NotFound().finish());
     };
 
-    if request
+    let accept = request
         .headers()
         .get(ACCEPT)
         .and_then(|accept| accept.to_str().ok())
-        .is_some_and(|accept| accept.eq_ignore_ascii_case("application/octet-stream"))
-    {
+        .and_then(|accept| match accept.to_lowercase().as_str() {
+            "text/plain" => Some(true),
+            "application/octet-stream" => Some(false),
+            _ => None,
+        });
+
+    if let Some(readme) = accept {
         let object_url = GetObject::new(
             &app_state.s3_bucket,
             Some(&app_state.s3_credentials),
-            &s3_name(&name, &v_id),
+            &s3_name(&name, &v_id, readme),
         )
         .sign(S3_SIGN_DURATION);
 
-        return Ok(HttpResponse::Ok().body(
-            app_state
-                .reqwest_client
-                .get(object_url)
-                .send()
-                .await?
-                .error_for_status()?
-                .bytes()
-                .await?,
-        ));
+        return Ok(HttpResponse::TemporaryRedirect()
+            .append_header((LOCATION, object_url.as_str()))
+            .finish());
     }
 
     Ok(HttpResponse::Ok().json(PackageResponse {
@@ -100,5 +100,7 @@ pub async fn get_package_version(
         description: entry.description.clone().unwrap_or_default(),
         published_at: entry.published_at,
         license: entry.license.clone().unwrap_or_default(),
+        authors: entry.authors.clone(),
+        repository: entry.repository.clone().map(|url| url.to_string()),
     }))
 }

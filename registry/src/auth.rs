@@ -37,15 +37,15 @@ pub async fn authentication(
     };
 
     let token = if token.to_lowercase().starts_with("bearer ") {
-        token[7..].to_string()
-    } else {
         token.to_string()
+    } else {
+        format!("Bearer {token}")
     };
 
     let response = match app_state
         .reqwest_client
         .get("https://api.github.com/user")
-        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(reqwest::header::AUTHORIZATION, token)
         .send()
         .await
         .and_then(|res| res.error_for_status())

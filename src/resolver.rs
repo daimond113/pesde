@@ -280,8 +280,7 @@ impl Project {
                 pkg_ref.dependencies().clone()
             {
                 if dependency_ty == DependencyType::Dev {
-                    // dev dependencies of dependencies are not included in the graph
-                    // they should not even be stored in the index, so this is just a check to avoid potential issues
+                    // dev dependencies of dependencies are to be ignored
                     continue;
                 }
 

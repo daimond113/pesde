@@ -8,19 +8,12 @@ use actix_web::{web, HttpResponse, Responder};
 use flate2::read::GzDecoder;
 use futures::StreamExt;
 use git2::{Remote, Repository, Signature};
+use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use rusty_s3::{actions::PutObject, S3Action};
 use tar::Archive;
 
-use crate::{
-    auth::UserId,
-    benv,
-    error::{Error, ErrorResponse},
-    package::{s3_name, S3_SIGN_DURATION},
-    search::update_version,
-    AppState,
-};
 use pesde::{
-    manifest::{DependencyType, Manifest},
+    manifest::Manifest,
     source::{
         git_index::GitBasedSource,
         pesde::{IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
@@ -29,6 +22,15 @@ use pesde::{
         IGNORED_DIRS, IGNORED_FILES,
     },
     MANIFEST_FILE_NAME,
+};
+
+use crate::{
+    auth::UserId,
+    benv,
+    error::{Error, ErrorResponse},
+    package::{s3_name, S3_SIGN_DURATION},
+    search::update_version,
+    AppState,
 };
 
 fn signature<'a>() -> Signature<'a> {
@@ -80,6 +82,7 @@ pub async fn publish_package(
 
     let entries = archive.entries()?;
     let mut manifest = None::<Manifest>;
+    let mut readme = None::<Vec<u8>>;
 
     for entry in entries {
         let mut entry = entry?;
@@ -107,6 +110,21 @@ pub async fn publish_package(
             let mut content = String::new();
             entry.read_to_string(&mut content)?;
             manifest = Some(toml::de::from_str(&content).map_err(|_| Error::InvalidArchive)?);
+        } else if path.to_lowercase() == "readme"
+            || path
+                .to_lowercase()
+                .split_once('.')
+                .filter(|(file, ext)| *file == "readme" && (*ext == "md" || *ext == "txt"))
+                .is_some()
+        {
+            if readme.is_some() {
+                return Err(Error::InvalidArchive);
+            }
+
+            let mut gz = flate2::read::GzEncoder::new(entry, flate2::Compression::best());
+            let mut bytes = vec![];
+            gz.read_to_end(&mut bytes)?;
+            readme = Some(bytes);
         }
     }
 
@@ -121,59 +139,52 @@ pub async fn publish_package(
 
         let dependencies = manifest
             .all_dependencies()
-            .map_err(|_| Error::InvalidArchive)?
-            .into_iter()
-            .filter_map(|(alias, (specifier, ty))| {
-                match &specifier {
-                    DependencySpecifiers::Pesde(specifier) => {
-                        if specifier
-                            .index
-                            .as_ref()
-                            .filter(|index| match index.parse::<url::Url>() {
-                                Ok(_) if config.other_registries_allowed => true,
-                                Ok(url) => url == env!("CARGO_PKG_REPOSITORY").parse().unwrap(),
-                                Err(_) => false,
-                            })
-                            .is_none()
-                        {
-                            return Some(Err(Error::InvalidArchive));
-                        }
+            .map_err(|_| Error::InvalidArchive)?;
 
-                        let (dep_scope, dep_name) = specifier.name.as_str();
-                        match source.read_file([dep_scope, dep_name], &app_state.project, None) {
-                            Ok(Some(_)) => {}
-                            Ok(None) => return Some(Err(Error::InvalidArchive)),
-                            Err(e) => return Some(Err(e.into())),
-                        }
+        for (specifier, _) in dependencies.values() {
+            match specifier {
+                DependencySpecifiers::Pesde(specifier) => {
+                    if specifier
+                        .index
+                        .as_ref()
+                        .filter(|index| match index.parse::<url::Url>() {
+                            Ok(_) if config.other_registries_allowed => true,
+                            Ok(url) => url == env!("CARGO_PKG_REPOSITORY").parse().unwrap(),
+                            Err(_) => false,
+                        })
+                        .is_none()
+                    {
+                        return Err(Error::InvalidArchive);
                     }
-                    DependencySpecifiers::Wally(specifier) => {
-                        if !config.wally_allowed {
-                            return Some(Err(Error::InvalidArchive));
-                        }
 
-                        if specifier
-                            .index
-                            .as_ref()
-                            .filter(|index| index.parse::<url::Url>().is_ok())
-                            .is_none()
-                        {
-                            return Some(Err(Error::InvalidArchive));
-                        }
+                    let (dep_scope, dep_name) = specifier.name.as_str();
+                    match source.read_file([dep_scope, dep_name], &app_state.project, None) {
+                        Ok(Some(_)) => {}
+                        Ok(None) => return Err(Error::InvalidArchive),
+                        Err(e) => return Err(e.into()),
                     }
-                    DependencySpecifiers::Git(_) => {
-                        if !config.git_allowed {
-                            return Some(Err(Error::InvalidArchive));
-                        }
-                    }
-                };
-
-                if ty == DependencyType::Dev {
-                    return None;
                 }
+                DependencySpecifiers::Wally(specifier) => {
+                    if !config.wally_allowed {
+                        return Err(Error::InvalidArchive);
+                    }
 
-                Some(Ok((alias, (specifier, ty))))
-            })
-            .collect::<Result<_, Error>>()?;
+                    if specifier
+                        .index
+                        .as_ref()
+                        .filter(|index| index.parse::<url::Url>().is_ok())
+                        .is_none()
+                    {
+                        return Err(Error::InvalidArchive);
+                    }
+                }
+                DependencySpecifiers::Git(_) => {
+                    if !config.git_allowed {
+                        return Err(Error::InvalidArchive);
+                    }
+                }
+            }
+        }
 
         let repo = source.repo_git2(&app_state.project)?;
 
@@ -209,6 +220,8 @@ pub async fn publish_package(
             published_at: chrono::Utc::now(),
             description: manifest.description.clone(),
             license: manifest.license.clone(),
+            authors: manifest.authors.clone(),
+            repository: manifest.repository.clone(),
 
             dependencies,
         };
@@ -219,10 +232,12 @@ pub async fn publish_package(
         if let Some(this_version) = this_version {
             let other_entry = entries.get(this_version).unwrap();
 
-            // TODO: should different licenses be allowed?
             // description cannot be different - which one to render in the "Recently published" list?
+            // the others cannot be different because what to return from the versions endpoint?
             if other_entry.description != new_entry.description
                 || other_entry.license != new_entry.license
+                || other_entry.authors != new_entry.authors
+                || other_entry.repository != new_entry.repository
             {
                 return Ok(HttpResponse::BadRequest().json(ErrorResponse {
                     error: "same version with different description or license already exists"
@@ -297,22 +312,41 @@ pub async fn publish_package(
         update_version(&app_state, &manifest.name, new_entry);
     }
 
+    let version_id = VersionId::new(manifest.version.clone(), manifest.target.kind());
+
     let object_url = PutObject::new(
         &app_state.s3_bucket,
         Some(&app_state.s3_credentials),
-        &s3_name(
-            &manifest.name,
-            &VersionId::new(manifest.version.clone(), manifest.target.kind()),
-        ),
+        &s3_name(&manifest.name, &version_id, false),
     )
     .sign(S3_SIGN_DURATION);
 
     app_state
         .reqwest_client
         .put(object_url)
+        .header(CONTENT_TYPE, "application/gzip")
+        .header(CONTENT_ENCODING, "gzip")
         .body(bytes)
         .send()
         .await?;
+
+    if let Some(readme) = readme {
+        let object_url = PutObject::new(
+            &app_state.s3_bucket,
+            Some(&app_state.s3_credentials),
+            &s3_name(&manifest.name, &version_id, true),
+        )
+        .sign(S3_SIGN_DURATION);
+
+        app_state
+            .reqwest_client
+            .put(object_url)
+            .header(CONTENT_TYPE, "text/plain")
+            .header(CONTENT_ENCODING, "gzip")
+            .body(readme)
+            .send()
+            .await?;
+    }
 
     Ok(HttpResponse::Ok().body(format!(
         "published {}@{} {}",

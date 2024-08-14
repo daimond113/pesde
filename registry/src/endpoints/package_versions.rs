@@ -36,6 +36,8 @@ pub async fn get_package_versions(
                 description: entry.description.unwrap_or_default(),
                 published_at: entry.published_at,
                 license: entry.license.unwrap_or_default(),
+                authors: entry.authors.clone(),
+                repository: entry.repository.clone().map(|url| url.to_string()),
             });
 
         info.targets.insert(entry.target.into());

@@ -402,6 +402,12 @@ pub struct IndexFileEntry {
     /// The license of this package
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
+    /// The authors of this package
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
+    /// The repository of this package
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<url::Url>,
 
     /// The dependencies of this package
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

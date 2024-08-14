@@ -29,11 +29,11 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
     /// The authors of the package
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub authors: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
     /// The repository of the package
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub repository: Option<String>,
+    pub repository: Option<url::Url>,
     /// The target of the package
     pub target: Target,
     /// Whether the package is private

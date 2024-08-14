@@ -151,9 +151,7 @@ fn run() -> anyhow::Result<()> {
         if let Some(token) = token {
             headers.insert(
                 reqwest::header::AUTHORIZATION,
-                format!("Bearer {token}")
-                    .parse()
-                    .context("failed to create auth header")?,
+                token.parse().context("failed to create auth header")?,
             );
         }
 

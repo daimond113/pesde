@@ -103,6 +103,8 @@ pub async fn search_packages(
                     .unwrap()
                     .published_at,
                 license: entry.license.clone().unwrap_or_default(),
+                authors: entry.authors.clone(),
+                repository: entry.repository.clone().map(|url| url.to_string()),
             }
         })
         .collect::<Vec<_>>();
