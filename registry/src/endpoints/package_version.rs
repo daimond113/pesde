@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use actix_web::{
     http::header::{ACCEPT, LOCATION},
     web, HttpRequest, HttpResponse, Responder,
@@ -82,7 +80,7 @@ pub async fn get_package_version(
         }
     };
 
-    let Some((v_id, entry)) = ({
+    let Some((v_id, entry, targets)) = ({
         let version = match version {
             VersionRequest::Latest => match entries.keys().map(|k| k.version()).max() {
                 Some(latest) => latest.clone(),
@@ -91,16 +89,23 @@ pub async fn get_package_version(
             VersionRequest::Specific(version) => version,
         };
 
-        let mut versions = entries
-            .into_iter()
+        let versions = entries
+            .iter()
             .filter(|(v_id, _)| *v_id.version() == version);
 
         match target {
-            TargetRequest::Any => versions.min_by_key(|(v_id, _)| *v_id.target()),
-            TargetRequest::Specific(kind) => {
-                versions.find(|(_, entry)| entry.target.kind() == kind)
-            }
+            TargetRequest::Any => versions.clone().min_by_key(|(v_id, _)| *v_id.target()),
+            TargetRequest::Specific(kind) => versions
+                .clone()
+                .find(|(_, entry)| entry.target.kind() == kind),
         }
+        .map(|(v_id, entry)| {
+            (
+                v_id,
+                entry,
+                versions.map(|(_, entry)| (&entry.target).into()).collect(),
+            )
+        })
     }) else {
         return Ok(HttpResponse::NotFound().finish());
     };
@@ -119,7 +124,7 @@ pub async fn get_package_version(
         let object_url = GetObject::new(
             &app_state.s3_bucket,
             Some(&app_state.s3_credentials),
-            &s3_name(&name, &v_id, readme),
+            &s3_name(&name, v_id, readme),
         )
         .sign(S3_SIGN_DURATION);
 
@@ -131,7 +136,7 @@ pub async fn get_package_version(
     Ok(HttpResponse::Ok().json(PackageResponse {
         name: name.to_string(),
         version: v_id.version().to_string(),
-        targets: BTreeSet::from([entry.target.into()]),
+        targets,
         description: entry.description.clone().unwrap_or_default(),
         published_at: entry.published_at,
         license: entry.license.clone().unwrap_or_default(),
