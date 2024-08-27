@@ -75,7 +75,11 @@ fn run() -> anyhow::Result<()> {
                 break 'finder project_root;
             }
 
-            project_root = project_root.parent().unwrap().to_path_buf();
+            if let Some(parent) = project_root.parent() {
+                project_root = parent.to_path_buf();
+            } else {
+                break;
+            }
         }
 
         cwd.clone()
