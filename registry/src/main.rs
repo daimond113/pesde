@@ -118,13 +118,6 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
         search_writer: Mutex::new(search_writer),
     });
 
-    let generic_governor_config = GovernorConfigBuilder::default()
-        .burst_size(500)
-        .per_millisecond(500)
-        .use_headers()
-        .finish()
-        .unwrap();
-
     let publish_governor_config = GovernorConfigBuilder::default()
         .key_extractor(UserIdExtractor)
         .burst_size(12)
@@ -151,23 +144,14 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
             )
             .service(
                 web::scope("/v0")
-                    .route(
-                        "/search",
-                        web::get()
-                            .to(endpoints::search::search_packages)
-                            .wrap(Governor::new(&generic_governor_config)),
-                    )
+                    .route("/search", web::get().to(endpoints::search::search_packages))
                     .route(
                         "/packages/{name}",
-                        web::get()
-                            .to(endpoints::package_versions::get_package_versions)
-                            .wrap(Governor::new(&generic_governor_config)),
+                        web::get().to(endpoints::package_versions::get_package_versions),
                     )
                     .route(
                         "/packages/{name}/{version}/{target}",
-                        web::get()
-                            .to(endpoints::package_version::get_package_version)
-                            .wrap(Governor::new(&generic_governor_config)),
+                        web::get().to(endpoints::package_version::get_package_version),
                     )
                     .route(
                         "/packages",
