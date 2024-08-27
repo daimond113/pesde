@@ -21,12 +21,15 @@ pub enum ScriptName {
 
 impl Display for ScriptName {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        #[cfg(feature = "roblox")]
         match self {
             #[cfg(feature = "roblox")]
             ScriptName::RobloxSyncConfigGenerator => write!(f, "roblox_sync_config_generator"),
             #[cfg(feature = "wally-compat")]
             ScriptName::SourcemapGenerator => write!(f, "sourcemap_generator"),
         }
+        #[cfg(not(feature = "roblox"))]
+        Ok(())
     }
 }
 

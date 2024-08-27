@@ -183,6 +183,7 @@ impl InstallCommand {
             .link_dependencies(&downloaded_graph)
             .context("failed to link dependencies")?;
 
+        #[cfg(feature = "patches")]
         project
             .apply_patches(&downloaded_graph)
             .context("failed to apply patches")?;
