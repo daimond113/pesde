@@ -1,5 +1,4 @@
-use crate::cli::{bin_dir, version::update_bin_exe, HOME_DIR};
-use anyhow::Context;
+use crate::cli::{version::update_bin_exe, HOME_DIR};
 use clap::Args;
 use colored::Colorize;
 #[derive(Debug, Args)]
@@ -12,27 +11,37 @@ pub struct SelfInstallCommand {
 
 impl SelfInstallCommand {
     pub fn run(self) -> anyhow::Result<()> {
-        let bin_dir = bin_dir()?;
-
         #[cfg(windows)]
-        if !self.skip_add_to_path {
-            use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+        {
+            if !self.skip_add_to_path {
+                use anyhow::Context;
+                use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
-            let current_user = RegKey::predef(HKEY_CURRENT_USER);
-            let env = current_user
-                .create_subkey("Environment")
-                .context("failed to open Environment key")?
-                .0;
-            let path: String = env.get_value("Path").context("failed to get Path value")?;
+                let current_user = RegKey::predef(HKEY_CURRENT_USER);
+                let env = current_user
+                    .create_subkey("Environment")
+                    .context("failed to open Environment key")?
+                    .0;
+                let path: String = env.get_value("Path").context("failed to get Path value")?;
 
-            let bin_dir = bin_dir.to_string_lossy();
+                let bin_dir = crate::cli::bin_dir()?;
+                let bin_dir = bin_dir.to_string_lossy();
 
-            let exists = path.split(';').any(|part| *part == bin_dir);
+                let exists = path.split(';').any(|part| *part == bin_dir);
 
-            if !exists {
-                let new_path = format!("{path};{bin_dir}");
-                env.set_value("Path", &new_path)
-                    .context("failed to set Path value")?;
+                if !exists {
+                    let new_path = format!("{path};{bin_dir}");
+                    env.set_value("Path", &new_path)
+                        .context("failed to set Path value")?;
+
+                    println!(
+                        "\nin order to allow binary exports as executables {}.\n\n{}",
+                        format!("`~/{HOME_DIR}/bin` was added to PATH").green(),
+                        "please restart your shell for this to take effect"
+                            .yellow()
+                            .bold()
+                    );
+                }
             }
 
             println!(
@@ -40,16 +49,6 @@ impl SelfInstallCommand {
                 env!("CARGO_BIN_NAME").cyan(),
                 env!("CARGO_PKG_VERSION").yellow(),
             );
-
-            if !exists {
-                println!(
-                    "\nin order to allow binary exports as executables {}.\n\n{}",
-                    format!("`~/{HOME_DIR}/bin` was added to PATH").green(),
-                    "please restart your shell for this to take effect"
-                        .yellow()
-                        .bold()
-                );
-            }
         }
 
         #[cfg(unix)]
@@ -63,7 +62,7 @@ and then restart your shell.
 "#,
                 env!("CARGO_BIN_NAME").cyan(),
                 env!("CARGO_PKG_VERSION").yellow(),
-                format!(r#"export PATH="$PATH:~/{}/bin""#, HOME_DIR)
+                format!(r#"export PATH="$PATH:~/{HOME_DIR}/bin""#)
                     .bold()
                     .green()
             );
