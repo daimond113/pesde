@@ -206,7 +206,24 @@ pub fn max_installed_version() -> anyhow::Result<Version> {
         .context("failed to read versions directory")?
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .map(|entry| Version::parse(entry.path().file_stem().unwrap().to_str().unwrap()).unwrap())
+        .map(|entry| {
+            #[cfg(not(windows))]
+            let name = entry
+                .path()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            #[cfg(windows)]
+            let name = entry
+                .path()
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+
+            Version::parse(&name).unwrap()
+        })
         .max()
         .filter(|v| v >= &current_version())
         .unwrap_or_else(current_version);
