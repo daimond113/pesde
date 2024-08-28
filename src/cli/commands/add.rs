@@ -151,20 +151,20 @@ impl AddCommand {
                 .unwrap_or(url.path.to_string()),
         });
 
+        let field = &mut manifest[dependency_key]
+            .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))[&alias];
+
         match specifier {
             DependencySpecifiers::Pesde(spec) => {
-                manifest[dependency_key][&alias]["name"] =
-                    toml_edit::value(spec.name.clone().to_string());
-                manifest[dependency_key][&alias]["version"] =
-                    toml_edit::value(format!("^{}", version_id.version()));
+                field["name"] = toml_edit::value(spec.name.clone().to_string());
+                field["version"] = toml_edit::value(format!("^{}", version_id.version()));
 
                 if *version_id.target() != project_target {
-                    manifest[dependency_key][&alias]["target"] =
-                        toml_edit::value(version_id.target().to_string());
+                    field["target"] = toml_edit::value(version_id.target().to_string());
                 }
 
                 if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {
-                    manifest[dependency_key][&alias]["index"] = toml_edit::value(index);
+                    field["index"] = toml_edit::value(index);
                 }
 
                 println!(
@@ -177,13 +177,11 @@ impl AddCommand {
             }
             #[cfg(feature = "wally-compat")]
             DependencySpecifiers::Wally(spec) => {
-                manifest[dependency_key][&alias]["wally"] =
-                    toml_edit::value(spec.name.clone().to_string());
-                manifest[dependency_key][&alias]["version"] =
-                    toml_edit::value(format!("^{}", version_id.version()));
+                field["wally"] = toml_edit::value(spec.name.clone().to_string());
+                field["version"] = toml_edit::value(format!("^{}", version_id.version()));
 
                 if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {
-                    manifest[dependency_key][&alias]["index"] = toml_edit::value(index);
+                    field["index"] = toml_edit::value(index);
                 }
 
                 println!(
@@ -194,9 +192,8 @@ impl AddCommand {
                 );
             }
             DependencySpecifiers::Git(spec) => {
-                manifest[dependency_key][&alias]["repo"] =
-                    toml_edit::value(spec.repo.to_bstring().to_string());
-                manifest[dependency_key][&alias]["rev"] = toml_edit::value(spec.rev.clone());
+                field["repo"] = toml_edit::value(spec.repo.to_bstring().to_string());
+                field["rev"] = toml_edit::value(spec.rev.clone());
 
                 println!("added git {}#{} to {}", spec.repo, spec.rev, dependency_key);
             }

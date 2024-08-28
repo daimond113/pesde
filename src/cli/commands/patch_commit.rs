@@ -67,7 +67,8 @@ impl PatchCommitCommand {
 
         std::fs::write(&patch_file, patch).context("failed to write patch file")?;
 
-        manifest["patches"][&name.to_string()][&version_id.to_string()] =
+        manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+            [&name.to_string()][&version_id.to_string()] =
             toml_edit::value(format!("patches/{patch_file_name}"));
 
         project

@@ -122,7 +122,8 @@ impl InitCommand {
         .prompt()
         .unwrap();
 
-        manifest["target"]["environment"] = toml_edit::value(target_env);
+        manifest["target"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+            ["environment"] = toml_edit::value(target_env);
 
         if target_env == "roblox"
             || inquire::Confirm::new(&format!(
@@ -153,20 +154,23 @@ impl InitCommand {
             )
             .context("failed to write sourcemap generator script file")?;
 
-            manifest["scripts"][&ScriptName::RobloxSyncConfigGenerator.to_string()] =
+            let scripts =
+                manifest["scripts"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+
+            scripts[&ScriptName::RobloxSyncConfigGenerator.to_string()] =
                 toml_edit::value(format!(
                     concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
                     ScriptName::RobloxSyncConfigGenerator
                 ));
 
-            manifest["scripts"][&ScriptName::SourcemapGenerator.to_string()] =
-                toml_edit::value(format!(
-                    concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
-                    ScriptName::SourcemapGenerator
-                ));
+            scripts[&ScriptName::SourcemapGenerator.to_string()] = toml_edit::value(format!(
+                concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
+                ScriptName::SourcemapGenerator
+            ));
         }
 
-        manifest["indices"][DEFAULT_INDEX_NAME] =
+        manifest["indices"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+            [DEFAULT_INDEX_NAME] =
             toml_edit::value(read_config()?.default_index.to_bstring().to_string());
 
         project.write_manifest(manifest.to_string())?;
