@@ -38,7 +38,13 @@ pub(crate) fn store_in_cas<P: AsRef<Path>>(
 
     let cas_path = folder.join(rest);
     if !cas_path.exists() {
-        std::fs::write(&cas_path, contents)?;
+        let mut file = std::fs::File::create(&cas_path)?;
+        file.write_all(contents)?;
+        
+        // prevent the CAS from being corrupted due to accidental modifications
+        let mut permissions = file.metadata()?.permissions();
+        permissions.set_readonly(true);
+        file.set_permissions(permissions)?;
     }
 
     Ok((hash, cas_path))
@@ -73,7 +79,12 @@ pub(crate) fn store_reader_in_cas<P: AsRef<Path>>(
 
     let cas_path = folder.join(rest);
     match file_writer.into_inner()?.persist_noclobber(cas_path) {
-        Ok(_) => {}
+        Ok(f) => {
+            // prevent the CAS from being corrupted due to accidental modifications
+            let mut permissions = f.metadata()?.permissions();
+            permissions.set_readonly(true);
+            f.set_permissions(permissions)?;
+        }
         Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.error),
     };
