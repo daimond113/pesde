@@ -74,7 +74,5 @@ pub fn deserialize_git_like_url<'de, D: Deserializer<'de>>(
 }
 
 pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(struc.as_ref());
-    format!("{:x}", hasher.finalize())
+    format!("{:x}", Sha256::digest(struc.as_ref()))
 }
