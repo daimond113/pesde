@@ -1,36 +1,38 @@
-use std::{
-    collections::BTreeSet,
-    io::{Cursor, Read, Write},
-};
-
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
+use convert_case::{Case, Casing};
 use flate2::read::GzDecoder;
-use futures::StreamExt;
+use futures::{future::join_all, StreamExt};
 use git2::{Remote, Repository, Signature};
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use rusty_s3::{actions::PutObject, S3Action};
-use tar::Archive;
-
-use pesde::{
-    manifest::Manifest,
-    source::{
-        git_index::GitBasedSource,
-        pesde::{IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
-        specifiers::DependencySpecifiers,
-        version_id::VersionId,
-        IGNORED_DIRS, IGNORED_FILES,
-    },
-    MANIFEST_FILE_NAME,
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fs::read_dir,
+    io::{Cursor, Read, Write},
 };
+use tar::Archive;
 
 use crate::{
     auth::UserId,
     benv,
     error::{Error, ErrorResponse},
-    package::{s3_name, S3_SIGN_DURATION},
+    package::{s3_doc_name, s3_name, S3_SIGN_DURATION},
     search::update_version,
     AppState,
+};
+use pesde::{
+    manifest::Manifest,
+    source::{
+        git_index::GitBasedSource,
+        pesde::{DocEntry, DocEntryKind, IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
+        specifiers::DependencySpecifiers,
+        version_id::VersionId,
+        IGNORED_DIRS, IGNORED_FILES,
+    },
+    MANIFEST_FILE_NAME,
 };
 
 fn signature<'a>() -> Signature<'a> {
@@ -57,6 +59,16 @@ fn get_refspec(repo: &Repository, remote: &mut Remote) -> Result<String, git2::E
 
 const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 
+#[derive(Debug, Deserialize, Default)]
+struct DocEntryInfo {
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    sidebar_position: Option<usize>,
+    #[serde(default)]
+    collapsed: bool,
+}
+
 pub async fn publish_package(
     app_state: web::Data<AppState>,
     mut body: Multipart,
@@ -77,51 +89,181 @@ pub async fn publish_package(
         .await
         .map_err(|_| Error::InvalidArchive)?
         .map_err(|_| Error::InvalidArchive)?;
-    let mut decoder = GzDecoder::new(Cursor::new(&bytes));
-    let mut archive = Archive::new(&mut decoder);
 
-    let entries = archive.entries()?;
+    let package_dir = tempfile::tempdir()?;
+
+    {
+        let mut decoder = GzDecoder::new(Cursor::new(&bytes));
+        let mut archive = Archive::new(&mut decoder);
+
+        archive.unpack(package_dir.path())?;
+    }
+
     let mut manifest = None::<Manifest>;
     let mut readme = None::<Vec<u8>>;
+    let mut docs = BTreeSet::new();
+    let mut docs_pages = HashMap::new();
 
-    for entry in entries {
-        let mut entry = entry?;
-        let path = entry.path()?;
+    for entry in read_dir(package_dir.path())? {
+        let entry = entry?;
+        let file_name = entry
+            .file_name()
+            .to_str()
+            .ok_or(Error::InvalidArchive)?
+            .to_string();
 
-        if entry.header().entry_type().is_dir() {
-            if path.components().next().is_some_and(|ct| {
-                ct.as_os_str()
-                    .to_str()
-                    .map_or(true, |s| IGNORED_DIRS.contains(&s))
-            }) {
+        if entry.file_type()?.is_dir() {
+            if IGNORED_DIRS.contains(&file_name.as_str()) {
                 return Err(Error::InvalidArchive);
+            }
+
+            if file_name == "docs" {
+                let mut stack = vec![(
+                    BTreeSet::new(),
+                    read_dir(entry.path())?,
+                    None::<DocEntryInfo>,
+                )];
+
+                'outer: while let Some((set, iter, category_info)) = stack.last_mut() {
+                    for entry in iter {
+                        let entry = entry?;
+                        let file_name = entry
+                            .file_name()
+                            .to_str()
+                            .ok_or(Error::InvalidArchive)?
+                            .to_string();
+
+                        if entry.file_type()?.is_dir() {
+                            stack.push((
+                                BTreeSet::new(),
+                                read_dir(entry.path())?,
+                                Some(DocEntryInfo {
+                                    label: Some(file_name.to_case(Case::Title)),
+                                    ..Default::default()
+                                }),
+                            ));
+                            continue 'outer;
+                        }
+
+                        if file_name == "_category_.json" {
+                            let info = std::fs::read_to_string(entry.path())?;
+                            let mut info: DocEntryInfo = serde_json::from_str(&info)?;
+                            let old_info = category_info.take();
+                            info.label = info.label.or(old_info.and_then(|i| i.label));
+                            *category_info = Some(info);
+                            continue;
+                        }
+
+                        let Some(file_name) = file_name.strip_suffix(".md") else {
+                            continue;
+                        };
+
+                        let content = std::fs::read_to_string(entry.path())?;
+                        let content = content.trim();
+                        let hash = format!("{:x}", Sha256::digest(content.as_bytes()));
+
+                        let mut gz = flate2::read::GzEncoder::new(
+                            Cursor::new(content.as_bytes().to_vec()),
+                            flate2::Compression::best(),
+                        );
+                        let mut bytes = vec![];
+                        gz.read_to_end(&mut bytes)?;
+                        docs_pages.insert(hash.to_string(), bytes);
+
+                        let mut lines = content.lines().peekable();
+                        let front_matter = if lines.peek().filter(|l| **l == "---").is_some() {
+                            lines.next(); // skip the first `---`
+
+                            let front_matter = lines
+                                .by_ref()
+                                .take_while(|l| *l != "---")
+                                .collect::<Vec<_>>()
+                                .join("\n");
+
+                            lines.next(); // skip the last `---`
+
+                            front_matter
+                        } else {
+                            "".to_string()
+                        };
+
+                        let h1 = lines
+                            .find(|l| !l.trim().is_empty())
+                            .and_then(|l| l.strip_prefix("# "))
+                            .map(|s| s.to_string());
+
+                        let info: DocEntryInfo = serde_yaml::from_str(&front_matter)
+                            .map_err(|_| Error::InvalidArchive)?;
+
+                        set.insert(DocEntry {
+                            label: info.label.or(h1).unwrap_or(file_name.to_case(Case::Title)),
+                            position: info.sidebar_position,
+                            kind: DocEntryKind::Page {
+                                name: entry
+                                    .path()
+                                    .strip_prefix(package_dir.path().join("docs"))
+                                    .unwrap()
+                                    .with_extension("")
+                                    .to_str()
+                                    .ok_or(Error::InvalidArchive)?
+                                    // ensure that the path is always using forward slashes
+                                    .replace("\\", "/"),
+                                hash,
+                            },
+                        });
+                    }
+
+                    // should never be None
+                    let (popped, _, category_info) = stack.pop().unwrap();
+                    docs = popped;
+
+                    if let Some((set, _, _)) = stack.last_mut() {
+                        let category_info = category_info.unwrap_or_default();
+
+                        set.insert(DocEntry {
+                            label: category_info.label.unwrap(),
+                            position: category_info.sidebar_position,
+                            kind: DocEntryKind::Category {
+                                items: {
+                                    let curr_docs = docs;
+                                    docs = BTreeSet::new();
+                                    curr_docs
+                                },
+                                collapsed: category_info.collapsed,
+                            },
+                        });
+                    }
+                }
             }
 
             continue;
         }
 
-        let path = path.to_str().ok_or(Error::InvalidArchive)?;
-
-        if IGNORED_FILES.contains(&path) || ADDITIONAL_FORBIDDEN_FILES.contains(&path) {
+        if IGNORED_FILES.contains(&file_name.as_str()) {
             return Err(Error::InvalidArchive);
         }
 
-        if path == MANIFEST_FILE_NAME {
-            let mut content = String::new();
-            entry.read_to_string(&mut content)?;
-            manifest = Some(toml::de::from_str(&content).map_err(|_| Error::InvalidArchive)?);
-        } else if path.to_lowercase() == "readme"
-            || path
-                .to_lowercase()
-                .split_once('.')
-                .filter(|(file, ext)| *file == "readme" && (*ext == "md" || *ext == "txt"))
-                .is_some()
+        if ADDITIONAL_FORBIDDEN_FILES.contains(&file_name.as_str()) {
+            return Err(Error::InvalidArchive);
+        }
+
+        if file_name == MANIFEST_FILE_NAME {
+            let content = std::fs::read_to_string(entry.path())?;
+
+            manifest = Some(toml::de::from_str(&content)?);
+        } else if file_name
+            .to_lowercase()
+            .split_once('.')
+            .filter(|(file, ext)| *file == "readme" && (*ext == "md" || *ext == "txt"))
+            .is_some()
         {
             if readme.is_some() {
                 return Err(Error::InvalidArchive);
             }
 
-            let mut gz = flate2::read::GzEncoder::new(entry, flate2::Compression::best());
+            let file = std::fs::File::open(entry.path())?;
+
+            let mut gz = flate2::read::GzEncoder::new(file, flate2::Compression::best());
             let mut bytes = vec![];
             gz.read_to_end(&mut bytes)?;
             readme = Some(bytes);
@@ -222,6 +364,7 @@ pub async fn publish_package(
             license: manifest.license.clone(),
             authors: manifest.authors.clone(),
             repository: manifest.repository.clone(),
+            docs,
 
             dependencies,
         };
@@ -314,39 +457,57 @@ pub async fn publish_package(
 
     let version_id = VersionId::new(manifest.version.clone(), manifest.target.kind());
 
-    let object_url = PutObject::new(
-        &app_state.s3_bucket,
-        Some(&app_state.s3_credentials),
-        &s3_name(&manifest.name, &version_id, false),
+    join_all(
+        std::iter::once({
+            let object_url = PutObject::new(
+                &app_state.s3_bucket,
+                Some(&app_state.s3_credentials),
+                &s3_name(&manifest.name, &version_id, false),
+            )
+            .sign(S3_SIGN_DURATION);
+
+            app_state
+                .reqwest_client
+                .put(object_url)
+                .header(CONTENT_TYPE, "application/gzip")
+                .header(CONTENT_ENCODING, "gzip")
+                .body(bytes)
+                .send()
+        })
+        .chain(docs_pages.into_iter().map(|(hash, content)| {
+            let object_url = PutObject::new(
+                &app_state.s3_bucket,
+                Some(&app_state.s3_credentials),
+                &s3_doc_name(&hash),
+            )
+            .sign(S3_SIGN_DURATION);
+
+            app_state
+                .reqwest_client
+                .put(object_url)
+                .header(CONTENT_TYPE, "text/plain")
+                .header(CONTENT_ENCODING, "gzip")
+                .body(content)
+                .send()
+        }))
+        .chain(readme.map(|readme| {
+            let object_url = PutObject::new(
+                &app_state.s3_bucket,
+                Some(&app_state.s3_credentials),
+                &s3_name(&manifest.name, &version_id, true),
+            )
+            .sign(S3_SIGN_DURATION);
+
+            app_state
+                .reqwest_client
+                .put(object_url)
+                .header(CONTENT_TYPE, "text/plain")
+                .header(CONTENT_ENCODING, "gzip")
+                .body(readme)
+                .send()
+        })),
     )
-    .sign(S3_SIGN_DURATION);
-
-    app_state
-        .reqwest_client
-        .put(object_url)
-        .header(CONTENT_TYPE, "application/gzip")
-        .header(CONTENT_ENCODING, "gzip")
-        .body(bytes)
-        .send()
-        .await?;
-
-    if let Some(readme) = readme {
-        let object_url = PutObject::new(
-            &app_state.s3_bucket,
-            Some(&app_state.s3_credentials),
-            &s3_name(&manifest.name, &version_id, true),
-        )
-        .sign(S3_SIGN_DURATION);
-
-        app_state
-            .reqwest_client
-            .put(object_url)
-            .header(CONTENT_TYPE, "text/plain")
-            .header(CONTENT_ENCODING, "gzip")
-            .body(readme)
-            .send()
-            .await?;
-    }
+    .await;
 
     Ok(HttpResponse::Ok().body(format!(
         "published {}@{} {}",

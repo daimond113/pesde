@@ -11,11 +11,15 @@ pub const S3_SIGN_DURATION: Duration = Duration::from_secs(60 * 3);
 
 pub fn s3_name(name: &PackageName, version_id: &VersionId, is_readme: bool) -> String {
     format!(
-        "{}+{}{}",
-        name.escaped(),
-        version_id.escaped(),
-        if is_readme { "+readme.gz" } else { ".tar.gz" }
+        "{name}/{}/{}/{}.gz",
+        version_id.version(),
+        version_id.target(),
+        if is_readme { "readme" } else { "pkg.tar" },
     )
+}
+
+pub fn s3_doc_name(doc_hash: &str) -> String {
+    format!("doc/{}.gz", doc_hash)
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq)]

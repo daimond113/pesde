@@ -387,6 +387,59 @@ impl IndexConfig {
     }
 }
 
+/// An entry in a package's documentation
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum DocEntryKind {
+    /// A page in the documentation
+    Page {
+        /// The name of the page
+        name: String,
+        /// The hash of the page's content
+        hash: String,
+    },
+    /// A category in the documentation
+    Category {
+        /// The items in the section
+        #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+        items: BTreeSet<DocEntry>,
+        /// Whether this category is collapsed by default
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        collapsed: bool,
+    },
+}
+
+/// An entry in a package's documentation
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct DocEntry {
+    /// The label for this entry
+    pub label: String,
+    /// The position of this entry
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<usize>,
+    /// The kind of this entry
+    #[serde(flatten)]
+    pub kind: DocEntryKind,
+}
+
+impl Ord for DocEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self.position, other.position) {
+            (Some(l), Some(r)) => l.cmp(&r),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+        .then(self.label.cmp(&other.label))
+    }
+}
+
+impl PartialOrd for DocEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// The entry in a package's index file
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct IndexFileEntry {
@@ -408,6 +461,10 @@ pub struct IndexFileEntry {
     /// The repository of this package
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<url::Url>,
+
+    /// The documentation for this package
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub docs: BTreeSet<DocEntry>,
 
     /// The dependencies of this package
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

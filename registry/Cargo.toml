@@ -17,19 +17,26 @@ semver = "1.0.23"
 chrono = { version = "0.4.38", features = ["serde"] }
 url = "2.5.2"
 futures = "0.3.30"
+tempfile = "3.12.0"
 
 git2 = "0.19.0"
-gix = { version = "0.66.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "credentials"] }
+gix = { version = "0.66.0", default-features = false, features = [
+  "blocking-http-transport-reqwest-rust-tls",
+  "credentials",
+] }
 
-serde = "1.0.206"
-serde_json = "1.0.124"
-toml = "0.8.16"
+serde = "1.0.209"
+serde_json = "1.0.127"
+serde_yaml = "0.9.34"
+toml = "0.8.19"
+convert_case = "0.6.0"
+sha2 = "0.10.8"
 
 rusty-s3 = "0.5.0"
-reqwest = { version = "0.12.5", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12.7", features = ["json", "rustls-tls"] }
 
 tar = "0.4.41"
-flate2 = "1.0.30"
+flate2 = "1.0.33"
 
 log = "0.4.22"
 pretty_env_logger = "0.5.0"
@@ -38,4 +45,10 @@ sentry = "0.34.0"
 sentry-log = "0.34.0"
 sentry-actix = "0.34.0"
 
-pesde = { path = "..", features = ["roblox", "lune", "luau", "wally-compat", "git2"] }
+pesde = { path = "..", features = [
+  "roblox",
+  "lune",
+  "luau",
+  "wally-compat",
+  "git2",
+] }

@@ -6,16 +6,18 @@ use rusty_s3::{actions::GetObject, S3Action};
 use semver::Version;
 use serde::{Deserialize, Deserializer};
 
+use crate::{
+    error::Error,
+    package::{s3_doc_name, s3_name, PackageResponse, S3_SIGN_DURATION},
+    AppState,
+};
 use pesde::{
     manifest::target::TargetKind,
     names::PackageName,
-    source::{git_index::GitBasedSource, pesde::IndexFile},
-};
-
-use crate::{
-    error::Error,
-    package::{s3_name, PackageResponse, S3_SIGN_DURATION},
-    AppState,
+    source::{
+        git_index::GitBasedSource,
+        pesde::{DocEntryKind, IndexFile},
+    },
 };
 
 #[derive(Debug)]
@@ -62,10 +64,16 @@ impl<'de> Deserialize<'de> for TargetRequest {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Query {
+    doc: Option<String>,
+}
+
 pub async fn get_package_version(
     request: HttpRequest,
     app_state: web::Data<AppState>,
     path: web::Path<(PackageName, VersionRequest, TargetRequest)>,
+    query: web::Query<Query>,
 ) -> Result<impl Responder, Error> {
     let (name, version, target) = path.into_inner();
 
@@ -110,6 +118,36 @@ pub async fn get_package_version(
         return Ok(HttpResponse::NotFound().finish());
     };
 
+    if let Some(doc_name) = query.doc.as_deref() {
+        let hash = 'finder: {
+            let mut hash = entry.docs.iter().map(|doc| &doc.kind).collect::<Vec<_>>();
+            while let Some(doc) = hash.pop() {
+                match doc {
+                    DocEntryKind::Page { name, hash } if name == doc_name => {
+                        break 'finder hash.clone()
+                    }
+                    DocEntryKind::Category { items, .. } => {
+                        hash.extend(items.iter().map(|item| &item.kind))
+                    }
+                    _ => continue,
+                };
+            }
+
+            return Ok(HttpResponse::NotFound().finish());
+        };
+
+        let object_url = GetObject::new(
+            &app_state.s3_bucket,
+            Some(&app_state.s3_credentials),
+            &s3_doc_name(&hash),
+        )
+        .sign(S3_SIGN_DURATION);
+
+        return Ok(HttpResponse::TemporaryRedirect()
+            .append_header((LOCATION, object_url.as_str()))
+            .finish());
+    }
+
     let accept = request
         .headers()
         .get(ACCEPT)
@@ -133,7 +171,7 @@ pub async fn get_package_version(
             .finish());
     }
 
-    Ok(HttpResponse::Ok().json(PackageResponse {
+    let response = PackageResponse {
         name: name.to_string(),
         version: v_id.version().to_string(),
         targets,
@@ -142,5 +180,10 @@ pub async fn get_package_version(
         license: entry.license.clone().unwrap_or_default(),
         authors: entry.authors.clone(),
         repository: entry.repository.clone().map(|url| url.to_string()),
-    }))
+    };
+
+    let mut value = serde_json::to_value(response)?;
+    value["docs"] = serde_json::to_value(entry.docs.clone())?;
+
+    Ok(HttpResponse::Ok().json(value))
 }

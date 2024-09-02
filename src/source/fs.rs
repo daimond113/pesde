@@ -40,7 +40,7 @@ pub(crate) fn store_in_cas<P: AsRef<Path>>(
     if !cas_path.exists() {
         let mut file = std::fs::File::create(&cas_path)?;
         file.write_all(contents)?;
-        
+
         // prevent the CAS from being corrupted due to accidental modifications
         let mut permissions = file.metadata()?.permissions();
         permissions.set_readonly(true);
