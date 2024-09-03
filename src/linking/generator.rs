@@ -125,8 +125,12 @@ pub fn get_lib_require_path(
 }
 
 /// Generate a linking module for a binary
-pub fn generate_bin_linking_module(path: &str) -> String {
-    format!("return require({path})")
+pub fn generate_bin_linking_module<P: AsRef<Path>>(package_root: P, require_path: &str) -> String {
+    format!(
+        r#"_G.PESDE_ROOT = {:?}
+return require({require_path})"#,
+        package_root.as_ref().to_string_lossy()
+    )
 }
 
 /// Get the require path for a binary

@@ -139,14 +139,15 @@ impl Project {
                         version_id.version(),
                     );
 
-                    if let Some((alias, types)) = package_types
-                        .get(name)
-                        .and_then(|v| v.get(version_id))
-                        .and_then(|types| {
-                            node.node.direct.as_ref().map(|(alias, _)| (alias, types))
-                        })
-                    {
-                        if let Some(lib_file) = node.target.lib_path() {
+                    if let Some((alias, _)) = &node.node.direct.as_ref() {
+                        if let Some((lib_file, types)) =
+                            node.target.lib_path().and_then(|lib_file| {
+                                package_types
+                                    .get(name)
+                                    .and_then(|v| v.get(version_id))
+                                    .map(|types| (lib_file, types))
+                            })
+                        {
                             write_cas(
                                 base_folder.join(format!("{alias}.luau")),
                                 self.cas_dir(),
@@ -168,6 +169,7 @@ impl Project {
                                 base_folder.join(format!("{alias}.bin.luau")),
                                 self.cas_dir(),
                                 &generator::generate_bin_linking_module(
+                                    &container_folder,
                                     &generator::get_bin_require_path(
                                         &base_folder,
                                         bin_file,

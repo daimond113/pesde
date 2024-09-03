@@ -18,7 +18,7 @@ pub mod auth;
 pub mod commands;
 pub mod config;
 pub mod files;
-pub mod scripts;
+pub mod repos;
 pub mod version;
 
 pub const HOME_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));

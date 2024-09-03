@@ -1,11 +1,8 @@
-use std::{ffi::OsString, process::Command};
-
+use crate::cli::{config::read_config, VersionedPackageName};
 use anyhow::Context;
 use clap::Args;
-use semver::VersionReq;
-
-use crate::cli::{config::read_config, VersionedPackageName};
 use pesde::{
+    linking::generator::generate_bin_linking_module,
     manifest::target::TargetKind,
     names::PackageName,
     source::{
@@ -14,6 +11,8 @@ use pesde::{
     },
     Project,
 };
+use semver::VersionReq;
+use std::{env::current_dir, ffi::OsString, io::Write, process::Command};
 
 #[derive(Debug, Args)]
 pub struct ExecuteCommand {
@@ -72,15 +71,28 @@ impl ExecuteCommand {
         fs.write_to(tempdir.path(), project.cas_dir(), true)
             .context("failed to write package contents")?;
 
+        let mut caller =
+            tempfile::NamedTempFile::new_in(tempdir.path()).context("failed to create tempfile")?;
+        caller
+            .write_all(
+                generate_bin_linking_module(
+                    tempdir.path(),
+                    &format!("{:?}", bin_path.to_path(tempdir.path())),
+                )
+                .as_bytes(),
+            )
+            .context("failed to write to tempfile")?;
+
         let status = Command::new("lune")
             .arg("run")
-            .arg(bin_path.to_path(tempdir.path()))
+            .arg(caller.path())
             .arg("--")
             .args(&self.args)
-            .current_dir(project.package_dir())
+            .current_dir(current_dir().context("failed to get current directory")?)
             .status()
             .context("failed to run script")?;
 
+        drop(caller);
         drop(tempdir);
 
         std::process::exit(status.code().unwrap_or(1))

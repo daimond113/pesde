@@ -9,22 +9,17 @@ use pesde::{
     errors::ManifestReadError, names::PackageName, scripts::ScriptName, Project, DEFAULT_INDEX_NAME,
 };
 
-use crate::cli::config::read_config;
+use crate::cli::{config::read_config, HOME_DIR};
 
 #[derive(Debug, Args)]
 pub struct InitCommand {}
 
 fn script_contents(path: &Path) -> String {
     format!(
-        concat!(
-            r#"local process = require("@lune/process")   
+        r#"local process = require("@lune/process")   
 local home_dir = if process.os == "windows" then process.env.userprofile else process.env.HOME
 
-require(home_dir .. ""#,
-            "/.",
-            env!("CARGO_PKG_NAME"),
-            r#"/scripts/{}")"#,
-        ),
+require(home_dir .. "/{HOME_DIR}/scripts/{}"#,
         path.display()
     )
 }

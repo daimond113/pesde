@@ -14,7 +14,7 @@ use crate::cli::{
     auth::get_token,
     config::read_config,
     home_dir,
-    scripts::update_scripts_folder,
+    repos::update_repo_dependencies,
     version::{check_for_updates, current_version, get_or_download_version, max_installed_version},
     HOME_DIR,
 };
@@ -258,32 +258,18 @@ fn run() -> anyhow::Result<()> {
         std::process::exit(status.code().unwrap());
     }
 
-    match check_for_updates(&reqwest) {
-        Ok(_) => {}
-        Err(e) => {
-            println!(
-                "{}",
-                format!("failed to check for updates: {e}\n\n").red().bold()
-            );
-        }
-    }
-
-    match update_scripts_folder(&project) {
-        Ok(_) => {}
-        Err(e) => {
-            println!(
-                "{}",
-                format!("failed to update scripts: {e}\n\n").red().bold()
-            );
-        }
-    }
+    display_err(check_for_updates(&reqwest), " while checking for updates");
+    display_err(
+        update_repo_dependencies(&project),
+        " while updating repository dependencies",
+    );
 
     Cli::parse().subcommand.run(project, multi, reqwest)
 }
 
-fn main() {
-    if let Err(err) = run() {
-        eprintln!("{}: {err}\n", "error".red().bold());
+fn display_err(result: anyhow::Result<()>, prefix: &str) {
+    if let Err(err) = result {
+        eprintln!("{}: {err}\n", format!("error{prefix}").red().bold());
 
         let cause = err.chain().skip(1).collect::<Vec<_>>();
 
@@ -309,7 +295,14 @@ fn main() {
                 eprintln!("\n{}: not captured", "backtrace".yellow().bold());
             }
         }
+    }
+}
 
+fn main() {
+    let result = run();
+    let is_err = result.is_err();
+    display_err(result, "");
+    if is_err {
         std::process::exit(1);
     }
 }

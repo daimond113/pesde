@@ -43,7 +43,6 @@ fn bin_link_file(alias: &str) -> String {
     let prefix = String::new();
     #[cfg(unix)]
     let prefix = "#!/usr/bin/env -S lune run\n";
-    // TODO: reimplement workspace support in this
     format!(
         r#"{prefix}local process = require("@lune/process")
 local fs = require("@lune/fs")

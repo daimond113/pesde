@@ -1,15 +1,14 @@
-use std::{ffi::OsString, path::PathBuf, process::Command};
-
+use crate::cli::up_to_date_lockfile;
 use anyhow::Context;
 use clap::Args;
-use relative_path::RelativePathBuf;
-
-use crate::cli::up_to_date_lockfile;
 use pesde::{
+    linking::generator::generate_bin_linking_module,
     names::{PackageName, PackageNames},
     source::traits::PackageRef,
     Project, PACKAGES_CONTAINER_NAME,
 };
+use relative_path::RelativePathBuf;
+use std::{env::current_dir, ffi::OsString, io::Write, path::PathBuf, process::Command};
 
 #[derive(Debug, Args)]
 pub struct RunCommand {
@@ -25,14 +24,27 @@ pub struct RunCommand {
 impl RunCommand {
     pub fn run(self, project: Project) -> anyhow::Result<()> {
         let run = |path: PathBuf| {
+            let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
+            caller
+                .write_all(
+                    generate_bin_linking_module(
+                        project.package_dir(),
+                        &format!("{:?}", path.to_string_lossy()),
+                    )
+                    .as_bytes(),
+                )
+                .expect("failed to write to tempfile");
+
             let status = Command::new("lune")
                 .arg("run")
-                .arg(path)
+                .arg(caller.path())
                 .arg("--")
                 .args(&self.args)
-                .current_dir(project.package_dir())
+                .current_dir(current_dir().expect("failed to get current directory"))
                 .status()
                 .expect("failed to run script");
+
+            drop(caller);
 
             std::process::exit(status.code().unwrap_or(1))
         };
