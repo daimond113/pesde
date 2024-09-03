@@ -108,6 +108,7 @@ impl AddCommand {
                 DependencySpecifiers::Git(GitDependencySpecifier {
                     repo: url.clone(),
                     rev: rev.to_string(),
+                    path: None,
                 }),
             ),
         };

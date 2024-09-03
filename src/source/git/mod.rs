@@ -17,7 +17,7 @@ use crate::{
         PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
-    Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
+    Project, DEFAULT_INDEX_NAME, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 
 /// The Git package reference
@@ -83,7 +83,10 @@ impl PackageSource for GitPackageSource {
                     e,
                 )
             })?;
-        let tree = rev
+
+        // TODO: possibly use the search algorithm from src/main.rs to find the workspace root
+
+        let root_tree = rev
             .object()
             .map_err(|e| {
                 errors::ResolveError::ParseRevToObject(Box::new(self.repo_url.clone()), e)
@@ -92,6 +95,36 @@ impl PackageSource for GitPackageSource {
             .map_err(|e| {
                 errors::ResolveError::ParseObjectToTree(Box::new(self.repo_url.clone()), e)
             })?;
+
+        let tree = if let Some(path) = &specifier.path {
+            let mut buf = vec![];
+
+            root_tree
+                .lookup_entry_by_path(path.as_str(), &mut buf)
+                .map_err(|e| {
+                    errors::ResolveError::ReadTreeEntry(
+                        Box::new(self.repo_url.clone()),
+                        path.clone(),
+                        e,
+                    )
+                })?
+                .ok_or_else(|| {
+                    errors::ResolveError::NoEntryAtPath(
+                        Box::new(self.repo_url.clone()),
+                        path.clone(),
+                    )
+                })?
+                .object()
+                .map_err(|e| {
+                    errors::ResolveError::ParseEntryToObject(Box::new(self.repo_url.clone()), e)
+                })?
+                .peel_to_tree()
+                .map_err(|e| {
+                    errors::ResolveError::ParseObjectToTree(Box::new(self.repo_url.clone()), e)
+                })?
+        } else {
+            root_tree.clone()
+        };
 
         let manifest = match self
             .read_file([MANIFEST_FILE_NAME], project, Some(tree.clone()))
@@ -162,7 +195,54 @@ impl PackageSource for GitPackageSource {
                                 );
                             }
                             DependencySpecifiers::Git(_) => {}
-                            DependencySpecifiers::Workspace(_) => todo!(),
+                            DependencySpecifiers::Workspace(specifier) => {
+                                let lockfile = self
+                                    .read_file(
+                                        [LOCKFILE_FILE_NAME],
+                                        project,
+                                        Some(root_tree.clone()),
+                                    )
+                                    .map_err(|e| {
+                                        errors::ResolveError::ReadLockfile(
+                                            Box::new(self.repo_url.clone()),
+                                            e,
+                                        )
+                                    })?;
+
+                                let lockfile = match lockfile {
+                                    Some(l) => match toml::from_str::<crate::Lockfile>(&l) {
+                                        Ok(l) => l,
+                                        Err(e) => {
+                                            return Err(errors::ResolveError::DeserLockfile(
+                                                Box::new(self.repo_url.clone()),
+                                                e,
+                                            ))
+                                        }
+                                    },
+                                    None => {
+                                        return Err(errors::ResolveError::NoLockfile(Box::new(
+                                            self.repo_url.clone(),
+                                        )))
+                                    }
+                                };
+
+                                let path = lockfile
+                                    .workspace
+                                    .get(&specifier.name)
+                                    .ok_or_else(|| {
+                                        errors::ResolveError::NoPathForWorkspaceMember(
+                                            specifier.name.to_string(),
+                                            Box::new(self.repo_url.clone()),
+                                        )
+                                    })?
+                                    .clone();
+
+                                spec = DependencySpecifiers::Git(GitDependencySpecifier {
+                                    repo: self.repo_url.clone(),
+                                    rev: rev.to_string(),
+                                    path: Some(path),
+                                })
+                            }
                         }
 
                         Ok((alias, (spec, ty)))
@@ -177,7 +257,7 @@ impl PackageSource for GitPackageSource {
             #[cfg(feature = "wally-compat")]
             None => {
                 match self
-                    .read_file(["wally.toml"], project, Some(tree))
+                    .read_file(["wally.toml"], project, Some(tree.clone()))
                     .map_err(|e| {
                         errors::ResolveError::ReadManifest(Box::new(self.repo_url.clone()), e)
                     })? {
@@ -228,7 +308,7 @@ impl PackageSource for GitPackageSource {
                 version_id,
                 GitPackageRef {
                     repo: self.repo_url.clone(),
-                    rev: rev.to_string(),
+                    tree_id: tree.id.to_string(),
                     target,
                     new_structure,
                     dependencies,
@@ -247,15 +327,14 @@ impl PackageSource for GitPackageSource {
             .cas_dir
             .join("git_index")
             .join(hash(self.as_bytes()))
-            .join(&pkg_ref.rev)
-            .join(pkg_ref.target.to_string());
+            .join(&pkg_ref.tree_id);
 
         match std::fs::read_to_string(&index_file) {
             Ok(s) => {
                 log::debug!(
                     "using cached index file for package {}#{} {}",
                     pkg_ref.repo,
-                    pkg_ref.rev,
+                    pkg_ref.tree_id,
                     pkg_ref.target
                 );
 
@@ -310,10 +389,10 @@ impl PackageSource for GitPackageSource {
         let repo = gix::open(self.path(project))
             .map_err(|e| errors::DownloadError::OpenRepo(Box::new(self.repo_url.clone()), e))?;
         let rev = repo
-            .rev_parse_single(BStr::new(&pkg_ref.rev))
+            .rev_parse_single(BStr::new(&pkg_ref.tree_id))
             .map_err(|e| {
                 errors::DownloadError::ParseRev(
-                    pkg_ref.rev.clone(),
+                    pkg_ref.tree_id.clone(),
                     Box::new(self.repo_url.clone()),
                     e,
                 )
@@ -449,8 +528,8 @@ pub mod errors {
         #[error("error parsing object to tree for repository {0}")]
         ParseObjectToTree(Box<gix::Url>, #[source] gix::object::peel::to_kind::Error),
 
-        /// An error occurred reading repository file
-        #[error("error reading repository {0} file")]
+        /// An error occurred reading the manifest
+        #[error("error reading manifest of repository {0}")]
         ReadManifest(
             Box<gix::Url>,
             #[source] crate::source::git_index::errors::ReadFile,
@@ -478,6 +557,41 @@ pub mod errors {
         /// A Wally index was not found in the manifest
         #[error("wally index {0} not found in manifest for repository {1}")]
         WallyIndexNotFound(String, Box<gix::Url>),
+
+        /// An error occurred reading a tree entry
+        #[error("error reading tree entry for repository {0} at {1}")]
+        ReadTreeEntry(
+            Box<gix::Url>,
+            RelativePathBuf,
+            #[source] gix::object::find::existing::Error,
+        ),
+
+        /// No entry was found at the specified path
+        #[error("no entry found at path {1} in repository {0}")]
+        NoEntryAtPath(Box<gix::Url>, RelativePathBuf),
+
+        /// An error occurred parsing an entry to object
+        #[error("error parsing an entry to object for repository {0}")]
+        ParseEntryToObject(Box<gix::Url>, #[source] gix::object::find::existing::Error),
+
+        /// An error occurred reading the lockfile
+        #[error("error reading lockfile for repository {0}")]
+        ReadLockfile(
+            Box<gix::Url>,
+            #[source] crate::source::git_index::errors::ReadFile,
+        ),
+
+        /// An error occurred while deserializing the lockfile
+        #[error("error deserializing lockfile for repository {0}")]
+        DeserLockfile(Box<gix::Url>, #[source] toml::de::Error),
+
+        /// The repository is missing a lockfile
+        #[error("no lockfile found in repository {0}")]
+        NoLockfile(Box<gix::Url>),
+
+        /// No path for a workspace member was found in the lockfile
+        #[error("no path found for workspace member {0} in lockfile for repository {1}")]
+        NoPathForWorkspaceMember(String, Box<gix::Url>),
     }
 
     /// Errors that can occur when downloading a package from a Git package source

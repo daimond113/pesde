@@ -1,6 +1,5 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::{
     manifest::{target::TargetKind, DependencyType},
@@ -16,8 +15,8 @@ pub struct GitPackageRef {
         deserialize_with = "crate::util::deserialize_gix_url"
     )]
     pub repo: gix::Url,
-    /// The revision of the package
-    pub rev: String,
+    /// The id of the package's tree
+    pub tree_id: String,
     /// The dependencies of the package
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,

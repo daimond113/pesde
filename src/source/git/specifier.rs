@@ -1,6 +1,6 @@
-use std::fmt::Display;
-
+use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 
 use crate::source::DependencySpecifier;
 
@@ -15,6 +15,9 @@ pub struct GitDependencySpecifier {
     pub repo: gix::Url,
     /// The revision of the package
     pub rev: String,
+    /// The path of the package in the repository
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<RelativePathBuf>,
 }
 impl DependencySpecifier for GitDependencySpecifier {}
 
