@@ -1,4 +1,4 @@
-use crate::cli::IsUpToDate;
+use crate::cli::up_to_date_lockfile;
 use anyhow::Context;
 use clap::Args;
 use pesde::{names::PackageNames, patches::create_patch, source::version_id::VersionId, Project};
@@ -13,8 +13,8 @@ pub struct PatchCommitCommand {
 
 impl PatchCommitCommand {
     pub fn run(self, project: Project) -> anyhow::Result<()> {
-        let graph = if project.is_up_to_date(true)? {
-            project.deser_lockfile()?.graph
+        let graph = if let Some(lockfile) = up_to_date_lockfile(&project)? {
+            lockfile.graph
         } else {
             anyhow::bail!("outdated lockfile, please run the install command first")
         };

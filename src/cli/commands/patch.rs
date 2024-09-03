@@ -1,10 +1,13 @@
-use crate::cli::{IsUpToDate, VersionedPackageName};
+use crate::cli::{up_to_date_lockfile, VersionedPackageName};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use pesde::{
     patches::setup_patches_repo,
-    source::traits::{PackageRef, PackageSource},
+    source::{
+        refs::PackageRefs,
+        traits::{PackageRef, PackageSource},
+    },
     Project, MANIFEST_FILE_NAME,
 };
 
@@ -17,8 +20,8 @@ pub struct PatchCommand {
 
 impl PatchCommand {
     pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        let graph = if project.is_up_to_date(true)? {
-            project.deser_lockfile()?.graph
+        let graph = if let Some(lockfile) = up_to_date_lockfile(&project)? {
+            lockfile.graph
         } else {
             anyhow::bail!("outdated lockfile, please run the install command first")
         };
@@ -29,6 +32,11 @@ impl PatchCommand {
             .get(&name)
             .and_then(|versions| versions.get(&version_id))
             .context("package not found in graph")?;
+
+        if matches!(node.node.pkg_ref, PackageRefs::Workspace(_)) {
+            anyhow::bail!("cannot patch a workspace package")
+        }
+
         let source = node.node.pkg_ref.source();
 
         let directory = project

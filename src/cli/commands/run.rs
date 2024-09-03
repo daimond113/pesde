@@ -4,7 +4,7 @@ use anyhow::Context;
 use clap::Args;
 use relative_path::RelativePathBuf;
 
-use crate::cli::IsUpToDate;
+use crate::cli::up_to_date_lockfile;
 use pesde::{
     names::{PackageName, PackageNames},
     source::traits::PackageRef,
@@ -49,8 +49,8 @@ impl RunCommand {
         };
 
         if let Ok(pkg_name) = package_or_script.parse::<PackageName>() {
-            let graph = if project.is_up_to_date(true)? {
-                project.deser_lockfile()?.graph
+            let graph = if let Some(lockfile) = up_to_date_lockfile(&project)? {
+                lockfile.graph
             } else {
                 anyhow::bail!("outdated lockfile, please run the install command first")
             };

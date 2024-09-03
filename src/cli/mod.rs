@@ -1,7 +1,11 @@
+use crate::cli::auth::get_token;
 use anyhow::Context;
 use gix::bstr::BStr;
 use pesde::{
-    lockfile::DownloadedGraph, names::PackageNames, source::version_id::VersionId, Project,
+    lockfile::{DownloadedGraph, Lockfile},
+    names::{PackageName, PackageNames},
+    source::{version_id::VersionId, workspace::specifier::VersionType},
+    Project,
 };
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serializer};
 use std::{
@@ -9,8 +13,6 @@ use std::{
     fs::create_dir_all,
     str::FromStr,
 };
-
-use crate::cli::auth::get_token;
 
 pub mod auth;
 pub mod commands;
@@ -33,62 +35,58 @@ pub fn bin_dir() -> anyhow::Result<std::path::PathBuf> {
     Ok(bin_dir)
 }
 
-pub trait IsUpToDate {
-    fn is_up_to_date(&self, strict: bool) -> anyhow::Result<bool>;
-}
-
-impl IsUpToDate for Project {
-    fn is_up_to_date(&self, strict: bool) -> anyhow::Result<bool> {
-        let manifest = self.deser_manifest()?;
-        let lockfile = match self.deser_lockfile() {
-            Ok(lockfile) => lockfile,
-            Err(pesde::errors::LockfileReadError::Io(e))
-                if e.kind() == std::io::ErrorKind::NotFound =>
-            {
-                return Ok(false);
-            }
-            Err(e) => return Err(e.into()),
-        };
-
-        if manifest.overrides != lockfile.overrides {
-            log::debug!("overrides are different");
-            return Ok(false);
+pub fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Lockfile>> {
+    let manifest = project.deser_manifest()?;
+    let lockfile = match project.deser_lockfile() {
+        Ok(lockfile) => lockfile,
+        Err(pesde::errors::LockfileReadError::Io(e))
+            if e.kind() == std::io::ErrorKind::NotFound =>
+        {
+            return Ok(None);
         }
+        Err(e) => return Err(e.into()),
+    };
 
-        if manifest.target.kind() != lockfile.target {
-            log::debug!("target kind is different");
-            return Ok(false);
-        }
-
-        if !strict {
-            return Ok(true);
-        }
-
-        if manifest.name != lockfile.name || manifest.version != lockfile.version {
-            log::debug!("name or version is different");
-            return Ok(false);
-        }
-
-        let specs = lockfile
-            .graph
-            .into_iter()
-            .flat_map(|(_, versions)| versions)
-            .filter_map(|(_, node)| match node.node.direct {
-                Some((_, spec)) => Some((spec, node.node.ty)),
-                None => None,
-            })
-            .collect::<HashSet<_>>();
-
-        let same_dependencies = manifest
-            .all_dependencies()
-            .context("failed to get all dependencies")?
-            .iter()
-            .all(|(_, (spec, ty))| specs.contains(&(spec.clone(), *ty)));
-
-        log::debug!("dependencies are the same: {same_dependencies}");
-
-        Ok(same_dependencies)
+    if manifest.overrides != lockfile.overrides {
+        log::debug!("overrides are different");
+        return Ok(None);
     }
+
+    if manifest.target.kind() != lockfile.target {
+        log::debug!("target kind is different");
+        return Ok(None);
+    }
+
+    if manifest.name != lockfile.name || manifest.version != lockfile.version {
+        log::debug!("name or version is different");
+        return Ok(None);
+    }
+
+    let specs = lockfile
+        .graph
+        .iter()
+        .flat_map(|(_, versions)| versions)
+        .filter_map(|(_, node)| {
+            node.node
+                .direct
+                .as_ref()
+                .map(|(_, spec)| (spec, node.node.ty))
+        })
+        .collect::<HashSet<_>>();
+
+    let same_dependencies = manifest
+        .all_dependencies()
+        .context("failed to get all dependencies")?
+        .iter()
+        .all(|(_, (spec, ty))| specs.contains(&(spec, *ty)));
+
+    log::debug!("dependencies are the same: {same_dependencies}");
+
+    Ok(if same_dependencies {
+        Some(lockfile)
+    } else {
+        None
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -143,28 +141,37 @@ impl VersionedPackageName {
 }
 
 #[derive(Debug, Clone)]
-enum NamedVersionable<V: FromStr = VersionId, N: FromStr = PackageNames> {
+enum AnyPackageIdentifier<V: FromStr = VersionId, N: FromStr = PackageNames> {
     PackageName(VersionedPackageName<V, N>),
     Url((gix::Url, String)),
+    Workspace(VersionedPackageName<VersionType, PackageName>),
 }
 
 impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>
-    FromStr for NamedVersionable<V, N>
+    FromStr for AnyPackageIdentifier<V, N>
 {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.contains("gh#") {
-            let s = s.replacen("gh#", "https://github.com/", 1);
+        if let Some(s) = s.strip_prefix("gh#") {
+            let s = format!("https://github.com/{s}");
             let (repo, rev) = s.split_once('#').unwrap();
 
-            Ok(NamedVersionable::Url((repo.try_into()?, rev.to_string())))
+            Ok(AnyPackageIdentifier::Url((
+                repo.try_into()?,
+                rev.to_string(),
+            )))
+        } else if let Some(rest) = s.strip_prefix("workspace:") {
+            Ok(AnyPackageIdentifier::Workspace(rest.parse()?))
         } else if s.contains(':') {
             let (url, rev) = s.split_once('#').unwrap();
 
-            Ok(NamedVersionable::Url((url.try_into()?, rev.to_string())))
+            Ok(AnyPackageIdentifier::Url((
+                url.try_into()?,
+                rev.to_string(),
+            )))
         } else {
-            Ok(NamedVersionable::PackageName(s.parse()?))
+            Ok(AnyPackageIdentifier::PackageName(s.parse()?))
         }
     }
 }

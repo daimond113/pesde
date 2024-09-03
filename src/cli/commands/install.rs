@@ -1,6 +1,7 @@
-use crate::cli::{bin_dir, files::make_executable, IsUpToDate};
+use crate::cli::{bin_dir, files::make_executable};
 use anyhow::Context;
 use clap::Args;
+use colored::{ColoredString, Colorize};
 use indicatif::MultiProgress;
 use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project, MANIFEST_FILE_NAME};
 use relative_path::RelativePathBuf;
@@ -70,6 +71,15 @@ end
     )
 }
 
+#[cfg(feature = "patches")]
+const JOBS: u8 = 6;
+#[cfg(not(feature = "patches"))]
+const JOBS: u8 = 5;
+
+fn job(n: u8) -> ColoredString {
+    format!("[{n}/{JOBS}]").dimmed().bold()
+}
+
 impl InstallCommand {
     pub fn run(
         self,
@@ -85,12 +95,19 @@ impl InstallCommand {
 
         let lockfile = if self.unlocked {
             None
-        } else if project
-            .is_up_to_date(false)
-            .context("failed to check if project is up to date")?
-        {
+        } else {
             match project.deser_lockfile() {
-                Ok(lockfile) => Some(lockfile),
+                Ok(lockfile) => {
+                    if lockfile.overrides != manifest.overrides {
+                        log::debug!("overrides are different");
+                        None
+                    } else if lockfile.target != manifest.target.kind() {
+                        log::debug!("target kind is different");
+                        None
+                    } else {
+                        Some(lockfile)
+                    }
+                }
                 Err(pesde::errors::LockfileReadError::Io(e))
                     if e.kind() == std::io::ErrorKind::NotFound =>
                 {
@@ -98,9 +115,16 @@ impl InstallCommand {
                 }
                 Err(e) => return Err(e.into()),
             }
-        } else {
-            None
         };
+
+        println!(
+            "\n{}\n",
+            format!("[now installing {}]", manifest.name)
+                .bold()
+                .on_bright_black()
+        );
+
+        println!("{} ❌ removing current package folders", job(1));
 
         {
             let mut deleted_folders = HashSet::new();
@@ -137,6 +161,8 @@ impl InstallCommand {
                 .collect()
         });
 
+        println!("{} 📦 building dependency graph", job(2));
+
         let graph = project
             .dependency_graph(old_graph.as_ref(), &mut refreshed_sources)
             .context("failed to build dependency graph")?;
@@ -148,7 +174,7 @@ impl InstallCommand {
                         "{msg} {bar:40.208/166} {pos}/{len} {percent}% {elapsed_precise}",
                     )?,
                 )
-                .with_message(format!("downloading dependencies of {}", manifest.name)),
+                .with_message(format!("{} 📥 downloading dependencies", job(3))),
         );
         bar.enable_steady_tick(Duration::from_millis(100));
 
@@ -170,24 +196,18 @@ impl InstallCommand {
             }
         }
 
-        bar.finish_with_message(format!(
-            "finished downloading dependencies of {}",
-            manifest.name
-        ));
+        bar.finish_with_message(format!("{} 📥 downloaded dependencies", job(3),));
 
         let downloaded_graph = Arc::into_inner(downloaded_graph)
             .unwrap()
             .into_inner()
             .unwrap();
 
+        println!("{} 🗺️ linking dependencies", job(4));
+
         project
             .link_dependencies(&downloaded_graph)
             .context("failed to link dependencies")?;
-
-        #[cfg(feature = "patches")]
-        project
-            .apply_patches(&downloaded_graph)
-            .context("failed to apply patches")?;
 
         let bin_folder = bin_dir()?;
 
@@ -223,6 +243,17 @@ impl InstallCommand {
                 }
             }
         }
+
+        #[cfg(feature = "patches")]
+        {
+            println!("{} 🩹 applying patches", job(5));
+
+            project
+                .apply_patches(&downloaded_graph)
+                .context("failed to apply patches")?;
+        }
+
+        println!("{} 🧹 finishing up", job(JOBS));
 
         project
             .write_lockfile(Lockfile {

@@ -4,7 +4,7 @@ use anyhow::Context;
 use clap::Args;
 use semver::VersionReq;
 
-use crate::cli::{config::read_config, NamedVersionable, VersionedPackageName};
+use crate::cli::{config::read_config, AnyPackageIdentifier, VersionedPackageName};
 use pesde::{
     manifest::target::TargetKind,
     names::PackageNames,
@@ -13,6 +13,7 @@ use pesde::{
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
         traits::PackageSource,
+        workspace::WorkspacePackageSource,
         PackageSources,
     },
     Project, DEFAULT_INDEX_NAME,
@@ -22,7 +23,7 @@ use pesde::{
 pub struct AddCommand {
     /// The package name to add
     #[arg(index = 1)]
-    name: NamedVersionable<VersionReq>,
+    name: AnyPackageIdentifier<VersionReq>,
 
     /// The index in which to search for the package
     #[arg(short, long)]
@@ -52,7 +53,7 @@ impl AddCommand {
             .context("failed to read manifest")?;
 
         let (source, specifier) = match &self.name {
-            NamedVersionable::PackageName(versioned) => match &versioned {
+            AnyPackageIdentifier::PackageName(versioned) => match &versioned {
                 VersionedPackageName(PackageNames::Pesde(name), version) => {
                     let index = manifest
                         .indices
@@ -103,13 +104,22 @@ impl AddCommand {
                     (source, specifier)
                 }
             },
-            NamedVersionable::Url((url, rev)) => (
+            AnyPackageIdentifier::Url((url, rev)) => (
                 PackageSources::Git(GitPackageSource::new(url.clone())),
                 DependencySpecifiers::Git(GitDependencySpecifier {
                     repo: url.clone(),
                     rev: rev.to_string(),
                     path: None,
                 }),
+            ),
+            AnyPackageIdentifier::Workspace(VersionedPackageName(name, version)) => (
+                PackageSources::Workspace(WorkspacePackageSource),
+                DependencySpecifiers::Workspace(
+                    pesde::source::workspace::specifier::WorkspaceDependencySpecifier {
+                        name: name.clone(),
+                        version_type: version.unwrap_or_default(),
+                    },
+                ),
             ),
         };
         source
@@ -141,15 +151,16 @@ impl AddCommand {
             "dependencies"
         };
 
-        let alias = self.alias.unwrap_or_else(|| match self.name {
-            NamedVersionable::PackageName(versioned) => versioned.0.as_str().1.to_string(),
-            NamedVersionable::Url((url, _)) => url
+        let alias = self.alias.unwrap_or_else(|| match self.name.clone() {
+            AnyPackageIdentifier::PackageName(versioned) => versioned.0.as_str().1.to_string(),
+            AnyPackageIdentifier::Url((url, _)) => url
                 .path
                 .to_string()
                 .split('/')
                 .last()
                 .map(|s| s.to_string())
                 .unwrap_or(url.path.to_string()),
+            AnyPackageIdentifier::Workspace(versioned) => versioned.0.as_str().1.to_string(),
         });
 
         let field = &mut manifest[dependency_key]
@@ -198,7 +209,19 @@ impl AddCommand {
 
                 println!("added git {}#{} to {}", spec.repo, spec.rev, dependency_key);
             }
-            DependencySpecifiers::Workspace(_) => todo!(),
+            DependencySpecifiers::Workspace(spec) => {
+                field["workspace"] = toml_edit::value(spec.name.clone().to_string());
+                if let AnyPackageIdentifier::Workspace(versioned) = self.name {
+                    if let Some(version) = versioned.1 {
+                        field["version"] = toml_edit::value(version.to_string());
+                    }
+                }
+
+                println!(
+                    "added workspace {}@{} to {}",
+                    spec.name, spec.version_type, dependency_key
+                );
+            }
         }
 
         project
