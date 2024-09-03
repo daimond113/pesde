@@ -4,11 +4,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::{
+    manifest::target::TargetKind,
+    source::{IGNORED_DIRS, IGNORED_FILES},
+    util::hash,
+};
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-
-use crate::util::hash;
 
 /// A file system entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,8 +26,14 @@ pub enum FSEntry {
 
 /// A package's file system
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct PackageFS(pub(crate) BTreeMap<RelativePathBuf, FSEntry>);
+// don't need to differentiate between CAS and non-CAS, since non-CAS won't be serialized
+#[serde(untagged)]
+pub enum PackageFS {
+    /// A package stored in the CAS
+    CAS(BTreeMap<RelativePathBuf, FSEntry>),
+    /// A package that's to be copied
+    Copy(PathBuf, TargetKind),
+}
 
 pub(crate) fn store_in_cas<P: AsRef<Path>>(
     cas_dir: P,
@@ -92,6 +101,40 @@ pub(crate) fn store_reader_in_cas<P: AsRef<Path>>(
     Ok(hash)
 }
 
+fn copy_dir_all(
+    src: impl AsRef<Path>,
+    dst: impl AsRef<Path>,
+    target: TargetKind,
+) -> std::io::Result<()> {
+    std::fs::create_dir_all(&dst)?;
+    'outer: for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let file_name = entry.file_name().to_string_lossy().to_string();
+
+        if ty.is_dir() {
+            if IGNORED_DIRS.contains(&file_name.as_ref()) {
+                continue;
+            }
+
+            for other_target in TargetKind::VARIANTS {
+                if target.packages_folder(other_target) == file_name {
+                    continue 'outer;
+                }
+            }
+
+            copy_dir_all(entry.path(), dst.as_ref().join(&file_name), target)?;
+        } else {
+            if IGNORED_FILES.contains(&file_name.as_ref()) {
+                continue;
+            }
+
+            std::fs::copy(entry.path(), dst.as_ref().join(file_name))?;
+        }
+    }
+    Ok(())
+}
+
 impl PackageFS {
     /// Write the package to the given destination
     pub fn write_to<P: AsRef<Path>, Q: AsRef<Path>>(
@@ -100,27 +143,34 @@ impl PackageFS {
         cas_path: Q,
         link: bool,
     ) -> std::io::Result<()> {
-        for (path, entry) in &self.0 {
-            let path = path.to_path(destination.as_ref());
+        match self {
+            PackageFS::CAS(entries) => {
+                for (path, entry) in entries {
+                    let path = path.to_path(destination.as_ref());
 
-            match entry {
-                FSEntry::File(hash) => {
-                    if let Some(parent) = path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
+                    match entry {
+                        FSEntry::File(hash) => {
+                            if let Some(parent) = path.parent() {
+                                std::fs::create_dir_all(parent)?;
+                            }
 
-                    let (prefix, rest) = hash.split_at(2);
-                    let cas_file_path = cas_path.as_ref().join(prefix).join(rest);
+                            let (prefix, rest) = hash.split_at(2);
+                            let cas_file_path = cas_path.as_ref().join(prefix).join(rest);
 
-                    if link {
-                        std::fs::hard_link(cas_file_path, path)?;
-                    } else {
-                        std::fs::copy(cas_file_path, path)?;
+                            if link {
+                                std::fs::hard_link(cas_file_path, path)?;
+                            } else {
+                                std::fs::copy(cas_file_path, path)?;
+                            }
+                        }
+                        FSEntry::Directory => {
+                            std::fs::create_dir_all(path)?;
+                        }
                     }
                 }
-                FSEntry::Directory => {
-                    std::fs::create_dir_all(path)?;
-                }
+            }
+            PackageFS::Copy(src, target) => {
+                copy_dir_all(src, destination, *target)?;
             }
         }
 
@@ -133,6 +183,10 @@ impl PackageFS {
         file_hash: H,
         cas_path: P,
     ) -> Option<String> {
+        if !matches!(self, PackageFS::CAS(_)) {
+            return None;
+        }
+
         let (prefix, rest) = file_hash.as_ref().split_at(2);
         let cas_file_path = cas_path.as_ref().join(prefix).join(rest);
         std::fs::read_to_string(cas_file_path).ok()

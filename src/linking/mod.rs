@@ -44,8 +44,13 @@ impl Project {
 
                 let container_folder = node.node.container_folder(
                     &self
-                        .path()
-                        .join(node.node.base_folder(manifest.target.kind(), true))
+                        .package_dir()
+                        .join(
+                            manifest
+                                .target
+                                .kind()
+                                .packages_folder(&node.node.pkg_ref.target_kind()),
+                        )
                         .join(PACKAGES_CONTAINER_NAME),
                     name,
                     version_id.version(),
@@ -99,7 +104,7 @@ impl Project {
 
                     execute_script(
                         ScriptName::RobloxSyncConfigGenerator,
-                        &script_path.to_path(self.path()),
+                        &script_path.to_path(self.package_dir()),
                         std::iter::once(container_folder.as_os_str())
                             .chain(build_files.iter().map(OsStr::new)),
                         self,
@@ -117,56 +122,64 @@ impl Project {
 
         for (name, versions) in graph {
             for (version_id, node) in versions {
-                let base_folder = create_and_canonicalize(
-                    self.path().join(
-                        self.path()
-                            .join(node.node.base_folder(manifest.target.kind(), true)),
-                    ),
-                )?;
-                let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
+                let node_container_folder = {
+                    let base_folder = create_and_canonicalize(
+                        self.package_dir().join(
+                            manifest
+                                .target
+                                .kind()
+                                .packages_folder(&node.node.pkg_ref.target_kind()),
+                        ),
+                    )?;
+                    let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
-                let container_folder = node.node.container_folder(
-                    &packages_container_folder,
-                    name,
-                    version_id.version(),
-                );
+                    let container_folder = node.node.container_folder(
+                        &packages_container_folder,
+                        name,
+                        version_id.version(),
+                    );
 
-                if let Some((alias, types)) = package_types
-                    .get(name)
-                    .and_then(|v| v.get(version_id))
-                    .and_then(|types| node.node.direct.as_ref().map(|(alias, _)| (alias, types)))
-                {
-                    if let Some(lib_file) = node.target.lib_path() {
-                        write_cas(
-                            base_folder.join(format!("{alias}.luau")),
-                            self.cas_dir(),
-                            &generator::generate_lib_linking_module(
-                                &generator::get_lib_require_path(
-                                    &node.target.kind(),
-                                    &base_folder,
-                                    lib_file,
-                                    &container_folder,
-                                    node.node.pkg_ref.use_new_structure(),
+                    if let Some((alias, types)) = package_types
+                        .get(name)
+                        .and_then(|v| v.get(version_id))
+                        .and_then(|types| {
+                            node.node.direct.as_ref().map(|(alias, _)| (alias, types))
+                        })
+                    {
+                        if let Some(lib_file) = node.target.lib_path() {
+                            write_cas(
+                                base_folder.join(format!("{alias}.luau")),
+                                self.cas_dir(),
+                                &generator::generate_lib_linking_module(
+                                    &generator::get_lib_require_path(
+                                        &node.target.kind(),
+                                        &base_folder,
+                                        lib_file,
+                                        &container_folder,
+                                        node.node.pkg_ref.use_new_structure(),
+                                    ),
+                                    types,
                                 ),
-                                types,
-                            ),
-                        )?;
-                    };
+                            )?;
+                        };
 
-                    if let Some(bin_file) = node.target.bin_path() {
-                        write_cas(
-                            base_folder.join(format!("{alias}.bin.luau")),
-                            self.cas_dir(),
-                            &generator::generate_bin_linking_module(
-                                &generator::get_bin_require_path(
-                                    &base_folder,
-                                    bin_file,
-                                    &container_folder,
+                        if let Some(bin_file) = node.target.bin_path() {
+                            write_cas(
+                                base_folder.join(format!("{alias}.bin.luau")),
+                                self.cas_dir(),
+                                &generator::generate_bin_linking_module(
+                                    &generator::get_bin_require_path(
+                                        &base_folder,
+                                        bin_file,
+                                        &container_folder,
+                                    ),
                                 ),
-                            ),
-                        )?;
+                            )?;
+                        }
                     }
-                }
+
+                    container_folder
+                };
 
                 for (dependency_name, (dependency_version_id, dependency_alias)) in
                     &node.node.dependencies
@@ -185,9 +198,19 @@ impl Project {
                         continue;
                     };
 
+                    let packages_container_folder = create_and_canonicalize(
+                        self.package_dir().join(
+                            node.node
+                                .pkg_ref
+                                .target_kind()
+                                .packages_folder(&dependency_node.node.pkg_ref.target_kind()),
+                        ),
+                    )?
+                    .join(PACKAGES_CONTAINER_NAME);
+
                     let linker_folder = create_and_canonicalize(
-                        container_folder
-                            .join(dependency_node.node.base_folder(node.target.kind(), false)),
+                        node_container_folder
+                            .join(node.node.base_folder(dependency_node.target.kind())),
                     )?;
 
                     write_cas(
@@ -203,7 +226,7 @@ impl Project {
                                     dependency_name,
                                     dependency_version_id.version(),
                                 ),
-                                node.node.pkg_ref.use_new_structure(),
+                                dependency_node.node.pkg_ref.use_new_structure(),
                             ),
                             package_types
                                 .get(dependency_name)

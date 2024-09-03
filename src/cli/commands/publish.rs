@@ -7,13 +7,17 @@ use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use reqwest::StatusCode;
+use semver::VersionReq;
 use tempfile::tempfile;
 
 use pesde::{
     manifest::target::Target,
     scripts::ScriptName,
     source::{
-        pesde::PesdePackageSource, specifiers::DependencySpecifiers, traits::PackageSource,
+        pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
+        specifiers::DependencySpecifiers,
+        traits::PackageSource,
+        workspace::{specifier::VersionType, WorkspacePackageSource},
         IGNORED_DIRS, IGNORED_FILES,
     },
     Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
@@ -52,9 +56,10 @@ impl PublishCommand {
         #[cfg(feature = "roblox")]
         let mut display_build_files: Vec<String> = vec![];
 
-        let (lib_path, bin_path) = (
+        let (lib_path, bin_path, target_kind) = (
             manifest.target.lib_path().cloned(),
             manifest.target.bin_path().cloned(),
+            manifest.target.kind(),
         );
 
         #[cfg(feature = "roblox")]
@@ -124,7 +129,7 @@ impl PublishCommand {
         for (name, path) in [("lib path", lib_path), ("bin path", bin_path)] {
             let Some(export_path) = path else { continue };
 
-            let export_path = export_path.to_path(project.path());
+            let export_path = export_path.to_path(project.package_dir());
             if !export_path.exists() {
                 anyhow::bail!("{name} points to non-existent file");
             }
@@ -146,7 +151,7 @@ impl PublishCommand {
             }
 
             let first_part = export_path
-                .strip_prefix(project.path())
+                .strip_prefix(project.package_dir())
                 .context(format!("{name} not within project directory"))?
                 .components()
                 .next()
@@ -177,7 +182,7 @@ impl PublishCommand {
         }
 
         for included_name in &manifest.includes {
-            let included_path = project.path().join(included_name);
+            let included_path = project.package_dir().join(included_name);
 
             if !included_path.exists() {
                 anyhow::bail!("included file {included_name} does not exist");
@@ -216,7 +221,7 @@ impl PublishCommand {
                     continue;
                 }
 
-                let build_file_path = project.path().join(build_file);
+                let build_file_path = project.package_dir().join(build_file);
 
                 if !build_file_path.exists() {
                     anyhow::bail!("build file {build_file} does not exist");
@@ -280,6 +285,45 @@ impl PublishCommand {
                 }
                 DependencySpecifiers::Git(_) => {
                     has_git = true;
+                }
+                DependencySpecifiers::Workspace(spec) => {
+                    let pkg_ref = WorkspacePackageSource
+                        .resolve(spec, &project, target_kind)
+                        .context("failed to resolve workspace package")?
+                        .1
+                        .pop_last()
+                        .context("no versions found for workspace package")?
+                        .1;
+
+                    let manifest = pkg_ref
+                        .path
+                        .to_path(
+                            project
+                                .workspace_dir()
+                                .context("failed to get workspace directory")?,
+                        )
+                        .join(MANIFEST_FILE_NAME);
+                    let manifest = std::fs::read_to_string(&manifest)
+                        .context("failed to read workspace package manifest")?;
+                    let manifest = toml::from_str::<pesde::manifest::Manifest>(&manifest)
+                        .context("failed to parse workspace package manifest")?;
+
+                    *specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
+                        name: spec.name.clone(),
+                        version: match spec.version_type {
+                            VersionType::Wildcard => VersionReq::STAR,
+                            v => VersionReq::parse(&format!("{v}{}", manifest.version))
+                                .context(format!("failed to parse version for {v}"))?,
+                        },
+                        index: Some(
+                            manifest
+                                .indices
+                                .get(DEFAULT_INDEX_NAME)
+                                .context("missing default index in workspace package manifest")?
+                                .to_string(),
+                        ),
+                        target: Some(manifest.target.kind()),
+                    });
                 }
             }
         }

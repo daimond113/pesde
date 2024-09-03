@@ -1,12 +1,14 @@
-use std::{fs::create_dir_all, path::PathBuf};
-
 use anyhow::Context;
 use clap::Parser;
 use colored::Colorize;
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
-
 use pesde::{AuthConfig, Project, MANIFEST_FILE_NAME};
+use std::{
+    collections::HashSet,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+};
 
 use crate::cli::{
     auth::get_token,
@@ -67,23 +69,6 @@ fn get_root(path: &std::path::Path) -> PathBuf {
 
 fn run() -> anyhow::Result<()> {
     let cwd = std::env::current_dir().expect("failed to get current working directory");
-    let project_root_dir = 'finder: {
-        let mut project_root = cwd.clone();
-
-        while project_root.components().count() > 1 {
-            if project_root.join(MANIFEST_FILE_NAME).exists() {
-                break 'finder project_root;
-            }
-
-            if let Some(parent) = project_root.parent() {
-                project_root = parent.to_path_buf();
-            } else {
-                break;
-            }
-        }
-
-        cwd.clone()
-    };
 
     #[cfg(windows)]
     'scripts: {
@@ -105,16 +90,84 @@ fn run() -> anyhow::Result<()> {
             break 'scripts;
         }
 
+        // the bin script will search for the project root itself, so we do that to ensure
+        // consistency across platforms, since the script is executed using a shebang
+        // on unix systems
         let status = std::process::Command::new("lune")
             .arg("run")
             .arg(exe.with_extension(""))
+            .arg("--")
             .args(std::env::args_os().skip(1))
-            .current_dir(project_root_dir)
+            .current_dir(cwd)
             .status()
             .expect("failed to run lune");
 
         std::process::exit(status.code().unwrap());
     }
+
+    let (project_root_dir, project_workspace_dir) = 'finder: {
+        let mut current_path = Some(cwd.clone());
+        let mut project_root = None::<PathBuf>;
+        let mut workspace_dir = None::<PathBuf>;
+
+        fn get_workspace_members(path: &Path) -> anyhow::Result<HashSet<PathBuf>> {
+            let manifest = std::fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+                .context("failed to read manifest")?;
+            let manifest: pesde::manifest::Manifest =
+                toml::from_str(&manifest).context("failed to parse manifest")?;
+
+            if manifest.workspace_members.is_empty() {
+                return Ok(HashSet::new());
+            }
+
+            manifest
+                .workspace_members
+                .iter()
+                .map(|member| path.join(member))
+                .map(|p| glob::glob(&p.to_string_lossy()))
+                .collect::<Result<Vec<_>, _>>()
+                .context("invalid glob patterns")?
+                .into_iter()
+                .flat_map(|paths| paths.into_iter())
+                .collect::<Result<HashSet<_>, _>>()
+                .context("failed to expand glob patterns")
+        }
+
+        while let Some(path) = current_path {
+            current_path = path.parent().map(|p| p.to_path_buf());
+
+            if !path.join(MANIFEST_FILE_NAME).exists() {
+                continue;
+            }
+
+            match (project_root.as_ref(), workspace_dir.as_ref()) {
+                (Some(project_root), Some(workspace_dir)) => {
+                    break 'finder (project_root.clone(), Some(workspace_dir.clone()));
+                }
+
+                (Some(project_root), None) => {
+                    if get_workspace_members(&path)?.contains(project_root) {
+                        workspace_dir = Some(path);
+                    }
+                }
+
+                (None, None) => {
+                    if get_workspace_members(&path)?.contains(&cwd) {
+                        // initializing a new member of a workspace
+                        break 'finder (cwd, Some(path));
+                    } else {
+                        project_root = Some(path);
+                    }
+                }
+
+                (None, Some(_)) => unreachable!(),
+            }
+        }
+
+        // we mustn't expect the project root to be found, as that would
+        // disable the ability to run pesde in a non-project directory (for example to init it)
+        (project_root.unwrap_or_else(|| cwd.clone()), workspace_dir)
+    };
 
     let multi = {
         let logger = pretty_env_logger::formatted_builder()
@@ -143,6 +196,7 @@ fn run() -> anyhow::Result<()> {
 
     let project = Project::new(
         project_root_dir,
+        project_workspace_dir,
         data_dir,
         cas_dir,
         AuthConfig::new()

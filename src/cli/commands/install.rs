@@ -1,16 +1,14 @@
+use crate::cli::{bin_dir, files::make_executable, IsUpToDate};
+use anyhow::Context;
+use clap::Args;
+use indicatif::MultiProgress;
+use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project, MANIFEST_FILE_NAME};
+use relative_path::RelativePathBuf;
 use std::{
     collections::{BTreeSet, HashSet},
     sync::Arc,
     time::Duration,
 };
-
-use anyhow::Context;
-use clap::Args;
-use indicatif::MultiProgress;
-
-use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project, MANIFEST_FILE_NAME};
-
-use crate::cli::{bin_dir, files::make_executable, IsUpToDate};
 
 #[derive(Debug, Args)]
 pub struct InstallCommand {
@@ -44,7 +42,7 @@ fn bin_link_file(alias: &str) -> String {
     let prefix = String::new();
     #[cfg(unix)]
     let prefix = "#!/usr/bin/env -S lune run\n";
-
+    // TODO: reimplement workspace support in this
     format!(
         r#"{prefix}local process = require("@lune/process")
 local fs = require("@lune/fs")
@@ -113,7 +111,7 @@ impl InstallCommand {
                 if deleted_folders.insert(folder.to_string()) {
                     log::debug!("deleting the {folder} folder");
 
-                    if let Some(e) = std::fs::remove_dir_all(project.path().join(&folder))
+                    if let Some(e) = std::fs::remove_dir_all(project.package_dir().join(&folder))
                         .err()
                         .filter(|e| e.kind() != std::io::ErrorKind::NotFound)
                     {
@@ -150,7 +148,7 @@ impl InstallCommand {
                         "{msg} {bar:40.208/166} {pos}/{len} {percent}% {elapsed_precise}",
                     )?,
                 )
-                .with_message("downloading dependencies"),
+                .with_message(format!("downloading dependencies of {}", manifest.name)),
         );
         bar.enable_steady_tick(Duration::from_millis(100));
 
@@ -172,7 +170,10 @@ impl InstallCommand {
             }
         }
 
-        bar.finish_with_message("finished downloading dependencies");
+        bar.finish_with_message(format!(
+            "finished downloading dependencies of {}",
+            manifest.name
+        ));
 
         let downloaded_graph = Arc::into_inner(downloaded_graph)
             .unwrap()
@@ -229,6 +230,46 @@ impl InstallCommand {
                 version: manifest.version,
                 target: manifest.target.kind(),
                 overrides: manifest.overrides,
+                workspace: match project.workspace_dir() {
+                    Some(_) => {
+                        // this might seem counterintuitive, but remember that the workspace
+                        // is the package_dir when the user isn't in a member package
+                        Default::default()
+                    }
+                    None => project
+                        .workspace_members(project.package_dir())
+                        .context("failed to get workspace members")?
+                        .into_iter()
+                        .map(|(path, manifest)| {
+                            (
+                                manifest.name,
+                                RelativePathBuf::from_path(
+                                    path.strip_prefix(project.package_dir()).unwrap(),
+                                )
+                                .unwrap(),
+                            )
+                        })
+                        .map(|(name, path)| {
+                            InstallCommand {
+                                threads: self.threads,
+                                unlocked: self.unlocked,
+                            }
+                            .run(
+                                Project::new(
+                                    path.to_path(project.package_dir()),
+                                    Some(project.package_dir()),
+                                    project.data_dir(),
+                                    project.cas_dir(),
+                                    project.auth_config().clone(),
+                                ),
+                                multi.clone(),
+                                reqwest.clone(),
+                            )
+                            .map(|_| (name, path))
+                        })
+                        .collect::<Result<_, _>>()
+                        .context("failed to install workspace member's dependencies")?,
+                },
 
                 graph: downloaded_graph,
             })

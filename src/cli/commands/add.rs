@@ -197,6 +197,7 @@ impl AddCommand {
 
                 println!("added git {}#{} to {}", spec.repo, spec.rev, dependency_key);
             }
+            DependencySpecifiers::Workspace(_) => todo!(),
         }
 
         project

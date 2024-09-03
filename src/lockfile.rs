@@ -10,6 +10,7 @@ use crate::{
         version_id::VersionId,
     },
 };
+use relative_path::RelativePathBuf;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -36,10 +37,9 @@ pub struct DependencyGraphNode {
 }
 
 impl DependencyGraphNode {
-    /// Returns the folder to store dependencies in for this package
-    pub fn base_folder(&self, project_target: TargetKind, is_top_level: bool) -> String {
-        if is_top_level || self.pkg_ref.use_new_structure() {
-            project_target.packages_folder(&self.pkg_ref.target_kind())
+    pub(crate) fn base_folder(&self, project_target: TargetKind) -> String {
+        if self.pkg_ref.use_new_structure() {
+            self.pkg_ref.target_kind().packages_folder(&project_target)
         } else {
             "..".to_string()
         }
@@ -62,8 +62,7 @@ impl DependencyGraphNode {
 /// A graph of `DependencyGraphNode`s
 pub type DependencyGraph = Graph<DependencyGraphNode>;
 
-/// Inserts a node into a graph
-pub fn insert_node(
+pub(crate) fn insert_node(
     graph: &mut DependencyGraph,
     name: PackageNames,
     version: VersionId,
@@ -127,6 +126,10 @@ pub struct Lockfile {
     /// The overrides of the package
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
+
+    /// The workspace members
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub workspace: BTreeMap<PackageName, RelativePathBuf>,
 
     /// The graph of dependencies
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

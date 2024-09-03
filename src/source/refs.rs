@@ -16,6 +16,8 @@ pub enum PackageRefs {
     Wally(crate::source::wally::pkg_ref::WallyPackageRef),
     /// A Git package reference
     Git(crate::source::git::pkg_ref::GitPackageRef),
+    /// A workspace package reference
+    Workspace(crate::source::workspace::pkg_ref::WorkspacePackageRef),
 }
 
 impl PackageRefs {
@@ -37,6 +39,7 @@ impl PackageRef for PackageRefs {
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(pkg_ref) => pkg_ref.dependencies(),
             PackageRefs::Git(pkg_ref) => pkg_ref.dependencies(),
+            PackageRefs::Workspace(pkg_ref) => pkg_ref.dependencies(),
         }
     }
 
@@ -46,6 +49,7 @@ impl PackageRef for PackageRefs {
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(pkg_ref) => pkg_ref.use_new_structure(),
             PackageRefs::Git(pkg_ref) => pkg_ref.use_new_structure(),
+            PackageRefs::Workspace(pkg_ref) => pkg_ref.use_new_structure(),
         }
     }
 
@@ -55,6 +59,7 @@ impl PackageRef for PackageRefs {
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(pkg_ref) => pkg_ref.target_kind(),
             PackageRefs::Git(pkg_ref) => pkg_ref.target_kind(),
+            PackageRefs::Workspace(pkg_ref) => pkg_ref.target_kind(),
         }
     }
 
@@ -64,6 +69,7 @@ impl PackageRef for PackageRefs {
             #[cfg(feature = "wally-compat")]
             PackageRefs::Wally(pkg_ref) => pkg_ref.source(),
             PackageRefs::Git(pkg_ref) => pkg_ref.source(),
+            PackageRefs::Workspace(pkg_ref) => pkg_ref.source(),
         }
     }
 }

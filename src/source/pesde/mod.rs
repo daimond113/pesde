@@ -194,7 +194,7 @@ impl PackageSource for PesdePackageSource {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-        project_target: TargetKind,
+        package_target: TargetKind,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (scope, name) = specifier.name.as_str();
         let string = match self.read_file([scope, name], project, None) {
@@ -221,7 +221,7 @@ impl PackageSource for PesdePackageSource {
                     specifier.version.matches(version)
                         && specifier
                             .target
-                            .map_or(project_target.is_compatible_with(target), |t| t == *target)
+                            .map_or(package_target.is_compatible_with(target), |t| t == *target)
                 })
                 .map(|(id, entry)| {
                     let version = id.version().clone();
@@ -331,7 +331,7 @@ impl PackageSource for PesdePackageSource {
             entries.insert(path, FSEntry::File(hash));
         }
 
-        let fs = PackageFS(entries);
+        let fs = PackageFS::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
             std::fs::create_dir_all(parent)?;

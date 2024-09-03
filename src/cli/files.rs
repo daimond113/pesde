@@ -1,7 +1,6 @@
 use std::path::Path;
 
 pub fn make_executable<P: AsRef<Path>>(_path: P) -> anyhow::Result<()> {
-    // TODO: test if this actually works
     #[cfg(unix)]
     {
         use anyhow::Context;

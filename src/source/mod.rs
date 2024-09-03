@@ -29,6 +29,8 @@ pub mod version_id;
 /// The Wally package source
 #[cfg(feature = "wally-compat")]
 pub mod wally;
+/// The workspace package source
+pub mod workspace;
 
 /// Files that will not be stored when downloading a package. These are only files which break pesde's functionality, or are meaningless and possibly heavy (e.g. `.DS_Store`)
 pub const IGNORED_FILES: &[&str] = &["foreman.toml", "aftman.toml", "rokit.toml", ".DS_Store"];
@@ -49,6 +51,8 @@ pub enum PackageSources {
     Wally(wally::WallyPackageSource),
     /// A Git package source
     Git(git::GitPackageSource),
+    /// A workspace package source
+    Workspace(workspace::WorkspacePackageSource),
 }
 
 impl PackageSource for PackageSources {
@@ -64,6 +68,7 @@ impl PackageSource for PackageSources {
             #[cfg(feature = "wally-compat")]
             PackageSources::Wally(source) => source.refresh(project).map_err(Into::into),
             PackageSources::Git(source) => source.refresh(project).map_err(Into::into),
+            PackageSources::Workspace(source) => source.refresh(project).map_err(Into::into),
         }
     }
 
@@ -71,11 +76,11 @@ impl PackageSource for PackageSources {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-        project_target: TargetKind,
+        package_target: TargetKind,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         match (self, specifier) {
             (PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => source
-                .resolve(specifier, project, project_target)
+                .resolve(specifier, project, package_target)
                 .map(|(name, results)| {
                     (
                         name,
@@ -89,7 +94,7 @@ impl PackageSource for PackageSources {
 
             #[cfg(feature = "wally-compat")]
             (PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => source
-                .resolve(specifier, project, project_target)
+                .resolve(specifier, project, package_target)
                 .map(|(name, results)| {
                     (
                         name,
@@ -102,7 +107,7 @@ impl PackageSource for PackageSources {
                 .map_err(Into::into),
 
             (PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => source
-                .resolve(specifier, project, project_target)
+                .resolve(specifier, project, package_target)
                 .map(|(name, results)| {
                     (
                         name,
@@ -113,6 +118,23 @@ impl PackageSource for PackageSources {
                     )
                 })
                 .map_err(Into::into),
+
+            (PackageSources::Workspace(source), DependencySpecifiers::Workspace(specifier)) => {
+                source
+                    .resolve(specifier, project, package_target)
+                    .map(|(name, results)| {
+                        (
+                            name,
+                            results
+                                .into_iter()
+                                .map(|(version, pkg_ref)| {
+                                    (version, PackageRefs::Workspace(pkg_ref))
+                                })
+                                .collect(),
+                        )
+                    })
+                    .map_err(Into::into)
+            }
 
             _ => Err(errors::ResolveError::Mismatch),
         }
@@ -138,6 +160,10 @@ impl PackageSource for PackageSources {
                 .download(pkg_ref, project, reqwest)
                 .map_err(Into::into),
 
+            (PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => source
+                .download(pkg_ref, project, reqwest)
+                .map_err(Into::into),
+
             _ => Err(errors::DownloadError::Mismatch),
         }
     }
@@ -154,6 +180,10 @@ pub mod errors {
         /// A git-based package source failed to refresh
         #[error("error refreshing pesde package source")]
         GitBased(#[from] crate::source::git_index::errors::RefreshError),
+
+        /// A workspace package source failed to refresh
+        #[error("error refreshing workspace package source")]
+        Workspace(#[from] crate::source::workspace::errors::RefreshError),
     }
 
     /// Errors that can occur when resolving a package
@@ -176,6 +206,10 @@ pub mod errors {
         /// A Git package source failed to resolve
         #[error("error resolving git package")]
         Git(#[from] crate::source::git::errors::ResolveError),
+
+        /// A workspace package source failed to resolve
+        #[error("error resolving workspace package")]
+        Workspace(#[from] crate::source::workspace::errors::ResolveError),
     }
 
     /// Errors that can occur when downloading a package
@@ -198,5 +232,9 @@ pub mod errors {
         /// A Git package source failed to download
         #[error("error downloading git package")]
         Git(#[from] crate::source::git::errors::DownloadError),
+
+        /// A workspace package source failed to download
+        #[error("error downloading workspace package")]
+        Workspace(#[from] crate::source::workspace::errors::DownloadError),
     }
 }

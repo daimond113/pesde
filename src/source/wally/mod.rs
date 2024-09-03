@@ -94,7 +94,7 @@ impl PackageSource for WallyPackageSource {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-        _project_target: TargetKind,
+        _package_target: TargetKind,
     ) -> Result<crate::source::ResolveResult<Self::Ref>, Self::ResolveError> {
         let (scope, name) = specifier.name.as_str();
         let string = match self.read_file([scope, name], project, None) {
@@ -238,7 +238,7 @@ impl PackageSource for WallyPackageSource {
             entries.insert(path, FSEntry::File(hash));
         }
 
-        let fs = PackageFS(entries);
+        let fs = PackageFS::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
             std::fs::create_dir_all(parent).map_err(errors::DownloadError::WriteIndex)?;

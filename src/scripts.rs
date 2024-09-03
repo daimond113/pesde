@@ -45,7 +45,7 @@ pub(crate) fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
         .arg(script_path.as_os_str())
         .arg("--")
         .args(args)
-        .current_dir(project.path())
+        .current_dir(project.package_dir())
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

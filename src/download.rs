@@ -44,8 +44,13 @@ impl Project {
 
                 let container_folder = node.container_folder(
                     &self
-                        .path()
-                        .join(node.base_folder(manifest.target.kind(), true))
+                        .package_dir()
+                        .join(
+                            manifest
+                                .target
+                                .kind()
+                                .packages_folder(&node.pkg_ref.target_kind()),
+                        )
                         .join(PACKAGES_CONTAINER_NAME),
                     name,
                     version_id.version(),

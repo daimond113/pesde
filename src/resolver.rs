@@ -40,6 +40,11 @@ impl Project {
                         continue;
                     };
 
+                    if matches!(specifier, DependencySpecifiers::Workspace(_)) {
+                        // workspace dependencies must always be resolved brand new
+                        continue;
+                    }
+
                     if all_specifiers
                         .remove(&(specifier.clone(), node.ty))
                         .is_none()
@@ -180,6 +185,9 @@ impl Project {
                 DependencySpecifiers::Git(specifier) => PackageSources::Git(
                     crate::source::git::GitPackageSource::new(specifier.repo.clone()),
                 ),
+                DependencySpecifiers::Workspace(_) => {
+                    PackageSources::Workspace(crate::source::workspace::WorkspacePackageSource)
+                }
             };
 
             if refreshed_sources.insert(source.clone()) {

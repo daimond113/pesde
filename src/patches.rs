@@ -1,4 +1,7 @@
-use crate::{lockfile::DownloadedGraph, Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME};
+use crate::{
+    lockfile::DownloadedGraph, source::traits::PackageRef, Project, MANIFEST_FILE_NAME,
+    PACKAGES_CONTAINER_NAME,
+};
 use git2::{ApplyLocation, ApplyOptions, Diff, DiffFormat, DiffLineType, Repository, Signature};
 use relative_path::RelativePathBuf;
 use std::{fs::read, path::Path};
@@ -73,7 +76,7 @@ impl Project {
 
         for (name, versions) in manifest.patches {
             for (version_id, patch_path) in versions {
-                let patch_path = patch_path.to_path(self.path());
+                let patch_path = patch_path.to_path(self.package_dir());
                 let patch = Diff::from_buffer(&read(&patch_path).map_err(|e| {
                     errors::ApplyPatchesError::PatchReadError(patch_path.clone(), e)
                 })?)?;
@@ -87,8 +90,13 @@ impl Project {
 
                 let container_folder = node.node.container_folder(
                     &self
-                        .path()
-                        .join(node.node.base_folder(manifest.target.kind(), true))
+                        .package_dir()
+                        .join(
+                            manifest
+                                .target
+                                .kind()
+                                .packages_folder(&node.node.pkg_ref.target_kind()),
+                        )
                         .join(PACKAGES_CONTAINER_NAME),
                     &name,
                     version_id.version(),

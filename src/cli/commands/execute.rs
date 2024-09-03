@@ -77,7 +77,7 @@ impl ExecuteCommand {
             .arg(bin_path.to_path(tempdir.path()))
             .arg("--")
             .args(&self.args)
-            .current_dir(project.path())
+            .current_dir(project.package_dir())
             .status()
             .context("failed to run script")?;
 

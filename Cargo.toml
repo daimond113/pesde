@@ -43,14 +43,14 @@ required-features = ["bin"]
 uninlined_format_args = "warn"
 
 [dependencies]
-serde = { version = "1.0.204", features = ["derive"] }
+serde = { version = "1.0.209", features = ["derive"] }
 toml = "0.8.19"
 serde_with = "3.9.0"
 gix = { version = "0.66.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials"] }
 semver = { version = "1.0.23", features = ["serde"] }
-reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls", "blocking"] }
+reqwest = { version = "0.12.7", default-features = false, features = ["rustls-tls", "blocking"] }
 tar = "0.4.41"
-flate2 = "1.0.31"
+flate2 = "1.0.33"
 pathdiff = "0.2.1"
 relative-path = { version = "1.9.3", features = ["serde"] }
 log = "0.4.22"
@@ -63,23 +63,24 @@ url = { version = "2.5.2", features = ["serde"] }
 chrono = { version = "0.4.38", features = ["serde"] }
 sha2 = "0.10.8"
 tempfile = "3.12.0"
+glob = "0.3.1"
 
 # TODO: remove this when gitoxide adds support for: committing, pushing, adding
 git2 = { version = "0.19.0", optional = true }
 
-zip = { version = "2.1.6", optional = true }
-serde_json = { version = "1.0.122", optional = true }
+zip = { version = "2.2.0", optional = true }
+serde_json = { version = "1.0.127", optional = true }
 
 anyhow = { version = "1.0.86", optional = true }
 open = { version = "5.3.0", optional = true }
-keyring = { version = "3.0.5", features = ["crypto-rust", "windows-native", "apple-native", "sync-secret-service"], optional = true }
+keyring = { version = "3.2.1", features = ["crypto-rust", "windows-native", "apple-native", "sync-secret-service"], optional = true }
 colored = { version = "2.1.0", optional = true }
 toml_edit = { version = "0.22.20", optional = true }
-clap = { version = "4.5.13", features = ["derive"], optional = true }
+clap = { version = "4.5.16", features = ["derive"], optional = true }
 dirs = { version = "5.0.1", optional = true }
 pretty_env_logger = { version = "0.5.0", optional = true }
 indicatif = { version = "0.17.8", optional = true }
-indicatif-log-bridge = { version = "0.2.2", optional = true }
+indicatif-log-bridge = { version = "0.2.3", optional = true }
 inquire = { version = "0.7.5", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]

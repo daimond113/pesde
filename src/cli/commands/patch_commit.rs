@@ -55,7 +55,7 @@ impl PatchCommitCommand {
         let patch = create_patch(&self.directory).context("failed to create patch")?;
         std::fs::remove_dir_all(self.directory).context("failed to remove patch directory")?;
 
-        let patches_dir = project.path().join("patches");
+        let patches_dir = project.package_dir().join("patches");
         std::fs::create_dir_all(&patches_dir).context("failed to create patches directory")?;
 
         let patch_file_name = format!("{}-{}.patch", name.escaped(), version_id.escaped(),);

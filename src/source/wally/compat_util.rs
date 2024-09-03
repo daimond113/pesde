@@ -33,7 +33,7 @@ pub(crate) fn find_lib_path(
 
     let result = execute_script(
         ScriptName::SourcemapGenerator,
-        &script_path.to_path(&project.path),
+        &script_path.to_path(&project.package_dir),
         [package_dir],
         project,
         true,

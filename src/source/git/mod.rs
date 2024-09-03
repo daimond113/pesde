@@ -162,6 +162,7 @@ impl PackageSource for GitPackageSource {
                                 );
                             }
                             DependencySpecifiers::Git(_) => {}
+                            DependencySpecifiers::Workspace(_) => todo!(),
                         }
 
                         Ok((alias, (spec, ty)))
@@ -262,21 +263,26 @@ impl PackageSource for GitPackageSource {
                     errors::DownloadError::DeserializeFile(Box::new(self.repo_url.clone()), e)
                 })?;
 
-                let manifest = match fs.0.get(&RelativePathBuf::from(MANIFEST_FILE_NAME)) {
-                    Some(FSEntry::File(hash)) => match fs
-                        .read_file(hash, project.cas_dir())
-                        .map(|m| toml::de::from_str::<Manifest>(&m))
-                    {
-                        Some(Ok(m)) => Some(m),
-                        Some(Err(e)) => {
-                            return Err(errors::DownloadError::DeserializeFile(
-                                Box::new(self.repo_url.clone()),
-                                e,
-                            ))
+                let manifest = match &fs {
+                    PackageFS::CAS(entries) => {
+                        match entries.get(&RelativePathBuf::from(MANIFEST_FILE_NAME)) {
+                            Some(FSEntry::File(hash)) => match fs
+                                .read_file(hash, project.cas_dir())
+                                .map(|m| toml::de::from_str::<Manifest>(&m))
+                            {
+                                Some(Ok(m)) => Some(m),
+                                Some(Err(e)) => {
+                                    return Err(errors::DownloadError::DeserializeFile(
+                                        Box::new(self.repo_url.clone()),
+                                        e,
+                                    ))
+                                }
+                                None => None,
+                            },
+                            _ => None,
                         }
-                        None => None,
-                    },
-                    _ => None,
+                    }
+                    _ => unreachable!("the package fs should be CAS"),
                 };
 
                 let target = match manifest {
@@ -380,7 +386,7 @@ impl PackageSource for GitPackageSource {
             None => None,
         };
 
-        let fs = PackageFS(entries);
+        let fs = PackageFS::CAS(entries);
 
         let target = match manifest {
             Some(manifest) => manifest.target,

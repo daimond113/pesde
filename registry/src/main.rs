@@ -1,5 +1,3 @@
-use std::{env::current_dir, fs::create_dir_all, sync::Mutex};
-
 use actix_cors::Cors;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::{
@@ -9,6 +7,7 @@ use actix_web::{
 };
 use log::info;
 use rusty_s3::{Bucket, Credentials, UrlStyle};
+use std::{env::current_dir, fs::create_dir_all, path::PathBuf, sync::Mutex};
 
 use pesde::{
     source::{pesde::PesdePackageSource, traits::PackageSource},
@@ -78,6 +77,7 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
 
     let project = Project::new(
         &cwd,
+        None::<PathBuf>,
         data_dir.join("project"),
         &cwd,
         AuthConfig::new().with_git_credentials(Some(gix::sec::identity::Account {

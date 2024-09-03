@@ -133,7 +133,9 @@ impl InitCommand {
             .prompt()
             .unwrap()
         {
-            let folder = project.path().join(concat!(".", env!("CARGO_PKG_NAME")));
+            let folder = project
+                .package_dir()
+                .join(concat!(".", env!("CARGO_PKG_NAME")));
             std::fs::create_dir_all(&folder).context("failed to create scripts folder")?;
 
             std::fs::write(

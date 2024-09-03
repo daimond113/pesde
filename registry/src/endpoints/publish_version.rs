@@ -298,13 +298,6 @@ pub async fn publish_package(
                     {
                         return Err(Error::InvalidArchive);
                     }
-
-                    let (dep_scope, dep_name) = specifier.name.as_str();
-                    match source.read_file([dep_scope, dep_name], &app_state.project, None) {
-                        Ok(Some(_)) => {}
-                        Ok(None) => return Err(Error::InvalidArchive),
-                        Err(e) => return Err(e.into()),
-                    }
                 }
                 DependencySpecifiers::Wally(specifier) => {
                     if !config.wally_allowed {
@@ -324,6 +317,10 @@ pub async fn publish_package(
                     if !config.git_allowed {
                         return Err(Error::InvalidArchive);
                     }
+                }
+                DependencySpecifiers::Workspace(_) => {
+                    // workspace specifiers are to be transformed into Pesde specifiers by the sender
+                    return Err(Error::InvalidArchive);
                 }
             }
         }

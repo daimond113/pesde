@@ -35,7 +35,10 @@ impl OutdatedCommand {
                     continue;
                 };
 
-                if matches!(specifier, DependencySpecifiers::Git(_)) {
+                if matches!(
+                    specifier,
+                    DependencySpecifiers::Git(_) | DependencySpecifiers::Workspace(_)
+                ) {
                     continue;
                 }
 
@@ -55,6 +58,7 @@ impl OutdatedCommand {
                             spec.version = VersionReq::STAR;
                         }
                         DependencySpecifiers::Git(_) => {}
+                        DependencySpecifiers::Workspace(_) => {}
                     };
                 }
 
