@@ -1,25 +1,30 @@
-use crate::cli::{bin_dir, files::make_executable};
+use crate::cli::{
+    bin_dir, download_graph, files::make_executable, run_on_workspace_members, up_to_date_lockfile,
+};
 use anyhow::Context;
 use clap::Args;
 use colored::{ColoredString, Colorize};
 use indicatif::MultiProgress;
-use pesde::{lockfile::Lockfile, manifest::target::TargetKind, Project, MANIFEST_FILE_NAME};
-use relative_path::RelativePathBuf;
-use std::{
-    collections::{BTreeSet, HashSet},
-    sync::Arc,
-    time::Duration,
+use pesde::{
+    lockfile::Lockfile,
+    manifest::{target::TargetKind, DependencyType},
+    Project, MANIFEST_FILE_NAME,
 };
+use std::collections::{BTreeSet, HashSet};
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Copy, Clone)]
 pub struct InstallCommand {
     /// The amount of threads to use for downloading
     #[arg(short, long, default_value_t = 6, value_parser = clap::value_parser!(u64).range(1..=128))]
     threads: u64,
 
-    /// Whether to ignore the lockfile, refreshing it
-    #[arg(short, long)]
-    pub unlocked: bool,
+    /// Whether to error on changes in the lockfile
+    #[arg(long)]
+    locked: bool,
+
+    /// Whether to not install dev dependencies
+    #[arg(long)]
+    prod: bool,
 }
 
 fn bin_link_file(alias: &str) -> String {
@@ -92,8 +97,16 @@ impl InstallCommand {
             .deser_manifest()
             .context("failed to read manifest")?;
 
-        let lockfile = if self.unlocked {
-            None
+        let lockfile = if self.locked {
+            match up_to_date_lockfile(&project)? {
+                None => {
+                    anyhow::bail!(
+                        "lockfile is out of sync, run `{} install` to update it",
+                        env!("CARGO_BIN_NAME")
+                    );
+                }
+                file => file,
+            }
         } else {
             match project.deser_lockfile() {
                 Ok(lockfile) => {
@@ -166,51 +179,45 @@ impl InstallCommand {
             .dependency_graph(old_graph.as_ref(), &mut refreshed_sources)
             .context("failed to build dependency graph")?;
 
-        let bar = multi.add(
-            indicatif::ProgressBar::new(graph.values().map(|versions| versions.len() as u64).sum())
-                .with_style(
-                    indicatif::ProgressStyle::default_bar().template(
-                        "{msg} {bar:40.208/166} {pos}/{len} {percent}% {elapsed_precise}",
-                    )?,
-                )
-                .with_message(format!("{} 📥 downloading dependencies", job(3))),
-        );
-        bar.enable_steady_tick(Duration::from_millis(100));
+        let downloaded_graph = download_graph(
+            &project,
+            &mut refreshed_sources,
+            &graph,
+            &multi,
+            &reqwest,
+            self.threads as usize,
+            self.prod,
+            true,
+            format!("{} 📥 downloading dependencies", job(3)),
+            format!("{} 📥 downloaded dependencies", job(3)),
+        )?;
 
-        let (rx, downloaded_graph) = project
-            .download_graph(
-                &graph,
-                &mut refreshed_sources,
-                &reqwest,
-                self.threads as usize,
-            )
-            .context("failed to download dependencies")?;
-
-        while let Ok(result) = rx.recv() {
-            bar.inc(1);
-
-            match result {
-                Ok(()) => {}
-                Err(e) => return Err(e.into()),
-            }
-        }
-
-        bar.finish_with_message(format!("{} 📥 downloaded dependencies", job(3),));
-
-        let downloaded_graph = Arc::into_inner(downloaded_graph)
-            .unwrap()
-            .into_inner()
-            .unwrap();
+        let filtered_graph = if self.prod {
+            downloaded_graph
+                .clone()
+                .into_iter()
+                .map(|(n, v)| {
+                    (
+                        n,
+                        v.into_iter()
+                            .filter(|(_, n)| n.node.ty != DependencyType::Dev)
+                            .collect(),
+                    )
+                })
+                .collect()
+        } else {
+            downloaded_graph.clone()
+        };
 
         println!("{} 🗺️ linking dependencies", job(4));
 
         project
-            .link_dependencies(&downloaded_graph)
+            .link_dependencies(&filtered_graph)
             .context("failed to link dependencies")?;
 
         let bin_folder = bin_dir()?;
 
-        for versions in downloaded_graph.values() {
+        for versions in filtered_graph.values() {
             for node in versions.values() {
                 if node.target.bin_path().is_none() {
                     continue;
@@ -248,7 +255,7 @@ impl InstallCommand {
             println!("{} 🩹 applying patches", job(5));
 
             project
-                .apply_patches(&downloaded_graph)
+                .apply_patches(&filtered_graph)
                 .context("failed to apply patches")?;
         }
 
@@ -260,48 +267,12 @@ impl InstallCommand {
                 version: manifest.version,
                 target: manifest.target.kind(),
                 overrides: manifest.overrides,
-                workspace: match project.workspace_dir() {
-                    Some(_) => {
-                        // this might seem counterintuitive, but remember that the workspace
-                        // is the package_dir when the user isn't in a member package
-                        Default::default()
-                    }
-                    None => project
-                        .workspace_members(project.package_dir())
-                        .context("failed to get workspace members")?
-                        .into_iter()
-                        .map(|(path, manifest)| {
-                            (
-                                manifest.name,
-                                RelativePathBuf::from_path(
-                                    path.strip_prefix(project.package_dir()).unwrap(),
-                                )
-                                .unwrap(),
-                            )
-                        })
-                        .map(|(name, path)| {
-                            InstallCommand {
-                                threads: self.threads,
-                                unlocked: self.unlocked,
-                            }
-                            .run(
-                                Project::new(
-                                    path.to_path(project.package_dir()),
-                                    Some(project.package_dir()),
-                                    project.data_dir(),
-                                    project.cas_dir(),
-                                    project.auth_config().clone(),
-                                ),
-                                multi.clone(),
-                                reqwest.clone(),
-                            )
-                            .map(|_| (name, path))
-                        })
-                        .collect::<Result<_, _>>()
-                        .context("failed to install workspace member's dependencies")?,
-                },
 
                 graph: downloaded_graph,
+
+                workspace: run_on_workspace_members(&project, |project| {
+                    self.run(project, multi.clone(), reqwest.clone())
+                })?,
             })
             .context("failed to write lockfile")?;
 

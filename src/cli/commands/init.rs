@@ -19,8 +19,8 @@ fn script_contents(path: &Path) -> String {
         r#"local process = require("@lune/process")   
 local home_dir = if process.os == "windows" then process.env.userprofile else process.env.HOME
 
-require(home_dir .. "/{HOME_DIR}/scripts/{}"#,
-        path.display()
+require(home_dir .. {:?})"#,
+        format!("/{HOME_DIR}/scripts/{}", path.display())
     )
 }
 

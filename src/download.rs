@@ -1,5 +1,6 @@
 use crate::{
     lockfile::{DependencyGraph, DownloadedDependencyGraphNode, DownloadedGraph},
+    manifest::DependencyType,
     source::{
         traits::{PackageRef, PackageSource},
         PackageSources,
@@ -27,6 +28,8 @@ impl Project {
         refreshed_sources: &mut HashSet<PackageSources>,
         reqwest: &reqwest::blocking::Client,
         threads: usize,
+        prod: bool,
+        write: bool,
     ) -> Result<MultithreadDownloadJob, errors::DownloadGraphError> {
         let manifest = self.deser_manifest()?;
         let downloaded_graph: MultithreadedGraph = Arc::new(Mutex::new(Default::default()));
@@ -83,14 +86,20 @@ impl Project {
 
                     log::debug!("downloaded {name}@{version_id}");
 
-                    match fs.write_to(container_folder, project.cas_dir(), true) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            tx.send(Err(errors::DownloadGraphError::WriteFailed(e)))
-                                .unwrap();
-                            return;
+                    if write {
+                        if !prod || node.ty != DependencyType::Dev {
+                            match fs.write_to(container_folder, project.cas_dir(), true) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tx.send(Err(errors::DownloadGraphError::WriteFailed(e)))
+                                        .unwrap();
+                                    return;
+                                }
+                            };
+                        } else {
+                            log::debug!("skipping writing {name}@{version_id} to disk, dev dependency in prod mode");
                         }
-                    };
+                    }
 
                     let mut downloaded_graph = downloaded_graph.lock().unwrap();
                     downloaded_graph

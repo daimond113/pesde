@@ -4,7 +4,6 @@ use crate::{
     names::PackageNames,
     source::{
         pesde::PesdePackageSource,
-        refs::PackageRefs,
         specifiers::DependencySpecifiers,
         traits::{PackageRef, PackageSource},
         version_id::VersionId,
@@ -244,8 +243,8 @@ impl Project {
                     target_version_id
                 );
 
-                if matches!(already_resolved.pkg_ref, PackageRefs::Git(_))
-                    != matches!(pkg_ref, PackageRefs::Git(_))
+                if std::mem::discriminant(&already_resolved.pkg_ref)
+                    != std::mem::discriminant(pkg_ref)
                 {
                     log::warn!(
                         "resolved package {name}@{target_version_id} has a different source than the previously resolved one, this may cause issues",

@@ -85,7 +85,10 @@ impl Project {
                     .get(&name)
                     .and_then(|versions| versions.get(&version_id))
                 else {
-                    return Err(errors::ApplyPatchesError::PackageNotFound(name, version_id));
+                    log::warn!(
+                        "patch for {name}@{version_id} not applied because it is not in the graph"
+                    );
+                    continue;
                 };
 
                 let container_folder = node.node.container_folder(
@@ -155,7 +158,6 @@ impl Project {
 pub mod errors {
     use std::path::PathBuf;
 
-    use crate::{names::PackageNames, source::version_id::VersionId};
     use thiserror::Error;
 
     /// Errors that can occur when applying patches
@@ -177,9 +179,5 @@ pub mod errors {
         /// Error removing the .git directory
         #[error("error removing .git directory")]
         GitDirectoryRemovalError(PathBuf, #[source] std::io::Error),
-
-        /// Package not found in the graph
-        #[error("package {0}@{1} not found in graph")]
-        PackageNotFound(PackageNames, VersionId),
     }
 }

@@ -1,17 +1,22 @@
 use crate::cli::auth::get_token;
 use anyhow::Context;
 use gix::bstr::BStr;
+use indicatif::MultiProgress;
 use pesde::{
-    lockfile::{DownloadedGraph, Lockfile},
+    lockfile::{DependencyGraph, DownloadedGraph, Lockfile},
     names::{PackageName, PackageNames},
-    source::{version_id::VersionId, workspace::specifier::VersionType},
+    source::{version_id::VersionId, workspace::specifier::VersionType, PackageSources},
     Project,
 };
+use relative_path::RelativePathBuf;
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serializer};
 use std::{
     collections::{BTreeMap, HashSet},
     fs::create_dir_all,
+    path::PathBuf,
     str::FromStr,
+    sync::Arc,
+    time::Duration,
 };
 
 pub mod auth;
@@ -23,13 +28,13 @@ pub mod version;
 
 pub const HOME_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));
 
-pub fn home_dir() -> anyhow::Result<std::path::PathBuf> {
+pub fn home_dir() -> anyhow::Result<PathBuf> {
     Ok(dirs::home_dir()
         .context("failed to get home directory")?
         .join(HOME_DIR))
 }
 
-pub fn bin_dir() -> anyhow::Result<std::path::PathBuf> {
+pub fn bin_dir() -> anyhow::Result<PathBuf> {
     let bin_dir = home_dir()?.join("bin");
     create_dir_all(&bin_dir).context("failed to create bin folder")?;
     Ok(bin_dir)
@@ -202,4 +207,91 @@ pub fn deserialize_string_url_map<'de, D: Deserializer<'de>>(
                 .map_err(serde::de::Error::custom)
         })
         .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn download_graph(
+    project: &Project,
+    refreshed_sources: &mut HashSet<PackageSources>,
+    graph: &DependencyGraph,
+    multi: &MultiProgress,
+    reqwest: &reqwest::blocking::Client,
+    threads: usize,
+    prod: bool,
+    write: bool,
+    progress_msg: String,
+    finish_msg: String,
+) -> anyhow::Result<DownloadedGraph> {
+    let bar = multi.add(
+        indicatif::ProgressBar::new(graph.values().map(|versions| versions.len() as u64).sum())
+            .with_style(
+                indicatif::ProgressStyle::default_bar()
+                    .template("{msg} {bar:40.208/166} {pos}/{len} {percent}% {elapsed_precise}")?,
+            )
+            .with_message(progress_msg),
+    );
+    bar.enable_steady_tick(Duration::from_millis(100));
+
+    let (rx, downloaded_graph) = project
+        .download_graph(graph, refreshed_sources, reqwest, threads, prod, write)
+        .context("failed to download dependencies")?;
+
+    while let Ok(result) = rx.recv() {
+        bar.inc(1);
+
+        match result {
+            Ok(()) => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    bar.finish_with_message(finish_msg);
+
+    Ok(Arc::into_inner(downloaded_graph)
+        .unwrap()
+        .into_inner()
+        .unwrap())
+}
+
+pub fn shift_project_dir(project: &Project, pkg_dir: PathBuf) -> Project {
+    Project::new(
+        pkg_dir,
+        Some(project.package_dir()),
+        project.data_dir(),
+        project.cas_dir(),
+        project.auth_config().clone(),
+    )
+}
+
+pub fn run_on_workspace_members(
+    project: &Project,
+    f: impl Fn(Project) -> anyhow::Result<()>,
+) -> anyhow::Result<BTreeMap<PackageName, RelativePathBuf>> {
+    Ok(match project.workspace_dir() {
+        Some(_) => {
+            // this might seem counterintuitive, but remember that the workspace
+            // is the package_dir when the user isn't in a member package
+            Default::default()
+        }
+        None => project
+            .workspace_members(project.package_dir())
+            .context("failed to get workspace members")?
+            .into_iter()
+            .map(|(path, manifest)| {
+                (
+                    manifest.name,
+                    RelativePathBuf::from_path(path.strip_prefix(project.package_dir()).unwrap())
+                        .unwrap(),
+                )
+            })
+            .map(|(name, path)| {
+                f(shift_project_dir(
+                    project,
+                    path.to_path(project.package_dir()),
+                ))
+                .map(|_| (name, path))
+            })
+            .collect::<Result<_, _>>()
+            .context("failed to install workspace member's dependencies")?,
+    })
 }

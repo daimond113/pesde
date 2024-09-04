@@ -17,6 +17,7 @@ mod publish;
 mod run;
 mod self_install;
 mod self_upgrade;
+mod update;
 
 #[derive(Debug, clap::Subcommand)]
 pub enum Subcommand {
@@ -57,8 +58,8 @@ pub enum Subcommand {
     /// Adds a dependency to the project
     Add(add::AddCommand),
 
-    /// Updates the project's lockfile. note: this command is just an alias for `install --unlocked`
-    Update(install::InstallCommand),
+    /// Updates the project's lockfile. Run install to apply changes
+    Update(update::UpdateCommand),
 
     /// Checks for outdated dependencies
     Outdated(outdated::OutdatedCommand),
@@ -90,10 +91,7 @@ impl Subcommand {
             Subcommand::PatchCommit(patch_commit) => patch_commit.run(project),
             Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(reqwest),
             Subcommand::Add(add) => add.run(project),
-            Subcommand::Update(mut update) => {
-                update.unlocked = true;
-                update.run(project, multi, reqwest)
-            }
+            Subcommand::Update(update) => update.run(project, multi, reqwest),
             Subcommand::Outdated(outdated) => outdated.run(project),
             #[cfg(any(feature = "lune", feature = "luau"))]
             Subcommand::Execute(execute) => execute.run(project, reqwest),
