@@ -85,7 +85,7 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
             password: benv!(required "GITHUB_PAT"),
         })),
     );
-    let source = PesdePackageSource::new(env!("CARGO_PKG_REPOSITORY").try_into().unwrap());
+    let source = PesdePackageSource::new(benv!(required "INDEX_REPO_URL").try_into().unwrap());
     source.refresh(&project).expect("failed to refresh source");
 
     let (search_reader, search_writer) = make_search(&project, &source);

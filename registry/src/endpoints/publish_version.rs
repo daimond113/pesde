@@ -288,10 +288,10 @@ pub async fn publish_package(
                 DependencySpecifiers::Pesde(specifier) => {
                     if specifier
                         .index
-                        .as_ref()
-                        .filter(|index| match index.parse::<url::Url>() {
+                        .as_deref()
+                        .filter(|index| match gix::Url::try_from(*index) {
                             Ok(_) if config.other_registries_allowed => true,
-                            Ok(url) => url == env!("CARGO_PKG_REPOSITORY").parse().unwrap(),
+                            Ok(url) => url == *source.repo_url(),
                             Err(_) => false,
                         })
                         .is_none()
