@@ -6,7 +6,6 @@ use actix_web::{
     web, App, HttpServer,
 };
 use log::info;
-use rusty_s3::{Bucket, Credentials, UrlStyle};
 use std::{env::current_dir, fs::create_dir_all, path::PathBuf, sync::Mutex};
 
 use pesde::{
@@ -14,21 +13,35 @@ use pesde::{
     AuthConfig, Project,
 };
 
-use crate::{auth::UserIdExtractor, search::make_search};
+use crate::{
+    auth::{get_auth_from_env, Auth, UserIdExtractor},
+    search::make_search,
+    storage::{get_storage_from_env, Storage},
+};
 
 mod auth;
 mod endpoints;
 mod error;
 mod package;
 mod search;
+mod storage;
+
+pub fn make_reqwest() -> reqwest::Client {
+    reqwest::ClientBuilder::new()
+        .user_agent(concat!(
+            env!("CARGO_PKG_NAME"),
+            "/",
+            env!("CARGO_PKG_VERSION")
+        ))
+        .build()
+        .unwrap()
+}
 
 pub struct AppState {
-    pub s3_bucket: Bucket,
-    pub s3_credentials: Credentials,
-
     pub source: Mutex<PesdePackageSource>,
     pub project: Project,
-    pub reqwest_client: reqwest::Client,
+    pub storage: Storage,
+    pub auth: Auth,
 
     pub search_reader: tantivy::IndexReader,
     pub search_writer: Mutex<tantivy::IndexWriter>,
@@ -91,28 +104,18 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
     let (search_reader, search_writer) = make_search(&project, &source);
 
     let app_data = web::Data::new(AppState {
-        s3_bucket: Bucket::new(
-            benv!(parse required "S3_ENDPOINT"),
-            UrlStyle::Path,
-            benv!(required "S3_BUCKET_NAME"),
-            benv!(required "S3_REGION"),
-        )
-        .unwrap(),
-        s3_credentials: Credentials::new(
-            benv!(required "S3_ACCESS_KEY"),
-            benv!(required "S3_SECRET_KEY"),
-        ),
-
         source: Mutex::new(source),
         project,
-        reqwest_client: reqwest::ClientBuilder::new()
-            .user_agent(concat!(
-                env!("CARGO_PKG_NAME"),
-                "/",
-                env!("CARGO_PKG_VERSION")
-            ))
-            .build()
-            .unwrap(),
+        storage: {
+            let storage = get_storage_from_env();
+            info!("storage: {storage}");
+            storage
+        },
+        auth: {
+            let auth = get_auth_from_env();
+            info!("auth: {auth}");
+            auth
+        },
 
         search_reader,
         search_writer: Mutex::new(search_writer),
@@ -144,21 +147,30 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
             )
             .service(
                 web::scope("/v0")
-                    .route("/search", web::get().to(endpoints::search::search_packages))
+                    .route(
+                        "/search",
+                        web::get()
+                            .to(endpoints::search::search_packages)
+                            .wrap(from_fn(auth::read_mw)),
+                    )
                     .route(
                         "/packages/{name}",
-                        web::get().to(endpoints::package_versions::get_package_versions),
+                        web::get()
+                            .to(endpoints::package_versions::get_package_versions)
+                            .wrap(from_fn(auth::read_mw)),
                     )
                     .route(
                         "/packages/{name}/{version}/{target}",
-                        web::get().to(endpoints::package_version::get_package_version),
+                        web::get()
+                            .to(endpoints::package_version::get_package_version)
+                            .wrap(from_fn(auth::read_mw)),
                     )
                     .route(
                         "/packages",
                         web::post()
                             .to(endpoints::publish_version::publish_package)
                             .wrap(Governor::new(&publish_governor_config))
-                            .wrap(from_fn(auth::authentication)),
+                            .wrap(from_fn(auth::write_mw)),
                     ),
             )
     })

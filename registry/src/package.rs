@@ -1,26 +1,7 @@
 use chrono::{DateTime, Utc};
-use pesde::{
-    manifest::target::{Target, TargetKind},
-    names::PackageName,
-    source::version_id::VersionId,
-};
+use pesde::manifest::target::{Target, TargetKind};
 use serde::Serialize;
-use std::{collections::BTreeSet, time::Duration};
-
-pub const S3_SIGN_DURATION: Duration = Duration::from_secs(60 * 3);
-
-pub fn s3_name(name: &PackageName, version_id: &VersionId, is_readme: bool) -> String {
-    format!(
-        "{name}/{}/{}/{}.gz",
-        version_id.version(),
-        version_id.target(),
-        if is_readme { "readme" } else { "pkg.tar" },
-    )
-}
-
-pub fn s3_doc_name(doc_hash: &str) -> String {
-    format!("doc/{}.gz", doc_hash)
-}
+use std::collections::BTreeSet;
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct TargetInfo {

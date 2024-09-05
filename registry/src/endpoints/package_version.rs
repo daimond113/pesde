@@ -1,16 +1,8 @@
-use actix_web::{
-    http::header::{ACCEPT, LOCATION},
-    web, HttpRequest, HttpResponse, Responder,
-};
-use rusty_s3::{actions::GetObject, S3Action};
+use actix_web::{http::header::ACCEPT, web, HttpRequest, HttpResponse, Responder};
 use semver::Version;
 use serde::{Deserialize, Deserializer};
 
-use crate::{
-    error::Error,
-    package::{s3_doc_name, s3_name, PackageResponse, S3_SIGN_DURATION},
-    AppState,
-};
+use crate::{error::Error, package::PackageResponse, storage::StorageImpl, AppState};
 use pesde::{
     manifest::target::TargetKind,
     names::PackageName,
@@ -136,16 +128,7 @@ pub async fn get_package_version(
             return Ok(HttpResponse::NotFound().finish());
         };
 
-        let object_url = GetObject::new(
-            &app_state.s3_bucket,
-            Some(&app_state.s3_credentials),
-            &s3_doc_name(&hash),
-        )
-        .sign(S3_SIGN_DURATION);
-
-        return Ok(HttpResponse::TemporaryRedirect()
-            .append_header((LOCATION, object_url.as_str()))
-            .finish());
+        return app_state.storage.get_doc(&hash).await;
     }
 
     let accept = request
@@ -159,16 +142,11 @@ pub async fn get_package_version(
         });
 
     if let Some(readme) = accept {
-        let object_url = GetObject::new(
-            &app_state.s3_bucket,
-            Some(&app_state.s3_credentials),
-            &s3_name(&name, v_id, readme),
-        )
-        .sign(S3_SIGN_DURATION);
-
-        return Ok(HttpResponse::TemporaryRedirect()
-            .append_header((LOCATION, object_url.as_str()))
-            .finish());
+        return if readme {
+            app_state.storage.get_readme(&name, v_id).await
+        } else {
+            app_state.storage.get_package(&name, v_id).await
+        };
     }
 
     let response = PackageResponse {

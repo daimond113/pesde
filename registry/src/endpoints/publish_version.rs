@@ -2,10 +2,8 @@ use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
 use convert_case::{Case, Casing};
 use flate2::read::GzDecoder;
-use futures::{future::join_all, StreamExt};
+use futures::{future::join_all, join, StreamExt};
 use git2::{Remote, Repository, Signature};
-use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
-use rusty_s3::{actions::PutObject, S3Action};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -19,8 +17,8 @@ use crate::{
     auth::UserId,
     benv,
     error::{Error, ErrorResponse},
-    package::{s3_doc_name, s3_name, S3_SIGN_DURATION},
     search::update_version,
+    storage::StorageImpl,
     AppState,
 };
 use pesde::{
@@ -454,57 +452,29 @@ pub async fn publish_package(
 
     let version_id = VersionId::new(manifest.version.clone(), manifest.target.kind());
 
-    join_all(
-        std::iter::once({
-            let object_url = PutObject::new(
-                &app_state.s3_bucket,
-                Some(&app_state.s3_credentials),
-                &s3_name(&manifest.name, &version_id, false),
-            )
-            .sign(S3_SIGN_DURATION);
-
-            app_state
-                .reqwest_client
-                .put(object_url)
-                .header(CONTENT_TYPE, "application/gzip")
-                .header(CONTENT_ENCODING, "gzip")
-                .body(bytes)
-                .send()
-        })
-        .chain(docs_pages.into_iter().map(|(hash, content)| {
-            let object_url = PutObject::new(
-                &app_state.s3_bucket,
-                Some(&app_state.s3_credentials),
-                &s3_doc_name(&hash),
-            )
-            .sign(S3_SIGN_DURATION);
-
-            app_state
-                .reqwest_client
-                .put(object_url)
-                .header(CONTENT_TYPE, "text/plain")
-                .header(CONTENT_ENCODING, "gzip")
-                .body(content)
-                .send()
-        }))
-        .chain(readme.map(|readme| {
-            let object_url = PutObject::new(
-                &app_state.s3_bucket,
-                Some(&app_state.s3_credentials),
-                &s3_name(&manifest.name, &version_id, true),
-            )
-            .sign(S3_SIGN_DURATION);
-
-            app_state
-                .reqwest_client
-                .put(object_url)
-                .header(CONTENT_TYPE, "text/plain")
-                .header(CONTENT_ENCODING, "gzip")
-                .body(readme)
-                .send()
-        })),
-    )
-    .await;
+    let (a, b, c) = join!(
+        app_state
+            .storage
+            .store_package(&manifest.name, &version_id, bytes.to_vec(),),
+        join_all(
+            docs_pages
+                .into_iter()
+                .map(|(hash, content)| app_state.storage.store_doc(hash, content)),
+        ),
+        async {
+            if let Some(readme) = readme {
+                app_state
+                    .storage
+                    .store_readme(&manifest.name, &version_id, readme)
+                    .await
+            } else {
+                Ok(())
+            }
+        }
+    );
+    a?;
+    b.into_iter().collect::<Result<(), _>>()?;
+    c?;
 
     Ok(HttpResponse::Ok().body(format!(
         "published {}@{} {}",
