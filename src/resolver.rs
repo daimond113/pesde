@@ -255,6 +255,10 @@ impl Project {
                     already_resolved.ty = ty;
                 }
 
+                if already_resolved.direct.is_none() && depth == 0 {
+                    already_resolved.direct = Some((alias.clone(), specifier.clone()));
+                }
+
                 continue;
             }
 

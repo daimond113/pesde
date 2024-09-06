@@ -1,17 +1,17 @@
-use std::{
-    io::{Seek, Write},
-    path::Component,
-};
-
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use reqwest::StatusCode;
 use semver::VersionReq;
+use std::{
+    io::{Seek, Write},
+    path::Component,
+};
 use tempfile::tempfile;
 
+use crate::cli::up_to_date_lockfile;
 use pesde::{
-    manifest::target::Target,
+    manifest::{target::Target, DependencyType},
     scripts::ScriptName,
     source::{
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
@@ -42,10 +42,39 @@ impl PublishCommand {
             return Ok(());
         }
 
-        manifest
-            .target
-            .validate_publish()
-            .context("manifest not fit for publishing")?;
+        if manifest.target.lib_path().is_none() && manifest.target.bin_path().is_none() {
+            anyhow::bail!("no exports found in target");
+        }
+
+        #[cfg(feature = "roblox")]
+        if matches!(
+            manifest.target,
+            Target::Roblox { .. } | Target::RobloxServer { .. }
+        ) {
+            if !manifest.target.build_files().is_some_and(|f| !f.is_empty()) {
+                anyhow::bail!("no build files found in target");
+            }
+
+            match up_to_date_lockfile(&project)? {
+                Some(lockfile) => {
+                    if lockfile
+                        .graph
+                        .values()
+                        .flatten()
+                        .filter_map(|(_, node)| node.node.direct.as_ref().map(|_| node))
+                        .any(|node| {
+                            node.target.build_files().is_none()
+                                && !matches!(node.node.ty, DependencyType::Dev)
+                        })
+                    {
+                        anyhow::bail!("roblox packages may not depend on non-roblox packages");
+                    }
+                }
+                None => {
+                    anyhow::bail!("outdated lockfile, please run the install command first")
+                }
+            }
+        }
 
         let mut archive = tar::Builder::new(flate2::write::GzEncoder::new(
             vec![],
@@ -65,6 +94,7 @@ impl PublishCommand {
         #[cfg(feature = "roblox")]
         let mut roblox_target = match &mut manifest.target {
             Target::Roblox { build_files, .. } => Some(build_files),
+            Target::RobloxServer { build_files, .. } => Some(build_files),
             _ => None,
         };
         #[cfg(not(feature = "roblox"))]

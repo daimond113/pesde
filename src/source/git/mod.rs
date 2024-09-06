@@ -257,7 +257,11 @@ impl PackageSource for GitPackageSource {
             #[cfg(feature = "wally-compat")]
             None => {
                 match self
-                    .read_file(["wally.toml"], project, Some(tree.clone()))
+                    .read_file(
+                        [crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME],
+                        project,
+                        Some(tree.clone()),
+                    )
                     .map_err(|e| {
                         errors::ResolveError::ReadManifest(Box::new(self.repo_url.clone()), e)
                     })? {

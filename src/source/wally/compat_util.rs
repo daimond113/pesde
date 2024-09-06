@@ -7,6 +7,7 @@ use tempfile::TempDir;
 use crate::{
     manifest::target::Target,
     scripts::{execute_script, ScriptName},
+    source::wally::manifest::{Realm, WallyManifest},
     Project, LINK_LIB_NO_FILE_FOUND,
 };
 
@@ -50,14 +51,24 @@ pub(crate) fn find_lib_path(
     }
 }
 
+pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
+
 pub(crate) fn get_target(
     project: &Project,
     tempdir: &TempDir,
 ) -> Result<Target, errors::FindLibPathError> {
-    Ok(Target::Roblox {
-        lib: find_lib_path(project, tempdir.path())?
-            .or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND))),
-        build_files: Default::default(),
+    let lib = find_lib_path(project, tempdir.path())?
+        .or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
+    let build_files = Default::default();
+
+    let manifest = tempdir.path().join(WALLY_MANIFEST_FILE_NAME);
+    let manifest = std::fs::read_to_string(&manifest)?;
+    let manifest: WallyManifest = toml::from_str(&manifest)?;
+
+    Ok(if matches!(manifest.package.realm, Realm::Shared) {
+        Target::Roblox { lib, build_files }
+    } else {
+        Target::RobloxServer { lib, build_files }
     })
 }
 
@@ -79,5 +90,9 @@ pub mod errors {
         /// An error occurred while deserializing the sourcemap result
         #[error("error deserializing sourcemap result")]
         Serde(#[from] serde_json::Error),
+
+        /// An error occurred while deserializing the wally manifest
+        #[error("error deserializing wally manifest")]
+        WallyManifest(#[from] toml::de::Error),
     }
 }

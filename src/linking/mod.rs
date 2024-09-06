@@ -1,7 +1,6 @@
 use crate::{
     linking::generator::get_file_types,
     lockfile::DownloadedGraph,
-    manifest::target::Target,
     names::PackageNames,
     scripts::{execute_script, ScriptName},
     source::{fs::store_in_cas, traits::PackageRef, version_id::VersionId},
@@ -92,8 +91,9 @@ impl Project {
                     .insert(version_id, types);
 
                 #[cfg(feature = "roblox")]
-                if let Some(Target::Roblox { build_files, .. }) =
-                    Some(&node.target).filter(|_| !node.node.pkg_ref.like_wally())
+                if let Some(build_files) = Some(&node.target)
+                    .filter(|_| !node.node.pkg_ref.like_wally())
+                    .and_then(|t| t.build_files())
                 {
                     let script_name = ScriptName::RobloxSyncConfigGenerator.to_string();
 
@@ -122,7 +122,7 @@ impl Project {
 
         for (name, versions) in graph {
             for (version_id, node) in versions {
-                let node_container_folder = {
+                let (node_container_folder, node_packages_folder) = {
                     let base_folder = create_and_canonicalize(
                         self.package_dir().join(
                             manifest
@@ -158,7 +158,10 @@ impl Project {
                                         lib_file,
                                         &container_folder,
                                         node.node.pkg_ref.use_new_structure(),
-                                    ),
+                                        &base_folder,
+                                        container_folder.strip_prefix(&base_folder).unwrap(),
+                                        &manifest,
+                                    )?,
                                     types,
                                 ),
                             )?;
@@ -180,7 +183,7 @@ impl Project {
                         }
                     }
 
-                    container_folder
+                    (container_folder, base_folder)
                 };
 
                 for (dependency_name, (dependency_version_id, dependency_alias)) in
@@ -200,15 +203,21 @@ impl Project {
                         continue;
                     };
 
-                    let packages_container_folder = create_and_canonicalize(
+                    let base_folder = create_and_canonicalize(
                         self.package_dir().join(
                             node.node
                                 .pkg_ref
                                 .target_kind()
                                 .packages_folder(&dependency_node.node.pkg_ref.target_kind()),
                         ),
-                    )?
-                    .join(PACKAGES_CONTAINER_NAME);
+                    )?;
+                    let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
+
+                    let container_folder = dependency_node.node.container_folder(
+                        &packages_container_folder,
+                        dependency_name,
+                        dependency_version_id.version(),
+                    );
 
                     let linker_folder = create_and_canonicalize(
                         node_container_folder
@@ -223,13 +232,12 @@ impl Project {
                                 &dependency_node.target.kind(),
                                 &linker_folder,
                                 lib_file,
-                                &dependency_node.node.container_folder(
-                                    &packages_container_folder,
-                                    dependency_name,
-                                    dependency_version_id.version(),
-                                ),
+                                &container_folder,
                                 dependency_node.node.pkg_ref.use_new_structure(),
-                            ),
+                                &node_packages_folder,
+                                container_folder.strip_prefix(&base_folder).unwrap(),
+                                &manifest,
+                            )?,
                             package_types
                                 .get(dependency_name)
                                 .and_then(|v| v.get(dependency_version_id))
@@ -276,5 +284,9 @@ pub mod errors {
         #[cfg(feature = "roblox")]
         #[error("error generating roblox sync config for {0}")]
         GenerateRobloxSyncConfig(String, #[source] std::io::Error),
+
+        /// An error occurred while getting the require path for a library
+        #[error("error getting require path for library")]
+        GetLibRequirePath(#[from] super::generator::errors::GetLibRequirePath),
     }
 }

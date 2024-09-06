@@ -10,11 +10,20 @@ use crate::{
 };
 
 #[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum Realm {
+    #[serde(alias = "dev")]
+    Shared,
+    Server,
+}
+
+#[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct WallyPackage {
     pub name: WallyPackageName,
     pub version: Version,
     pub registry: url::Url,
+    pub realm: Realm,
 }
 
 pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(

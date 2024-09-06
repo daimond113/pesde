@@ -1,5 +1,6 @@
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
     collections::BTreeSet,
     fmt::{Display, Formatter},
@@ -7,12 +8,16 @@ use std::{
 };
 
 /// A kind of target
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[derive(
+    SerializeDisplay, DeserializeFromStr, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 pub enum TargetKind {
     /// A Roblox target
     #[cfg(feature = "roblox")]
     Roblox,
+    /// A Roblox server target
+    #[cfg(feature = "roblox")]
+    RobloxServer,
     /// A Lune target
     #[cfg(feature = "lune")]
     Lune,
@@ -26,6 +31,8 @@ impl Display for TargetKind {
         match self {
             #[cfg(feature = "roblox")]
             TargetKind::Roblox => write!(f, "roblox"),
+            #[cfg(feature = "roblox")]
+            TargetKind::RobloxServer => write!(f, "roblox_server"),
             #[cfg(feature = "lune")]
             TargetKind::Lune => write!(f, "lune"),
             #[cfg(feature = "luau")]
@@ -41,6 +48,8 @@ impl FromStr for TargetKind {
         match s {
             #[cfg(feature = "roblox")]
             "roblox" => Ok(Self::Roblox),
+            #[cfg(feature = "roblox")]
+            "roblox_server" => Ok(Self::RobloxServer),
             #[cfg(feature = "lune")]
             "lune" => Ok(Self::Lune),
             #[cfg(feature = "luau")]
@@ -55,6 +64,8 @@ impl TargetKind {
     pub const VARIANTS: &'static [TargetKind] = &[
         #[cfg(feature = "roblox")]
         TargetKind::Roblox,
+        #[cfg(feature = "roblox")]
+        TargetKind::RobloxServer,
         #[cfg(feature = "lune")]
         TargetKind::Lune,
         #[cfg(feature = "luau")]
@@ -71,6 +82,9 @@ impl TargetKind {
         match (self, dependency) {
             #[cfg(all(feature = "lune", feature = "luau"))]
             (TargetKind::Lune, TargetKind::Luau) => true,
+
+            #[cfg(feature = "roblox")]
+            (TargetKind::RobloxServer, TargetKind::Roblox) => true,
 
             _ => false,
         }
@@ -94,6 +108,16 @@ pub enum Target {
     /// A Roblox target
     #[cfg(feature = "roblox")]
     Roblox {
+        /// The path to the lib export file
+        #[serde(default)]
+        lib: Option<RelativePathBuf>,
+        /// The files to include in the sync tool's config
+        #[serde(default)]
+        build_files: BTreeSet<String>,
+    },
+    /// A Roblox server target
+    #[cfg(feature = "roblox")]
+    RobloxServer {
         /// The path to the lib export file
         #[serde(default)]
         lib: Option<RelativePathBuf>,
@@ -129,6 +153,8 @@ impl Target {
         match self {
             #[cfg(feature = "roblox")]
             Target::Roblox { .. } => TargetKind::Roblox,
+            #[cfg(feature = "roblox")]
+            Target::RobloxServer { .. } => TargetKind::RobloxServer,
             #[cfg(feature = "lune")]
             Target::Lune { .. } => TargetKind::Lune,
             #[cfg(feature = "luau")]
@@ -141,6 +167,8 @@ impl Target {
         match self {
             #[cfg(feature = "roblox")]
             Target::Roblox { lib, .. } => lib.as_ref(),
+            #[cfg(feature = "roblox")]
+            Target::RobloxServer { lib, .. } => lib.as_ref(),
             #[cfg(feature = "lune")]
             Target::Lune { lib, .. } => lib.as_ref(),
             #[cfg(feature = "luau")]
@@ -153,6 +181,8 @@ impl Target {
         match self {
             #[cfg(feature = "roblox")]
             Target::Roblox { .. } => None,
+            #[cfg(feature = "roblox")]
+            Target::RobloxServer { .. } => None,
             #[cfg(feature = "lune")]
             Target::Lune { bin, .. } => bin.as_ref(),
             #[cfg(feature = "luau")]
@@ -160,28 +190,14 @@ impl Target {
         }
     }
 
-    /// Validates the target for publishing
-    pub fn validate_publish(&self) -> Result<(), errors::TargetValidatePublishError> {
-        let has_exports = match self {
-            #[cfg(feature = "roblox")]
-            Target::Roblox { lib, .. } => lib.is_some(),
-            #[cfg(feature = "lune")]
-            Target::Lune { lib, bin } => lib.is_some() || bin.is_some(),
-            #[cfg(feature = "luau")]
-            Target::Luau { lib, bin } => lib.is_some() || bin.is_some(),
-        };
-
-        if !has_exports {
-            return Err(errors::TargetValidatePublishError::NoExportedFiles);
-        }
-
+    /// Returns the Roblox build files
+    pub fn build_files(&self) -> Option<&BTreeSet<String>> {
         match self {
             #[cfg(feature = "roblox")]
-            Target::Roblox { build_files, .. } if build_files.is_empty() => {
-                Err(errors::TargetValidatePublishError::NoBuildFiles)
-            }
-
-            _ => Ok(()),
+            Target::Roblox { build_files, .. } => Some(build_files),
+            #[cfg(feature = "roblox")]
+            Target::RobloxServer { build_files, .. } => Some(build_files),
+            _ => None,
         }
     }
 }
@@ -192,23 +208,45 @@ impl Display for Target {
     }
 }
 
+#[cfg(feature = "roblox")]
+/// The kind of a Roblox place property
+#[derive(
+    SerializeDisplay, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RobloxPlaceKind {
+    /// The shared dependencies location
+    Shared,
+    /// The server dependencies location
+    Server,
+}
+
+#[cfg(feature = "roblox")]
+impl TryInto<RobloxPlaceKind> for &TargetKind {
+    type Error = ();
+
+    fn try_into(self) -> Result<RobloxPlaceKind, Self::Error> {
+        match self {
+            TargetKind::Roblox => Ok(RobloxPlaceKind::Shared),
+            TargetKind::RobloxServer => Ok(RobloxPlaceKind::Server),
+            _ => Err(()),
+        }
+    }
+}
+
+#[cfg(feature = "roblox")]
+impl Display for RobloxPlaceKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RobloxPlaceKind::Shared => write!(f, "shared"),
+            RobloxPlaceKind::Server => write!(f, "server"),
+        }
+    }
+}
+
 /// Errors that can occur when working with targets
 pub mod errors {
     use thiserror::Error;
-
-    /// Errors that can occur when validating a target for publishing
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum TargetValidatePublishError {
-        /// No exported files specified
-        #[error("no exported files specified")]
-        NoExportedFiles,
-
-        /// Roblox target must have at least one build file
-        #[cfg(feature = "roblox")]
-        #[error("roblox target must have at least one build file")]
-        NoBuildFiles,
-    }
 
     /// Errors that can occur when parsing a target kind from a string
     #[derive(Debug, Error)]

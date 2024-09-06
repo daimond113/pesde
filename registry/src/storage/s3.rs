@@ -2,7 +2,10 @@ use crate::{error::Error, storage::StorageImpl};
 use actix_web::{http::header::LOCATION, HttpResponse};
 use pesde::{names::PackageName, source::version_id::VersionId};
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
-use rusty_s3::{actions::PutObject, Bucket, Credentials, S3Action};
+use rusty_s3::{
+    actions::{GetObject, PutObject},
+    Bucket, Credentials, S3Action,
+};
 use std::{fmt::Display, time::Duration};
 
 #[derive(Debug)]
@@ -48,7 +51,7 @@ impl StorageImpl for S3Storage {
         package_name: &PackageName,
         version: &VersionId,
     ) -> Result<HttpResponse, Error> {
-        let object_url = PutObject::new(
+        let object_url = GetObject::new(
             &self.s3_bucket,
             Some(&self.s3_credentials),
             &format!(
@@ -97,7 +100,7 @@ impl StorageImpl for S3Storage {
         package_name: &PackageName,
         version: &VersionId,
     ) -> Result<HttpResponse, Error> {
-        let object_url = PutObject::new(
+        let object_url = GetObject::new(
             &self.s3_bucket,
             Some(&self.s3_credentials),
             &format!(
@@ -133,7 +136,7 @@ impl StorageImpl for S3Storage {
     }
 
     async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, Error> {
-        let object_url = PutObject::new(
+        let object_url = GetObject::new(
             &self.s3_bucket,
             Some(&self.s3_credentials),
             &format!("doc/{}.gz", doc_hash),

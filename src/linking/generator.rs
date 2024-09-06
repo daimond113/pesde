@@ -1,6 +1,6 @@
 use std::path::{Component, Path};
 
-use crate::manifest::target::TargetKind;
+use crate::manifest::{target::TargetKind, Manifest};
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
 use relative_path::RelativePathBuf;
 
@@ -82,14 +82,20 @@ fn luau_style_path(path: &Path) -> String {
     format!("{require:?}")
 }
 
+// This function should be simplified (especially to reduce the number of arguments),
+// but it's not clear how to do that while maintaining the current functionality.
 /// Get the require path for a library
+#[allow(clippy::too_many_arguments)]
 pub fn get_lib_require_path(
     target: &TargetKind,
     base_dir: &Path,
     lib_file: &RelativePathBuf,
     destination_dir: &Path,
     use_new_structure: bool,
-) -> String {
+    root_container_dir: &Path,
+    container_dir: &Path,
+    project_manifest: &Manifest,
+) -> Result<String, errors::GetLibRequirePath> {
     let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
     let path = if use_new_structure {
         log::debug!("using new structure for require path with {:?}", lib_file);
@@ -100,7 +106,25 @@ pub fn get_lib_require_path(
     };
 
     #[cfg(feature = "roblox")]
-    if matches!(target, TargetKind::Roblox) {
+    if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer) {
+        let (prefix, path) = match target.try_into() {
+            Ok(place_kind) if !destination_dir.starts_with(root_container_dir) => (
+                project_manifest
+                    .place
+                    .get(&place_kind)
+                    .ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
+                        place_kind,
+                    ))?
+                    .as_str(),
+                if use_new_structure {
+                    lib_file.to_path(container_dir)
+                } else {
+                    container_dir.to_path_buf()
+                },
+            ),
+            _ => ("script.Parent", path),
+        };
+
         let path = path
             .components()
             .filter_map(|component| match component {
@@ -118,10 +142,10 @@ pub fn get_lib_require_path(
             .collect::<Vec<_>>()
             .join("");
 
-        return format!("script.Parent{path}");
+        return Ok(format!("{prefix}{path}"));
     };
 
-    luau_style_path(&path)
+    Ok(luau_style_path(&path))
 }
 
 /// Generate a linking module for a binary
@@ -143,4 +167,18 @@ pub fn get_bin_require_path(
     let path = bin_file.to_path(path);
 
     luau_style_path(&path)
+}
+
+/// Errors for the linking module utilities
+pub mod errors {
+    use thiserror::Error;
+
+    /// An error occurred while getting the require path for a library
+    #[derive(Debug, Error)]
+    pub enum GetLibRequirePath {
+        /// The path for the RobloxPlaceKind could not be found
+        #[cfg(feature = "roblox")]
+        #[error("could not find the path for the RobloxPlaceKind {0}")]
+        RobloxPlaceKindPathNotFound(crate::manifest::target::RobloxPlaceKind),
+    }
 }
