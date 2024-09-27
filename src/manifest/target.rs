@@ -72,24 +72,6 @@ impl TargetKind {
         TargetKind::Luau,
     ];
 
-    /// Whether this target is compatible with another target
-    /// self is the project's target, dependency is the target of the dependency
-    pub fn is_compatible_with(&self, dependency: &Self) -> bool {
-        if self == dependency {
-            return true;
-        }
-
-        match (self, dependency) {
-            #[cfg(all(feature = "lune", feature = "luau"))]
-            (TargetKind::Lune, TargetKind::Luau) => true,
-
-            #[cfg(feature = "roblox")]
-            (TargetKind::RobloxServer, TargetKind::Roblox) => true,
-
-            _ => false,
-        }
-    }
-
     /// The folder to store packages in for this target
     /// self is the project's target, dependency is the target of the dependency
     pub fn packages_folder(&self, dependency: &Self) -> String {

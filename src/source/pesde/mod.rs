@@ -219,9 +219,7 @@ impl PackageSource for PesdePackageSource {
                 .into_iter()
                 .filter(|(VersionId(version, target), _)| {
                     specifier.version.matches(version)
-                        && specifier
-                            .target
-                            .map_or(package_target.is_compatible_with(target), |t| t == *target)
+                        && specifier.target.unwrap_or(package_target) == *target
                 })
                 .map(|(id, entry)| {
                     let version = id.version().clone();
