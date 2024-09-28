@@ -12,7 +12,6 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ScriptName {
     /// Generates a config for syncing tools for Roblox. For example, for Rojo it should create a `default.project.json` file
-    #[cfg(feature = "roblox")]
     RobloxSyncConfigGenerator,
     /// Prints a sourcemap for a Wally package, used for finding the library export file
     #[cfg(feature = "wally-compat")]
@@ -21,15 +20,11 @@ pub enum ScriptName {
 
 impl Display for ScriptName {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        #[cfg(feature = "roblox")]
         match self {
-            #[cfg(feature = "roblox")]
             ScriptName::RobloxSyncConfigGenerator => write!(f, "roblox_sync_config_generator"),
             #[cfg(feature = "wally-compat")]
             ScriptName::SourcemapGenerator => write!(f, "sourcemap_generator"),
         }
-        #[cfg(not(feature = "roblox"))]
-        Ok(())
     }
 }
 

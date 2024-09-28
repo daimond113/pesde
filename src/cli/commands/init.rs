@@ -105,14 +105,7 @@ impl InitCommand {
 
         let target_env = inquire::Select::new(
             "What environment are you targeting for your package?",
-            vec![
-                #[cfg(feature = "roblox")]
-                "roblox",
-                #[cfg(feature = "lune")]
-                "lune",
-                #[cfg(feature = "luau")]
-                "luau",
-            ],
+            vec!["roblox", "roblox_server", "lune", "luau"],
         )
         .prompt()
         .unwrap();
@@ -121,6 +114,7 @@ impl InitCommand {
             ["environment"] = toml_edit::value(target_env);
 
         if target_env == "roblox"
+            || target_env == "roblox_server"
             || inquire::Confirm::new(&format!(
                 "Would you like to setup a default {} script?",
                 ScriptName::RobloxSyncConfigGenerator

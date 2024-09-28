@@ -105,7 +105,6 @@ pub fn get_lib_require_path(
         path
     };
 
-    #[cfg(feature = "roblox")]
     if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer) {
         let (prefix, path) = match target.try_into() {
             Ok(place_kind) if !destination_dir.starts_with(root_container_dir) => (
@@ -177,7 +176,6 @@ pub mod errors {
     #[derive(Debug, Error)]
     pub enum GetLibRequirePath {
         /// The path for the RobloxPlaceKind could not be found
-        #[cfg(feature = "roblox")]
         #[error("could not find the path for the RobloxPlaceKind {0}")]
         RobloxPlaceKindPathNotFound(crate::manifest::target::RobloxPlaceKind),
     }

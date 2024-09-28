@@ -46,7 +46,6 @@ impl PublishCommand {
             anyhow::bail!("no exports found in target");
         }
 
-        #[cfg(feature = "roblox")]
         if matches!(
             manifest.target,
             Target::Roblox { .. } | Target::RobloxServer { .. }
@@ -82,7 +81,6 @@ impl PublishCommand {
         ));
 
         let mut display_includes: Vec<String> = vec![MANIFEST_FILE_NAME.to_string()];
-        #[cfg(feature = "roblox")]
         let mut display_build_files: Vec<String> = vec![];
 
         let (lib_path, bin_path, target_kind) = (
@@ -91,14 +89,11 @@ impl PublishCommand {
             manifest.target.kind(),
         );
 
-        #[cfg(feature = "roblox")]
         let mut roblox_target = match &mut manifest.target {
             Target::Roblox { build_files, .. } => Some(build_files),
             Target::RobloxServer { build_files, .. } => Some(build_files),
             _ => None,
         };
-        #[cfg(not(feature = "roblox"))]
-        let roblox_target = None::<()>;
 
         if !manifest.includes.insert(MANIFEST_FILE_NAME.to_string()) {
             display_includes.push(MANIFEST_FILE_NAME.to_string());
@@ -398,20 +393,16 @@ impl PublishCommand {
                     .map_or("(none)".to_string(), |p| p.to_string())
             );
 
-            match roblox_target {
-                #[cfg(feature = "roblox")]
-                true => {
-                    println!("\tbuild files: {}", display_build_files.join(", "));
-                }
-                _ => {
-                    println!(
-                        "\tbin path: {}",
-                        manifest
-                            .target
-                            .bin_path()
-                            .map_or("(none)".to_string(), |p| p.to_string())
-                    );
-                }
+            if roblox_target {
+                println!("\tbuild files: {}", display_build_files.join(", "));
+            } else {
+                println!(
+                    "\tbin path: {}",
+                    manifest
+                        .target
+                        .bin_path()
+                        .map_or("(none)".to_string(), |p| p.to_string())
+                );
             }
 
             println!(

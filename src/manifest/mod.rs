@@ -77,7 +77,6 @@ pub struct Manifest {
     /// A list of globs pointing to workspace members' directories
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub workspace_members: Vec<String>,
-    #[cfg(feature = "roblox")]
     /// The Roblox place of this project
     #[serde(default, skip_serializing)]
     pub place: BTreeMap<target::RobloxPlaceKind, String>,

@@ -28,10 +28,7 @@ bin = [
     "serde_json",
     "winreg"
 ]
-wally-compat = ["zip", "serde_json", "roblox"]
-roblox = []
-lune = []
-luau = []
+wally-compat = ["zip", "serde_json"]
 patches = ["git2"]
 
 [[bin]]

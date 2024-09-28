@@ -3,9 +3,6 @@
 //! pesde has its own registry, however it can also use Wally, and Git repositories as package sources.
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 
-#[cfg(not(any(feature = "roblox", feature = "lune", feature = "luau")))]
-compile_error!("at least one of the features `roblox`, `lune`, or `luau` must be enabled");
-
 use crate::{lockfile::Lockfile, manifest::Manifest};
 use gix::sec::identity::Account;
 use std::{

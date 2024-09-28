@@ -4,7 +4,6 @@ use pesde::Project;
 mod add;
 mod auth;
 mod config;
-#[cfg(any(feature = "lune", feature = "luau"))]
 mod execute;
 mod init;
 mod install;
@@ -65,7 +64,6 @@ pub enum Subcommand {
     Outdated(outdated::OutdatedCommand),
 
     /// Executes a binary package without needing to be run in a project directory
-    #[cfg(any(feature = "lune", feature = "luau"))]
     #[clap(name = "x", visible_alias = "execute", visible_alias = "exec")]
     Execute(execute::ExecuteCommand),
 }
@@ -93,7 +91,6 @@ impl Subcommand {
             Subcommand::Add(add) => add.run(project),
             Subcommand::Update(update) => update.run(project, multi, reqwest),
             Subcommand::Outdated(outdated) => outdated.run(project),
-            #[cfg(any(feature = "lune", feature = "luau"))]
             Subcommand::Execute(execute) => execute.run(project, reqwest),
         }
     }

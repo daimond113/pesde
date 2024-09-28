@@ -90,7 +90,6 @@ impl Project {
                     .or_default()
                     .insert(version_id, types);
 
-                #[cfg(feature = "roblox")]
                 if let Some(build_files) = Some(&node.target)
                     .filter(|_| !node.node.pkg_ref.like_wally())
                     .and_then(|t| t.build_files())
@@ -281,7 +280,6 @@ pub mod errors {
         FullMoon(String, Vec<full_moon::Error>),
 
         /// An error occurred while generating a Roblox sync config
-        #[cfg(feature = "roblox")]
         #[error("error generating roblox sync config for {0}")]
         GenerateRobloxSyncConfig(String, #[source] std::io::Error),
 

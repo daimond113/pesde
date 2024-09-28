@@ -47,9 +47,6 @@ sentry-log = "0.34.0"
 sentry-actix = "0.34.0"
 
 pesde = { path = "..", features = [
-  "roblox",
-  "lune",
-  "luau",
   "wally-compat",
   "git2",
 ] }
