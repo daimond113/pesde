@@ -157,10 +157,6 @@ pub fn get_or_download_version(
     reqwest: &reqwest::blocking::Client,
     version: &Version,
 ) -> anyhow::Result<Option<PathBuf>> {
-    #[cfg(debug_assertions)]
-    // possible hard to debug issues with the versioning system overtaking the debug build
-    return Ok(None);
-
     let path = home_dir()?.join("versions");
     create_dir_all(&path).context("failed to create versions directory")?;
 
@@ -196,9 +192,6 @@ pub fn get_or_download_version(
 }
 
 pub fn max_installed_version() -> anyhow::Result<Version> {
-    #[cfg(debug_assertions)]
-    return Ok(current_version());
-
     let versions_dir = home_dir()?.join("versions");
     create_dir_all(&versions_dir).context("failed to create versions directory")?;
 

@@ -30,6 +30,7 @@ bin = [
 ]
 wally-compat = ["zip", "serde_json"]
 patches = ["git2"]
+version-management = ["bin"]
 
 [[bin]]
 name = "pesde"

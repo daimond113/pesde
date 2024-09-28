@@ -10,13 +10,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(feature = "version-management")]
+use crate::cli::version::{
+    check_for_updates, current_version, get_or_download_version, max_installed_version,
+};
 use crate::cli::{
-    auth::get_token,
-    config::read_config,
-    home_dir,
-    repos::update_repo_dependencies,
-    version::{check_for_updates, current_version, get_or_download_version, max_installed_version},
-    HOME_DIR,
+    auth::get_token, config::read_config, home_dir, repos::update_repo_dependencies, HOME_DIR,
 };
 
 mod cli;
@@ -233,35 +232,39 @@ fn run() -> anyhow::Result<()> {
             .build()?
     };
 
-    let target_version = project
-        .deser_manifest()
-        .ok()
-        .and_then(|manifest| manifest.pesde_version);
+    #[cfg(feature = "version-management")]
+    {
+        let target_version = project
+            .deser_manifest()
+            .ok()
+            .and_then(|manifest| manifest.pesde_version);
 
-    // store the current version in case it needs to be used later
-    get_or_download_version(&reqwest, &current_version())?;
+        // store the current version in case it needs to be used later
+        get_or_download_version(&reqwest, &current_version())?;
 
-    let exe_path = if let Some(version) = target_version {
-        Some(get_or_download_version(&reqwest, &version)?)
-    } else {
-        None
-    };
-    let exe_path = if let Some(exe_path) = exe_path {
-        exe_path
-    } else {
-        get_or_download_version(&reqwest, &max_installed_version()?)?
-    };
+        let exe_path = if let Some(version) = target_version {
+            Some(get_or_download_version(&reqwest, &version)?)
+        } else {
+            None
+        };
+        let exe_path = if let Some(exe_path) = exe_path {
+            exe_path
+        } else {
+            get_or_download_version(&reqwest, &max_installed_version()?)?
+        };
 
-    if let Some(exe_path) = exe_path {
-        let status = std::process::Command::new(exe_path)
-            .args(std::env::args_os().skip(1))
-            .status()
-            .expect("failed to run new version");
+        if let Some(exe_path) = exe_path {
+            let status = std::process::Command::new(exe_path)
+                .args(std::env::args_os().skip(1))
+                .status()
+                .expect("failed to run new version");
 
-        std::process::exit(status.code().unwrap());
+            std::process::exit(status.code().unwrap());
+        }
+
+        display_err(check_for_updates(&reqwest), " while checking for updates");
     }
 
-    display_err(check_for_updates(&reqwest), " while checking for updates");
     display_err(
         update_repo_dependencies(&project),
         " while updating repository dependencies",

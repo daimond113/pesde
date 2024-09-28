@@ -193,8 +193,9 @@ impl Project {
         let dir = dir.as_ref().to_path_buf();
         let manifest = std::fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
             .map_err(|e| errors::WorkspaceMembersError::ManifestMissing(dir.to_path_buf(), e))?;
-        let manifest = toml::from_str::<Manifest>(&manifest)
-            .map_err(|e| errors::WorkspaceMembersError::ManifestDeser(dir.to_path_buf(), e))?;
+        let manifest = toml::from_str::<Manifest>(&manifest).map_err(|e| {
+            errors::WorkspaceMembersError::ManifestDeser(dir.to_path_buf(), Box::new(e))
+        })?;
 
         let members = manifest
             .workspace_members
@@ -211,8 +212,9 @@ impl Project {
             .map(|path| {
                 let manifest = std::fs::read_to_string(path.join(MANIFEST_FILE_NAME))
                     .map_err(|e| errors::WorkspaceMembersError::ManifestMissing(path.clone(), e))?;
-                let manifest = toml::from_str::<Manifest>(&manifest)
-                    .map_err(|e| errors::WorkspaceMembersError::ManifestDeser(path.clone(), e))?;
+                let manifest = toml::from_str::<Manifest>(&manifest).map_err(|e| {
+                    errors::WorkspaceMembersError::ManifestDeser(path.clone(), Box::new(e))
+                })?;
                 Ok((path, manifest))
             })
             .collect::<Result<_, _>>()
@@ -273,7 +275,7 @@ pub mod errors {
 
         /// An error occurred deserializing the manifest file
         #[error("error deserializing manifest file at {0}")]
-        ManifestDeser(PathBuf, #[source] toml::de::Error),
+        ManifestDeser(PathBuf, #[source] Box<toml::de::Error>),
 
         /// An error occurred interacting with the filesystem
         #[error("error interacting with the filesystem")]

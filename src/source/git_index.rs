@@ -11,7 +11,7 @@ pub trait GitBasedSource {
     fn repo_url(&self) -> &gix::Url;
 
     /// Gets the tree of the repository
-    fn tree<'a>(&'a self, repo: &'a gix::Repository) -> Result<gix::Tree, errors::TreeError> {
+    fn tree<'a>(&'a self, repo: &'a gix::Repository) -> Result<gix::Tree<'a>, errors::TreeError> {
         // this is a bare repo, so this is the actual path
         let path = repo.path().to_path_buf();
 

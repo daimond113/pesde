@@ -24,6 +24,7 @@ pub mod commands;
 pub mod config;
 pub mod files;
 pub mod repos;
+#[cfg(feature = "version-management")]
 pub mod version;
 
 pub const HOME_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));
@@ -119,6 +120,7 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 }
 
 impl VersionedPackageName {
+    #[cfg(feature = "patches")]
     fn get(self, graph: &DownloadedGraph) -> anyhow::Result<(PackageNames, VersionId)> {
         let version_id = match self.1 {
             Some(version) => version,

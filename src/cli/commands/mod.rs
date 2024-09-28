@@ -14,7 +14,9 @@ mod patch;
 mod patch_commit;
 mod publish;
 mod run;
+#[cfg(feature = "version-management")]
 mod self_install;
+#[cfg(feature = "version-management")]
 mod self_upgrade;
 mod update;
 
@@ -41,6 +43,7 @@ pub enum Subcommand {
     Publish(publish::PublishCommand),
 
     /// Installs the pesde binary and scripts
+    #[cfg(feature = "version-management")]
     SelfInstall(self_install::SelfInstallCommand),
 
     /// Sets up a patching environment for a package
@@ -52,6 +55,7 @@ pub enum Subcommand {
     PatchCommit(patch_commit::PatchCommitCommand),
 
     /// Installs the latest version of pesde
+    #[cfg(feature = "version-management")]
     SelfUpgrade(self_upgrade::SelfUpgradeCommand),
 
     /// Adds a dependency to the project
@@ -82,11 +86,13 @@ impl Subcommand {
             Subcommand::Run(run) => run.run(project),
             Subcommand::Install(install) => install.run(project, multi, reqwest),
             Subcommand::Publish(publish) => publish.run(project, reqwest),
+            #[cfg(feature = "version-management")]
             Subcommand::SelfInstall(self_install) => self_install.run(),
             #[cfg(feature = "patches")]
             Subcommand::Patch(patch) => patch.run(project, reqwest),
             #[cfg(feature = "patches")]
             Subcommand::PatchCommit(patch_commit) => patch_commit.run(project),
+            #[cfg(feature = "version-management")]
             Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(reqwest),
             Subcommand::Add(add) => add.run(project),
             Subcommand::Update(update) => update.run(project, multi, reqwest),
