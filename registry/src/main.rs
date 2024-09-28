@@ -124,7 +124,7 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
     let publish_governor_config = GovernorConfigBuilder::default()
         .key_extractor(UserIdExtractor)
         .burst_size(12)
-        .per_second(60)
+        .seconds_per_request(60)
         .use_headers()
         .finish()
         .unwrap();
