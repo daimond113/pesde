@@ -23,7 +23,10 @@ mod cli;
 pub mod util;
 
 #[derive(Parser, Debug)]
-#[clap(version, about = "pesde is a feature-rich package manager for Luau")]
+#[clap(
+    version,
+    about = "A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune"
+)]
 #[command(disable_version_flag = true)]
 struct Cli {
     /// Print version

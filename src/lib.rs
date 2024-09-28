@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
-//! pesde is a package manager for Luau, designed to be feature-rich and easy to use.
-//! pesde has its own registry, however it can also use Wally, and GitHub as package sources.
+//! A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune.
+//! pesde has its own registry, however it can also use Wally, and Git repositories as package sources.
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 
 #[cfg(not(any(feature = "roblox", feature = "lune", feature = "luau")))]
