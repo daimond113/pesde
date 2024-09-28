@@ -6,17 +6,7 @@ on:
 env:
   BIN_NAME: pesde
 jobs:
-  # Better to check first, runners other than ubuntu-latest take up more free minutes
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check
-        run: cargo check --all-features --locked
-
   build:
-    needs: [ check ]
     strategy:
       matrix:
         include:
@@ -103,16 +93,6 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Generate a changelog
-        uses: orhun/git-cliff-action@v3
-        id: git-cliff
-        with:
-          config: cliff.toml
-          args: --verbose --current --strip header
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPO: ${{ github.repository }}
-
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -122,5 +102,5 @@ jobs:
           name: ${{ github.ref_name }}
           body: ${{ steps.git-cliff.outputs.content }}
           draft: true
-          prerelease: false
+          prerelease: ${{ startsWith(github.ref_name, 'v0') }}
           files: artifacts/*
