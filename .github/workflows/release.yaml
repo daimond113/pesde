@@ -100,7 +100,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          body: ${{ steps.git-cliff.outputs.content }}
           draft: true
           prerelease: ${{ startsWith(github.ref_name, 'v0') }}
           files: artifacts/*
