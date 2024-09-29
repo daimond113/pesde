@@ -20,7 +20,7 @@ jobs:
       - name: Install OS dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev
+          sudo apt-get install libdbus-1-dev pkg-config
 
       - name: Run tests
         run: cargo test --all --all-features
