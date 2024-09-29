@@ -40,6 +40,12 @@ jobs:
 
           echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
 
+      - name: Install OS dependencies
+        if: ${{ matrix.host == 'linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install libdbus-1-dev pkg-config
+
       - name: Build
         run: cargo build --bins --all-features --release --target ${{ matrix.target }} --locked
 
