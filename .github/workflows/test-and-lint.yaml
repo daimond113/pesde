@@ -17,6 +17,11 @@ jobs:
           bins: cargo-tarpaulin
           components: rustfmt, clippy
 
+      - name: Install OS dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
       - name: Run tests
         run: cargo test --all --all-features
 
