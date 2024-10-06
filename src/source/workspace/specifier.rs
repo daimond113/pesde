@@ -1,4 +1,4 @@
-use crate::{names::PackageName, source::DependencySpecifier};
+use crate::{manifest::target::TargetKind, names::PackageName, source::DependencySpecifier};
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{fmt::Display, str::FromStr};
@@ -12,6 +12,8 @@ pub struct WorkspaceDependencySpecifier {
     /// The version type to use when publishing the package
     #[serde(default, rename = "version")]
     pub version_type: VersionType,
+    /// The target of the workspace package
+    pub target: Option<TargetKind>,
 }
 impl DependencySpecifier for WorkspaceDependencySpecifier {}
 

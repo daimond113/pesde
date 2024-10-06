@@ -347,7 +347,7 @@ impl PublishCommand {
                                 .context("missing default index in workspace package manifest")?
                                 .to_string(),
                         ),
-                        target: Some(manifest.target.kind()),
+                        target: Some(spec.target.unwrap_or(manifest.target.kind())),
                     });
                 }
             }

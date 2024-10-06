@@ -85,8 +85,10 @@ fn run() -> anyhow::Result<()> {
             break 'scripts;
         }
 
-        let exe_name = exe.with_extension("");
-        let exe_name = exe_name.file_name().unwrap();
+        let exe_name = exe.file_name().unwrap().to_string_lossy();
+        let exe_name = exe_name
+            .strip_suffix(std::env::consts::EXE_SUFFIX)
+            .unwrap_or(&exe_name);
 
         if exe_name == env!("CARGO_BIN_NAME") {
             break 'scripts;

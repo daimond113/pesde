@@ -4,6 +4,7 @@ use gix::bstr::BStr;
 use indicatif::MultiProgress;
 use pesde::{
     lockfile::{DependencyGraph, DownloadedGraph, Lockfile},
+    manifest::target::TargetKind,
     names::{PackageName, PackageNames},
     source::{version_id::VersionId, workspace::specifier::VersionType, PackageSources},
     Project,
@@ -268,7 +269,7 @@ pub fn shift_project_dir(project: &Project, pkg_dir: PathBuf) -> Project {
 pub fn run_on_workspace_members(
     project: &Project,
     f: impl Fn(Project) -> anyhow::Result<()>,
-) -> anyhow::Result<BTreeMap<PackageName, RelativePathBuf>> {
+) -> anyhow::Result<BTreeMap<PackageName, BTreeMap<TargetKind, RelativePathBuf>>> {
     Ok(match project.workspace_dir() {
         Some(_) => {
             // this might seem counterintuitive, but remember that the workspace
@@ -282,18 +283,24 @@ pub fn run_on_workspace_members(
             .map(|(path, manifest)| {
                 (
                     manifest.name,
+                    manifest.target.kind(),
                     RelativePathBuf::from_path(path.strip_prefix(project.package_dir()).unwrap())
                         .unwrap(),
                 )
             })
-            .map(|(name, path)| {
+            .map(|(name, target, path)| {
                 f(shift_project_dir(
                     project,
                     path.to_path(project.package_dir()),
                 ))
-                .map(|_| (name, path))
+                .map(|_| (name, target, path))
             })
-            .collect::<Result<_, _>>()
-            .context("failed to install workspace member's dependencies")?,
+            .collect::<Result<Vec<_>, _>>()
+            .context("failed to install workspace member's dependencies")?
+            .into_iter()
+            .fold(BTreeMap::new(), |mut map, (name, target, path)| {
+                map.entry(name).or_default().insert(target, path);
+                map
+            }),
     })
 }

@@ -226,12 +226,16 @@ impl PackageSource for GitPackageSource {
                                     }
                                 };
 
+                                let target = specifier.target.unwrap_or(manifest.target.kind());
+
                                 let path = lockfile
                                     .workspace
                                     .get(&specifier.name)
+                                    .and_then(|targets| targets.get(&target))
                                     .ok_or_else(|| {
                                         errors::ResolveError::NoPathForWorkspaceMember(
                                             specifier.name.to_string(),
+                                            target,
                                             Box::new(self.repo_url.clone()),
                                         )
                                     })?
@@ -505,6 +509,7 @@ impl PackageSource for GitPackageSource {
 
 /// Errors that can occur when interacting with the Git package source
 pub mod errors {
+    use crate::manifest::target::TargetKind;
     use relative_path::RelativePathBuf;
     use thiserror::Error;
 
@@ -594,8 +599,8 @@ pub mod errors {
         NoLockfile(Box<gix::Url>),
 
         /// No path for a workspace member was found in the lockfile
-        #[error("no path found for workspace member {0} in lockfile for repository {1}")]
-        NoPathForWorkspaceMember(String, Box<gix::Url>),
+        #[error("no path found for workspace member {0} {1} in lockfile for repository {2}")]
+        NoPathForWorkspaceMember(String, TargetKind, Box<gix::Url>),
     }
 
     /// Errors that can occur when downloading a package from a Git package source

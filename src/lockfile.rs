@@ -129,7 +129,7 @@ pub struct Lockfile {
 
     /// The workspace members
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub workspace: BTreeMap<PackageName, RelativePathBuf>,
+    pub workspace: BTreeMap<PackageName, BTreeMap<TargetKind, RelativePathBuf>>,
 
     /// The graph of dependencies
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

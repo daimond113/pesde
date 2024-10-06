@@ -118,6 +118,7 @@ impl AddCommand {
                     pesde::source::workspace::specifier::WorkspaceDependencySpecifier {
                         name: name.clone(),
                         version_type: version.unwrap_or_default(),
+                        target: self.target,
                     },
                 ),
             ),

@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- Add support for multiple targets under the same package name in workspace members by @daimond113
+
 ## [0.5.0-rc.1] - 2024-10-06
 ### Changed
 - Rewrite the entire project in a more maintainable way by @daimond113
