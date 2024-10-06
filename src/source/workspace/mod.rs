@@ -36,22 +36,24 @@ impl PackageSource for WorkspacePackageSource {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-        _package_target: TargetKind,
+        package_target: TargetKind,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (path, manifest) = 'finder: {
             let workspace_dir = project
                 .workspace_dir
                 .as_ref()
                 .unwrap_or(&project.package_dir);
+            let target = specifier.target.unwrap_or(package_target);
 
             for (path, manifest) in project.workspace_members(workspace_dir)? {
-                if manifest.name == specifier.name {
+                if manifest.name == specifier.name && manifest.target.kind() == target {
                     break 'finder (path, manifest);
                 }
             }
 
             return Err(errors::ResolveError::NoWorkspaceMember(
                 specifier.name.to_string(),
+                target,
             ));
         };
 
@@ -134,6 +136,7 @@ impl PackageSource for WorkspacePackageSource {
 
 /// Errors that can occur when using a workspace package source
 pub mod errors {
+    use crate::manifest::target::TargetKind;
     use thiserror::Error;
 
     /// Errors that can occur when refreshing the workspace package source
@@ -150,8 +153,8 @@ pub mod errors {
         ReadWorkspaceMembers(#[from] crate::errors::WorkspaceMembersError),
 
         /// No workspace member was found with the given name
-        #[error("no workspace member found with name {0}")]
-        NoWorkspaceMember(String),
+        #[error("no workspace member found with name {0} and target {1}")]
+        NoWorkspaceMember(String, TargetKind),
 
         /// An error occurred getting all dependencies
         #[error("failed to get all dependencies")]
