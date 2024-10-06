@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Add support for multiple targets under the same package name in workspace members by @daimond113
+### Fixed
+- Fix versions with dots not being handled correctly by @daimond113
 
 ## [0.5.0-rc.1] - 2024-10-06
 ### Changed

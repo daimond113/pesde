@@ -1,10 +1,9 @@
-use std::{fs::create_dir_all, io::Read, path::PathBuf};
-
 use anyhow::Context;
 use colored::Colorize;
 use reqwest::header::ACCEPT;
 use semver::Version;
 use serde::Deserialize;
+use std::{fs::create_dir_all, io::Read, path::PathBuf};
 
 use crate::cli::{
     bin_dir,
@@ -160,9 +159,7 @@ pub fn get_or_download_version(
     let path = home_dir()?.join("versions");
     create_dir_all(&path).context("failed to create versions directory")?;
 
-    let path = path
-        .join(version.to_string())
-        .with_extension(std::env::consts::EXE_EXTENSION);
+    let path = path.join(format!("{version}{}", std::env::consts::EXE_SUFFIX));
 
     let is_requested_version = *version == current_version();
 
@@ -225,9 +222,11 @@ pub fn max_installed_version() -> anyhow::Result<Version> {
 }
 
 pub fn update_bin_exe() -> anyhow::Result<()> {
-    let copy_to = bin_dir()?
-        .join(env!("CARGO_BIN_NAME"))
-        .with_extension(std::env::consts::EXE_EXTENSION);
+    let copy_to = bin_dir()?.join(format!(
+        "{}{}",
+        env!("CARGO_BIN_NAME"),
+        std::env::consts::EXE_SUFFIX
+    ));
 
     std::fs::copy(std::env::current_exe()?, &copy_to)
         .context("failed to copy executable to bin folder")?;
