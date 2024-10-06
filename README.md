@@ -1,76 +1,36 @@
 <br>
 
 <div align="center">
-    <img src="https://raw.githubusercontent.com/daimond113/pesde/master/website/static/logo.svg" alt="pesde" width="200" />
+    <img src="https://raw.githubusercontent.com/daimond113/pesde/0.5/assets/logotype.svg" alt="pesde logo" width="200" />
 </div>
 
 <br>
 
-# Important
-
-> pesde is currently being rewritten, and this new version is not yet ready for use. You can find the stable version in the `master` branch.
-
-pesde is a package manager for Roblox that is designed to be feature-rich and easy to use.
-Currently, pesde is in a very early stage of development, but already supports the following features:
-
-- Managing dependencies
-- Re-exporting types
-- `bin` exports (ran with Lune)
-- Patching packages
-- Downloading packages from Wally registries
+pesde is a package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune.
+pesde has its own registry, however it can also use Wally, and Git repositories as package sources.
+It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 
 ## Installation
 
 pesde can be installed from GitHub Releases. You can find the latest
-release [here](https://github.com/daimond113/pesde/releases).
-It can also be installed by using [Aftman](https://github.com/LPGhatguy/aftman).
-
-## Usage
-
-pesde is designed to be easy to use. Here are some examples of how to use it:
+release [here](https://github.com/daimond113/pesde/releases). Once you have downloaded the binary,
+run the following command to install it:
 
 ```sh
-# Initialize a new project
-pesde init
-
-# Install a package
-pesde add daimond113/pesde@0.1.0
-
-# Remove a package
-pesde remove daimond113/pesde
-
-# List outdated packages
-pesde outdated
-
-# Install all packages
-pesde install
-
-# Search for a package
-pesde search pesde
-
-# Run a binary
-pesde run daimond113/pesde
-
-# Run a binary with arguments
-pesde run daimond113/pesde -- --help
+pesde self-install
 ```
 
-## Preparing to publish
+Note that pesde manages its own versions, so you can update it by running the following command:
 
-To publish you must first initialize a new project with `pesde init`. You can then use the other commands to manipulate
-dependencies, and edit the file
-manually to add metadata such as authors, description, and license.
-
-> **Warning**  
-> The pesde CLI respects the `.gitignore` file and will not include files that are ignored. The `.pesdeignore` file has
-> more power over the `.gitignore` file, so you can unignore files by prepending a `!` to the pattern.
-
-The pesde CLI supports the `.pesdeignore` file, which is similar to `.gitignore`. It can be used to include or exclude
-files from the package.
+```sh
+pesde self-upgrade
+```
 
 ## Documentation
 
-For more information, you can check the [documentation](https://pesde.daimond113.com/docs).
+For more information about its usage, you can check the [documentation](https://docs.pesde.daimond113.com).
+
+*Currently waiting on [this PR](https://github.com/daimond113/pesde/pull/3) to be merged.*
 
 ## Registry
 
@@ -78,9 +38,7 @@ The main pesde registry is hosted on [fly.io](https://fly.io). You can find it a
 
 ### Self-hosting
 
-You can self-host the registry by using the default implementation in the `registry` folder, or by creating your own
-implementation. The API
-must be compatible with the default implementation, which can be found in the `main.rs` file.
+The registry tries to require no modifications to be self-hosted. Please refer to the [example .env file](https://github.com/daimond113/pesde/blob/0.5/registry/.env.example) for more information.
 
 ## Previous art
 

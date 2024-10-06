@@ -1,8 +1,3 @@
-# fly.toml app configuration file generated for pesde-registry on 2024-03-04T20:57:13+01:00
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
 app = 'pesde-registry'
 primary_region = 'waw'
 kill_signal = 'SIGINT'
@@ -15,6 +10,8 @@ ADDRESS = '0.0.0.0'
 PORT = '8080'
 COMMITTER_GIT_NAME = 'pesde index updater'
 COMMITTER_GIT_EMAIL = 'pesde@daimond113.com'
+INDEX_REPO_URL = 'https://github.com/daimond113/pesde-index'
+GITHUB_AUTH=1
 
 [http_service]
 internal_port = 8080
