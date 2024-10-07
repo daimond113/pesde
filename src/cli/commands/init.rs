@@ -136,6 +136,7 @@ impl InitCommand {
             )
             .context("failed to write sync config generator script file")?;
 
+            #[cfg(feature = "wally-compat")]
             std::fs::write(
                 folder.join(format!("{}.luau", ScriptName::SourcemapGenerator)),
                 script_contents(Path::new(&format!(
@@ -154,10 +155,13 @@ impl InitCommand {
                     ScriptName::RobloxSyncConfigGenerator
                 ));
 
-            scripts[&ScriptName::SourcemapGenerator.to_string()] = toml_edit::value(format!(
-                concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
-                ScriptName::SourcemapGenerator
-            ));
+            #[cfg(feature = "wally-compat")]
+            {
+                scripts[&ScriptName::SourcemapGenerator.to_string()] = toml_edit::value(format!(
+                    concat!(".", env!("CARGO_PKG_NAME"), "/{}.luau"),
+                    ScriptName::SourcemapGenerator
+                ));
+            }
         }
 
         manifest["indices"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
