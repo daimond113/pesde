@@ -51,6 +51,7 @@ fn bin_link_file(alias: &str) -> String {
     format!(
         r#"{prefix}local process = require("@lune/process")
 local fs = require("@lune/fs")
+local stdio = require("@lune/stdio")
 
 local project_root = process.cwd
 local path_components = string.split(string.gsub(project_root, "\\", "/"), "/")
@@ -68,9 +69,11 @@ for _, packages_folder in {{ {all_folders} }} do
     
     if fs.isFile(path) then
         require(path)
-        break
+        return
     end
 end
+
+stdio.ewrite(stdio.color("red") .. "binary `{alias}` not found. are you in the right directory?" .. stdio.color("reset") .. "\n")
     "#,
     )
 }
