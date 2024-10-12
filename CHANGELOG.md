@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Fixed
 - Fix `self-upgrade` overwriting its own binary by @daimond113
+- Allow use of Luau packages in `execute` command by @daimond113 
 
 ## [0.5.0-rc.4] - 2024-10-12
 ### Added

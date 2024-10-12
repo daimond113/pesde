@@ -40,20 +40,35 @@ impl ExecuteCommand {
             .refresh(&project)
             .context("failed to refresh source")?;
 
-        let mut results = source
-            .resolve(
-                &PesdeDependencySpecifier {
-                    name: self.package.0,
-                    version: self.package.1.unwrap_or(VersionReq::STAR),
-                    index: None,
-                    target: None,
-                },
-                &project,
-                TargetKind::Lune,
-            )
-            .context("failed to resolve package")?;
+        let version_req = self.package.1.unwrap_or(VersionReq::STAR);
+        let Some((version, pkg_ref)) = ('finder: {
+            let specifier = PesdeDependencySpecifier {
+                name: self.package.0.clone(),
+                version: version_req.clone(),
+                index: None,
+                target: None,
+            };
 
-        let (version, pkg_ref) = results.1.pop_last().context("no package found")?;
+            if let Some(res) = source
+                .resolve(&specifier, &project, TargetKind::Lune)
+                .context("failed to resolve package")?
+                .1
+                .pop_last()
+            {
+                break 'finder Some(res);
+            }
+
+            source
+                .resolve(&specifier, &project, TargetKind::Luau)
+                .context("failed to resolve package")?
+                .1
+                .pop_last()
+        }) else {
+            anyhow::bail!(
+                "no Lune or Luau package could be found for {}@{version_req}",
+                self.package.0,
+            );
+        };
 
         log::info!("found package {}@{version}", pkg_ref.name);
 
