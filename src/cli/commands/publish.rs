@@ -107,8 +107,6 @@ impl PublishCommand {
         };
 
         if !manifest.includes.insert(MANIFEST_FILE_NAME.to_string()) {
-            display_includes.push(MANIFEST_FILE_NAME.to_string());
-
             println!(
                 "{}: {MANIFEST_FILE_NAME} was not in includes, adding it",
                 "warn".yellow().bold()
@@ -224,7 +222,7 @@ impl PublishCommand {
                 anyhow::bail!("included file {included_name} does not exist");
             }
 
-            // it'll be included later, with our mut modifications
+            // it's already included, and guaranteed to be a file
             if included_name.eq_ignore_ascii_case(MANIFEST_FILE_NAME) {
                 continue;
             }
