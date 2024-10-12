@@ -9,7 +9,7 @@ use std::{
 };
 use tempfile::tempfile;
 
-use crate::cli::up_to_date_lockfile;
+use crate::cli::{run_on_workspace_members, up_to_date_lockfile};
 use pesde::{
     manifest::{target::Target, DependencyType},
     scripts::ScriptName,
@@ -23,18 +23,29 @@ use pesde::{
     Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Copy, Clone)]
 pub struct PublishCommand {
     /// Whether to output a tarball instead of publishing
     #[arg(short, long)]
     dry_run: bool,
+
+    /// Agree to all prompts
+    #[arg(short, long)]
+    yes: bool,
 }
 
 impl PublishCommand {
-    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
+    fn run_impl(self, project: &Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
         let mut manifest = project
             .deser_manifest()
             .context("failed to read manifest")?;
+
+        println!(
+            "\n{}\n",
+            format!("[now publishing {} {}]", manifest.name, manifest.target)
+                .bold()
+                .on_bright_black()
+        );
 
         if manifest.private {
             println!("{}", "package is private, cannot publish".red().bold());
@@ -54,7 +65,7 @@ impl PublishCommand {
                 anyhow::bail!("no build files found in target");
             }
 
-            match up_to_date_lockfile(&project)? {
+            match up_to_date_lockfile(project)? {
                 Some(lockfile) => {
                     if lockfile
                         .graph
@@ -313,7 +324,7 @@ impl PublishCommand {
                 }
                 DependencySpecifiers::Workspace(spec) => {
                     let pkg_ref = WorkspacePackageSource
-                        .resolve(spec, &project, target_kind)
+                        .resolve(spec, project, target_kind)
                         .context("failed to resolve workspace package")?
                         .1
                         .pop_last()
@@ -410,7 +421,10 @@ impl PublishCommand {
                 display_includes.into_iter().collect::<Vec<_>>().join(", ")
             );
 
-            if !self.dry_run && !inquire::Confirm::new("is this information correct?").prompt()? {
+            if !self.dry_run
+                && !self.yes
+                && !inquire::Confirm::new("is this information correct?").prompt()?
+            {
                 println!("\n{}", "publish aborted".red().bold());
 
                 return Ok(());
@@ -447,10 +461,10 @@ impl PublishCommand {
                 .clone(),
         );
         source
-            .refresh(&project)
+            .refresh(project)
             .context("failed to refresh source")?;
         let config = source
-            .config(&project)
+            .config(project)
             .context("failed to get source config")?;
 
         if archive.len() > config.max_archive_size {
@@ -497,30 +511,36 @@ impl PublishCommand {
         match status {
             StatusCode::CONFLICT => {
                 println!("{}", "package version already exists".red().bold());
-
-                Ok(())
             }
             StatusCode::FORBIDDEN => {
                 println!(
                     "{}",
                     "unauthorized to publish under this scope".red().bold()
                 );
-
-                Ok(())
             }
             StatusCode::BAD_REQUEST => {
                 println!("{}: {text}", "invalid package".red().bold());
-
-                Ok(())
             }
             code if !code.is_success() => {
                 anyhow::bail!("failed to publish package: {code} ({text})");
             }
             _ => {
                 println!("{text}");
-
-                Ok(())
             }
         }
+
+        Ok(())
+    }
+
+    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
+        let result = self.run_impl(&project, reqwest.clone());
+        if project.workspace_dir().is_some() {
+            return result;
+        } else if let Err(result) = result {
+            println!("an error occurred publishing workspace root: {result}");
+        }
+
+        run_on_workspace_members(&project, |project| self.run_impl(&project, reqwest.clone()))
+            .map(|_| ())
     }
 }

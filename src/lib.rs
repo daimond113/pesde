@@ -130,27 +130,27 @@ impl Project {
         }
     }
 
-    /// Access the package directory
+    /// The directory of the package
     pub fn package_dir(&self) -> &Path {
         &self.package_dir
     }
 
-    /// Access the workspace directory
+    /// The directory of the workspace this package belongs to, if any
     pub fn workspace_dir(&self) -> Option<&Path> {
         self.workspace_dir.as_deref()
     }
 
-    /// Access the data directory
+    /// The directory to store general-purpose data
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
     }
 
-    /// Access the authentication configuration
+    /// The authentication configuration
     pub fn auth_config(&self) -> &AuthConfig {
         &self.auth_config
     }
 
-    /// Access the CAS (content-addressable storage) directory
+    /// The CAS (content-addressable storage) directory
     pub fn cas_dir(&self) -> &Path {
         &self.cas_dir
     }

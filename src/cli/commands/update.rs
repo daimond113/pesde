@@ -1,6 +1,7 @@
 use crate::cli::{download_graph, run_on_workspace_members};
 use anyhow::Context;
 use clap::Args;
+use colored::Colorize;
 use indicatif::MultiProgress;
 use pesde::{lockfile::Lockfile, Project};
 use std::collections::HashSet;
@@ -24,6 +25,13 @@ impl UpdateCommand {
         let manifest = project
             .deser_manifest()
             .context("failed to read manifest")?;
+
+        println!(
+            "\n{}\n",
+            format!("[now updating {} {}]", manifest.name, manifest.target)
+                .bold()
+                .on_bright_black()
+        );
 
         let graph = project
             .dependency_graph(None, &mut refreshed_sources)

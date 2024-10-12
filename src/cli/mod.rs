@@ -272,8 +272,8 @@ pub fn run_on_workspace_members(
 ) -> anyhow::Result<BTreeMap<PackageName, BTreeMap<TargetKind, RelativePathBuf>>> {
     Ok(match project.workspace_dir() {
         Some(_) => {
-            // this might seem counterintuitive, but remember that the workspace
-            // is the package_dir when the user isn't in a member package
+            // this might seem counterintuitive, but remember that
+            // the presence of a workspace dir means that this project is a member of one
             Default::default()
         }
         None => project

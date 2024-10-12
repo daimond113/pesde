@@ -131,7 +131,7 @@ impl InstallCommand {
 
         println!(
             "\n{}\n",
-            format!("[now installing {}]", manifest.name)
+            format!("[now installing {} {}]", manifest.name, manifest.target)
                 .bold()
                 .on_bright_black()
         );
