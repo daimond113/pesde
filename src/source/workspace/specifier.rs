@@ -11,7 +11,7 @@ pub struct WorkspaceDependencySpecifier {
     pub name: PackageName,
     /// The version type to use when publishing the package
     #[serde(default, rename = "version")]
-    pub version_type: VersionType,
+    pub version: VersionTypeOrReq,
     /// The target of the workspace package
     pub target: Option<TargetKind>,
 }
@@ -19,7 +19,7 @@ impl DependencySpecifier for WorkspaceDependencySpecifier {}
 
 impl Display for WorkspaceDependencySpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "workspace:{}{}", self.version_type, self.name)
+        write!(f, "workspace:{}{}", self.version, self.name)
     }
 }
 
@@ -66,6 +66,42 @@ impl FromStr for VersionType {
     }
 }
 
+/// Either a version type or a version requirement
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub enum VersionTypeOrReq {
+    /// A version type
+    VersionType(VersionType),
+    /// A version requirement
+    Req(semver::VersionReq),
+}
+
+impl Default for VersionTypeOrReq {
+    fn default() -> Self {
+        VersionTypeOrReq::VersionType(VersionType::Caret)
+    }
+}
+
+impl Display for VersionTypeOrReq {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VersionTypeOrReq::VersionType(t) => write!(f, "{t}"),
+            VersionTypeOrReq::Req(r) => write!(f, "{r}"),
+        }
+    }
+}
+
+impl FromStr for VersionTypeOrReq {
+    type Err = errors::VersionTypeOrReqFromStr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse().map(VersionTypeOrReq::VersionType).or_else(|_| {
+            s.parse()
+                .map(VersionTypeOrReq::Req)
+                .map_err(errors::VersionTypeOrReqFromStr::InvalidVersionReq)
+        })
+    }
+}
+
 /// Errors that can occur when using a version type
 pub mod errors {
     use thiserror::Error;
@@ -74,7 +110,15 @@ pub mod errors {
     #[derive(Debug, Error)]
     pub enum VersionTypeFromStr {
         /// The version type is invalid
-        #[error("invalid version type: {0}")]
+        #[error("invalid version type {0}")]
         InvalidVersionType(String),
+    }
+
+    /// Errors that can occur when parsing a version type or requirement
+    #[derive(Debug, Error)]
+    pub enum VersionTypeOrReqFromStr {
+        /// The version requirement is invalid
+        #[error("invalid version requirement {0}")]
+        InvalidVersionReq(#[from] semver::Error),
     }
 }

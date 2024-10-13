@@ -6,7 +6,7 @@ use pesde::{
     lockfile::{DependencyGraph, DownloadedGraph, Lockfile},
     manifest::target::TargetKind,
     names::{PackageName, PackageNames},
-    source::{version_id::VersionId, workspace::specifier::VersionType, PackageSources},
+    source::{version_id::VersionId, workspace::specifier::VersionTypeOrReq, PackageSources},
     Project,
 };
 use relative_path::RelativePathBuf;
@@ -152,7 +152,7 @@ impl VersionedPackageName {
 enum AnyPackageIdentifier<V: FromStr = VersionId, N: FromStr = PackageNames> {
     PackageName(VersionedPackageName<V, N>),
     Url((gix::Url, String)),
-    Workspace(VersionedPackageName<VersionType, PackageName>),
+    Workspace(VersionedPackageName<VersionTypeOrReq, PackageName>),
 }
 
 impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>

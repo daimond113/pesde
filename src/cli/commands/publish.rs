@@ -17,7 +17,10 @@ use pesde::{
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
         traits::PackageSource,
-        workspace::{specifier::VersionType, WorkspacePackageSource},
+        workspace::{
+            specifier::{VersionType, VersionTypeOrReq},
+            WorkspacePackageSource,
+        },
         IGNORED_DIRS, IGNORED_FILES,
     },
     Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
@@ -344,8 +347,11 @@ impl PublishCommand {
 
                     *specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
                         name: spec.name.clone(),
-                        version: match spec.version_type {
-                            VersionType::Wildcard => VersionReq::STAR,
+                        version: match spec.version.clone() {
+                            VersionTypeOrReq::VersionType(VersionType::Wildcard) => {
+                                VersionReq::STAR
+                            }
+                            VersionTypeOrReq::Req(r) => r,
                             v => VersionReq::parse(&format!("{v}{}", manifest.version))
                                 .context(format!("failed to parse version for {v}"))?,
                         },

@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Support full version requirements in workspace version field by @daimond113 
+
 ### Fixed
 - Correct `pesde.toml` inclusion message in `publish` command by @daimond113
 - Allow writes to files when `link` is false in PackageFS::write_to by @daimond113

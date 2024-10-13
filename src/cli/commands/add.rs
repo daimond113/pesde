@@ -117,7 +117,7 @@ impl AddCommand {
                 DependencySpecifiers::Workspace(
                     pesde::source::workspace::specifier::WorkspaceDependencySpecifier {
                         name: name.clone(),
-                        version_type: version.unwrap_or_default(),
+                        version: version.clone().unwrap_or_default(),
                         target: self.target,
                     },
                 ),
@@ -220,7 +220,7 @@ impl AddCommand {
 
                 println!(
                     "added workspace {}@{} to {}",
-                    spec.name, spec.version_type, dependency_key
+                    spec.name, spec.version, dependency_key
                 );
             }
         }
