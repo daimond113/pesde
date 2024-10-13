@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Correct `pesde.toml` inclusion message in `publish` command by @daimond113
 - Allow writes to files when `link` is false in PackageFS::write_to by @daimond113
+- Handle missing revisions in AnyPackageIdentifier::from_str by @daimond113
 
 ## [0.5.0-rc.5] - 2024-10-12
 ### Added

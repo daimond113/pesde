@@ -163,7 +163,7 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(s) = s.strip_prefix("gh#") {
             let s = format!("https://github.com/{s}");
-            let (repo, rev) = s.split_once('#').unwrap();
+            let (repo, rev) = s.split_once('#').context("missing revision")?;
 
             Ok(AnyPackageIdentifier::Url((
                 repo.try_into()?,
@@ -172,7 +172,7 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
         } else if let Some(rest) = s.strip_prefix("workspace:") {
             Ok(AnyPackageIdentifier::Workspace(rest.parse()?))
         } else if s.contains(':') {
-            let (url, rev) = s.split_once('#').unwrap();
+            let (url, rev) = s.split_once('#').context("missing revision")?;
 
             Ok(AnyPackageIdentifier::Url((
                 url.try_into()?,
