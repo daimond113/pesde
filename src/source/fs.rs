@@ -160,7 +160,21 @@ impl PackageFS {
                             if link {
                                 std::fs::hard_link(cas_file_path, path)?;
                             } else {
-                                std::fs::copy(cas_file_path, path)?;
+                                let mut f = std::fs::File::create(&path)?;
+                                f.write_all(&std::fs::read(cas_file_path)?)?;
+
+                                let mut permissions = f.metadata()?.permissions();
+                                #[cfg(windows)]
+                                {
+                                    #[allow(clippy::permissions_set_readonly_false)]
+                                    permissions.set_readonly(false);
+                                }
+                                #[cfg(unix)]
+                                {
+                                    use std::os::unix::fs::PermissionsExt;
+                                    permissions.set_mode(permissions.mode() | 0o644);
+                                }
+                                f.set_permissions(permissions)?;
                             }
                         }
                         FSEntry::Directory => {
