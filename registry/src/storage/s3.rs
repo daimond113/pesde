@@ -15,7 +15,7 @@ pub struct S3Storage {
     pub reqwest_client: reqwest::Client,
 }
 
-pub const S3_SIGN_DURATION: Duration = Duration::from_secs(60 * 3);
+pub const S3_SIGN_DURATION: Duration = Duration::from_secs(60 * 15);
 
 impl StorageImpl for S3Storage {
     async fn store_package(
@@ -41,7 +41,8 @@ impl StorageImpl for S3Storage {
             .header(CONTENT_ENCODING, "gzip")
             .body(contents)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
 
         Ok(())
     }
@@ -90,7 +91,8 @@ impl StorageImpl for S3Storage {
             .header(CONTENT_ENCODING, "gzip")
             .body(contents)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
 
         Ok(())
     }
@@ -130,7 +132,8 @@ impl StorageImpl for S3Storage {
             .header(CONTENT_ENCODING, "gzip")
             .body(contents)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
 
         Ok(())
     }
