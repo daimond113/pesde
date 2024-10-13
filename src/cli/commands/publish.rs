@@ -106,7 +106,7 @@ impl PublishCommand {
             _ => None,
         };
 
-        if !manifest.includes.insert(MANIFEST_FILE_NAME.to_string()) {
+        if manifest.includes.insert(MANIFEST_FILE_NAME.to_string()) {
             println!(
                 "{}: {MANIFEST_FILE_NAME} was not in includes, adding it",
                 "warn".yellow().bold()

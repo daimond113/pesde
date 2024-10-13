@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- Correct `pesde.toml` inclusion message in `publish` command by @daimond113
+
 ## [0.5.0-rc.5] - 2024-10-12
 ### Added
 - Inform user about not finding any bin package when using its bin invocation by @daimond113
