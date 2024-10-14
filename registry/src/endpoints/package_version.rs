@@ -162,6 +162,7 @@ pub async fn get_package_version(
 
     let mut value = serde_json::to_value(response)?;
     value["docs"] = serde_json::to_value(entry.docs.clone())?;
+    value["dependencies"] = serde_json::to_value(entry.dependencies.clone())?;
 
     Ok(HttpResponse::Ok().json(value))
 }
