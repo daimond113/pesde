@@ -104,18 +104,18 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
     let (search_reader, search_writer) = make_search(&project, &source);
 
     let app_data = web::Data::new(AppState {
-        source: Mutex::new(source),
-        project,
         storage: {
             let storage = get_storage_from_env();
             info!("storage: {storage}");
             storage
         },
         auth: {
-            let auth = get_auth_from_env();
+            let auth = get_auth_from_env(&source, &project);
             info!("auth: {auth}");
             auth
         },
+        source: Mutex::new(source),
+        project,
 
         search_reader,
         search_writer: Mutex::new(search_writer),

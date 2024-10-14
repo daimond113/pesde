@@ -13,6 +13,7 @@ use actix_web::{
     middleware::Next,
     web, HttpMessage, HttpResponse,
 };
+use pesde::{source::pesde::PesdePackageSource, Project};
 use sha2::{Digest, Sha256};
 use std::fmt::Display;
 
@@ -55,7 +56,7 @@ pub trait AuthImpl: Display {
     }
 
     fn read_needs_auth(&self) -> bool {
-        false
+        benv!("READ_NEEDS_AUTH").is_ok()
     }
 }
 
@@ -141,14 +142,20 @@ pub async fn read_mw(
     next.call(req).await.map(|res| res.map_into_left_body())
 }
 
-pub fn get_auth_from_env() -> Auth {
+pub fn get_auth_from_env(index: &PesdePackageSource, project: &Project) -> Auth {
     if let Ok(token) = benv!("ACCESS_TOKEN") {
         Auth::Token(token::TokenAuth {
             token: *Sha256::digest(token.as_bytes()).as_ref(),
         })
     } else if benv!("GITHUB_AUTH").is_ok() {
+        let config = index.config(project).expect("failed to get index config");
+
         Auth::GitHub(github::GitHubAuth {
             reqwest_client: make_reqwest(),
+            client_id: config
+                .github_oauth_client_id
+                .expect("index isn't configured for GitHub"),
+            client_secret: benv!(required "GITHUB_CLIENT_SECRET"),
         })
     } else if let Ok((r, w)) =
         benv!("READ_ACCESS_TOKEN").and_then(|r| benv!("WRITE_ACCESS_TOKEN").map(|w| (r, w)))
@@ -162,7 +169,7 @@ pub fn get_auth_from_env() -> Auth {
     }
 }
 
-pub fn get_token_from_req(req: &ServiceRequest, bearer: bool) -> Option<String> {
+pub fn get_token_from_req(req: &ServiceRequest) -> Option<String> {
     let token = match req
         .headers()
         .get(AUTHORIZATION)
@@ -172,13 +179,7 @@ pub fn get_token_from_req(req: &ServiceRequest, bearer: bool) -> Option<String> 
         None => return None,
     };
 
-    let token = if bearer {
-        if token.to_lowercase().starts_with("bearer ") {
-            token.to_string()
-        } else {
-            format!("Bearer {token}")
-        }
-    } else if token.to_lowercase().starts_with("bearer ") {
+    let token = if token.to_lowercase().starts_with("bearer ") {
         token[7..].to_string()
     } else {
         token.to_string()

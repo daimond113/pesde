@@ -12,7 +12,7 @@ pub struct TokenAuth {
 
 impl AuthImpl for TokenAuth {
     async fn for_write_request(&self, req: &ServiceRequest) -> Result<Option<UserId>, ActixError> {
-        let token = match get_token_from_req(req, false) {
+        let token = match get_token_from_req(req) {
             Some(token) => token,
             None => return Ok(None),
         };
