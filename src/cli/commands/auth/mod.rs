@@ -1,31 +1,69 @@
-use clap::Subcommand;
-use pesde::Project;
+use crate::cli::config::read_config;
+use clap::{Args, Subcommand};
+use pesde::{errors::ManifestReadError, Project};
 
 mod login;
 mod logout;
-mod set_token_override;
 mod whoami;
+
+#[derive(Debug, Args)]
+pub struct AuthSubcommand {
+    /// The index to use. Defaults to `default`, or the configured default index if current directory doesn't have a manifest
+    #[arg(short, long)]
+    pub index: Option<String>,
+
+    #[clap(subcommand)]
+    pub command: AuthCommands,
+}
 
 #[derive(Debug, Subcommand)]
 pub enum AuthCommands {
-    /// Logs in into GitHub, and stores the token
+    /// Sets a token for an index. Optionally gets it from GitHub
     Login(login::LoginCommand),
     /// Removes the stored token
     Logout(logout::LogoutCommand),
     /// Prints the username of the currently logged-in user
     #[clap(name = "whoami")]
     WhoAmI(whoami::WhoAmICommand),
-    /// Sets a token override for a specific repository
-    SetTokenOverride(set_token_override::SetTokenOverrideCommand),
 }
 
-impl AuthCommands {
+impl AuthSubcommand {
     pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        match self {
-            AuthCommands::Login(login) => login.run(project, reqwest),
-            AuthCommands::Logout(logout) => logout.run(),
-            AuthCommands::WhoAmI(whoami) => whoami.run(reqwest),
-            AuthCommands::SetTokenOverride(set_token_override) => set_token_override.run(),
+        let manifest = match project.deser_manifest() {
+            Ok(manifest) => Some(manifest),
+            Err(e) => match e {
+                ManifestReadError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                e => return Err(e.into()),
+            },
+        };
+
+        let index_url = match self.index.as_deref() {
+            Some(index) => match index.try_into() {
+                Ok(url) => Some(url),
+                Err(_) => None,
+            },
+            None => match manifest {
+                Some(_) => None,
+                None => Some(read_config()?.default_index),
+            },
+        };
+
+        let index_url = match index_url {
+            Some(url) => url,
+            None => {
+                let index_name = self.index.as_deref().unwrap_or("default");
+
+                match manifest.unwrap().indices.get(index_name) {
+                    Some(index) => index.clone(),
+                    None => anyhow::bail!("index {index_name} not found"),
+                }
+            }
+        };
+
+        match self.command {
+            AuthCommands::Login(login) => login.run(index_url, project, reqwest),
+            AuthCommands::Logout(logout) => logout.run(index_url),
+            AuthCommands::WhoAmI(whoami) => whoami.run(index_url, reqwest),
         }
     }
 }

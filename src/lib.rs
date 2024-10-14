@@ -44,8 +44,7 @@ pub(crate) const LINK_LIB_NO_FILE_FOUND: &str = "____pesde_no_export_file_found"
 /// Struct containing the authentication configuration
 #[derive(Debug, Default, Clone)]
 pub struct AuthConfig {
-    default_token: Option<String>,
-    token_overrides: HashMap<gix::Url, String>,
+    tokens: HashMap<gix::Url, String>,
     git_credentials: Option<Account>,
 }
 
@@ -55,18 +54,12 @@ impl AuthConfig {
         AuthConfig::default()
     }
 
-    /// Sets the default token
-    pub fn with_default_token<S: AsRef<str>>(mut self, token: Option<S>) -> Self {
-        self.default_token = token.map(|s| s.as_ref().to_string());
-        self
-    }
-
-    /// Set the token overrides
-    pub fn with_token_overrides<I: IntoIterator<Item = (gix::Url, S)>, S: AsRef<str>>(
+    /// Set the tokens
+    pub fn with_tokens<I: IntoIterator<Item = (gix::Url, S)>, S: AsRef<str>>(
         mut self,
         tokens: I,
     ) -> Self {
-        self.token_overrides = tokens
+        self.tokens = tokens
             .into_iter()
             .map(|(url, s)| (url, s.as_ref().to_string()))
             .collect();
@@ -79,26 +72,14 @@ impl AuthConfig {
         self
     }
 
-    /// Get the default token
-    pub fn default_token(&self) -> Option<&str> {
-        self.default_token.as_deref()
-    }
-
-    /// Get the token overrides
-    pub fn token_overrides(&self) -> &HashMap<gix::Url, String> {
-        &self.token_overrides
+    /// Get the tokens
+    pub fn tokens(&self) -> &HashMap<gix::Url, String> {
+        &self.tokens
     }
 
     /// Get the git credentials
     pub fn git_credentials(&self) -> Option<&Account> {
         self.git_credentials.as_ref()
-    }
-
-    pub(crate) fn get_token(&self, url: &gix::Url) -> Option<&str> {
-        self.token_overrides
-            .get(url)
-            .map(|s| s.as_str())
-            .or(self.default_token.as_deref())
     }
 }
 

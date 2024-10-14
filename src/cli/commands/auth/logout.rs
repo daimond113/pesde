@@ -5,10 +5,10 @@ use clap::Args;
 pub struct LogoutCommand {}
 
 impl LogoutCommand {
-    pub fn run(self) -> anyhow::Result<()> {
-        set_token(None)?;
+    pub fn run(self, index_url: gix::Url) -> anyhow::Result<()> {
+        set_token(&index_url, None)?;
 
-        println!("logged out");
+        println!("logged out of {index_url}");
 
         Ok(())
     }

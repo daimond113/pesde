@@ -5,7 +5,7 @@ use std::{
 
 use gix::Url;
 use relative_path::RelativePathBuf;
-use reqwest::header::{HeaderMap, AUTHORIZATION};
+use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use tempfile::tempdir;
 
@@ -178,33 +178,19 @@ impl PackageSource for WallyPackageSource {
             pkg_ref.version
         );
 
-        let mut headers = HeaderMap::new();
-        headers.insert(
+        let mut request = reqwest.get(&url).header(
             "Wally-Version",
             std::env::var("PESDE_WALLY_VERSION")
                 .as_deref()
-                .unwrap_or("0.3.2")
-                .parse()
-                .map_err(|e| {
-                    errors::DownloadError::InvalidHeaderValue("Wally-Version".to_string(), e)
-                })?,
+                .unwrap_or("0.3.2"),
         );
 
-        if let Some(token) = project.auth_config.get_token(&self.repo_url) {
-            log::debug!("using token for wally package download");
-            headers.insert(
-                AUTHORIZATION,
-                token.parse().map_err(|e| {
-                    errors::DownloadError::InvalidHeaderValue("Authorization".to_string(), e)
-                })?,
-            );
+        if let Some(token) = project.auth_config.tokens().get(&self.repo_url) {
+            log::debug!("using token for {}", self.repo_url);
+            request = request.header(AUTHORIZATION, token);
         }
 
-        let response = reqwest
-            .get(url)
-            .headers(headers)
-            .send()?
-            .error_for_status()?;
+        let response = request.send()?.error_for_status()?;
         let bytes = response.bytes()?;
 
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
@@ -355,9 +341,5 @@ pub mod errors {
         /// Error writing index file
         #[error("error writing index file")]
         WriteIndex(#[source] std::io::Error),
-
-        /// A header value was invalid
-        #[error("invalid header {0} value")]
-        InvalidHeaderValue(String, #[source] reqwest::header::InvalidHeaderValue),
     }
 }

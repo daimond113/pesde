@@ -7,7 +7,7 @@ use std::{
 
 use gix::Url;
 use relative_path::RelativePathBuf;
-use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION};
+use reqwest::header::{ACCEPT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 
 use pkg_ref::PesdePackageRef;
@@ -273,29 +273,14 @@ impl PackageSource for PesdePackageSource {
             .replace("{PACKAGE_VERSION}", &pkg_ref.version.to_string())
             .replace("{PACKAGE_TARGET}", &pkg_ref.target.to_string());
 
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            ACCEPT,
-            "application/octet-stream"
-                .parse()
-                .map_err(|e| errors::DownloadError::InvalidHeaderValue("Accept".to_string(), e))?,
-        );
+        let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
 
-        if let Some(token) = project.auth_config.get_token(&self.repo_url) {
-            log::debug!("using token for pesde package download");
-            headers.insert(
-                AUTHORIZATION,
-                token.parse().map_err(|e| {
-                    errors::DownloadError::InvalidHeaderValue("Authorization".to_string(), e)
-                })?,
-            );
+        if let Some(token) = project.auth_config.tokens().get(&self.repo_url) {
+            log::debug!("using token for {}", self.repo_url);
+            request = request.header(AUTHORIZATION, token);
         }
 
-        let response = reqwest
-            .get(url)
-            .headers(headers)
-            .send()?
-            .error_for_status()?;
+        let response = request.send()?.error_for_status()?;
         let bytes = response.bytes()?;
 
         let mut decoder = flate2::read::GzDecoder::new(bytes.as_ref());
@@ -583,9 +568,5 @@ pub mod errors {
         /// Error writing index file
         #[error("error reading index file")]
         ReadIndex(#[source] std::io::Error),
-
-        /// A header value was invalid
-        #[error("invalid header {0} value")]
-        InvalidHeaderValue(String, #[source] reqwest::header::InvalidHeaderValue),
     }
 }

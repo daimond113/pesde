@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Support full version requirements in workspace version field by @daimond113 
+- Improved authentication system for registry changes by @daimond113 
 
 ### Fixed
 - Correct `pesde.toml` inclusion message in `publish` command by @daimond113

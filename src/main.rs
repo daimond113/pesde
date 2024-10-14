@@ -14,9 +14,7 @@ use std::{
 use crate::cli::version::{
     check_for_updates, current_version, get_or_download_version, max_installed_version,
 };
-use crate::cli::{
-    auth::get_token, config::read_config, home_dir, repos::update_repo_dependencies, HOME_DIR,
-};
+use crate::cli::{auth::get_tokens, home_dir, repos::update_repo_dependencies, HOME_DIR};
 
 mod cli;
 pub mod util;
@@ -187,14 +185,14 @@ fn run() -> anyhow::Result<()> {
     let data_dir = home_dir()?.join("data");
     create_dir_all(&data_dir).expect("failed to create data directory");
 
-    let token = get_token()?;
-
     let home_cas_dir = data_dir.join("cas");
     create_dir_all(&home_cas_dir).expect("failed to create cas directory");
     let project_root = get_root(&project_root_dir);
     let cas_dir = if get_root(&home_cas_dir) == project_root {
+        log::debug!("using home cas dir");
         home_cas_dir
     } else {
+        log::debug!("using cas dir in {}", project_root.display());
         project_root.join(HOME_DIR).join("cas")
     };
 
@@ -203,19 +201,11 @@ fn run() -> anyhow::Result<()> {
         project_workspace_dir,
         data_dir,
         cas_dir,
-        AuthConfig::new()
-            .with_default_token(token.clone())
-            .with_token_overrides(read_config()?.token_overrides),
+        AuthConfig::new().with_tokens(get_tokens()?.0),
     );
 
     let reqwest = {
         let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(token) = token {
-            headers.insert(
-                reqwest::header::AUTHORIZATION,
-                token.parse().context("failed to create auth header")?,
-            );
-        }
 
         headers.insert(
             reqwest::header::ACCEPT,

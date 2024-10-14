@@ -23,8 +23,7 @@ mod update;
 #[derive(Debug, clap::Subcommand)]
 pub enum Subcommand {
     /// Authentication-related commands
-    #[command(subcommand)]
-    Auth(auth::AuthCommands),
+    Auth(auth::AuthSubcommand),
 
     /// Configuration-related commands
     #[command(subcommand)]

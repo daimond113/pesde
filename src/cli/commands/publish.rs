@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
-use reqwest::StatusCode;
+use reqwest::{header::AUTHORIZATION, StatusCode};
 use semver::VersionReq;
 use std::{
     io::{Seek, Write},
@@ -457,13 +457,11 @@ impl PublishCommand {
             .finish()
             .context("failed to get archive bytes")?;
 
-        let source = PesdePackageSource::new(
-            manifest
-                .indices
-                .get(DEFAULT_INDEX_NAME)
-                .context("missing default index")?
-                .clone(),
-        );
+        let index_url = manifest
+            .indices
+            .get(DEFAULT_INDEX_NAME)
+            .context("missing default index")?;
+        let source = PesdePackageSource::new(index_url.clone());
         source
             .refresh(project)
             .context("failed to refresh source")?;
@@ -501,14 +499,19 @@ impl PublishCommand {
             return Ok(());
         }
 
-        let response = reqwest
+        let mut request = reqwest
             .post(format!("{}/v0/packages", config.api()))
             .multipart(reqwest::blocking::multipart::Form::new().part(
                 "tarball",
                 reqwest::blocking::multipart::Part::bytes(archive).file_name("package.tar.gz"),
-            ))
-            .send()
-            .context("failed to send request")?;
+            ));
+
+        if let Some(token) = project.auth_config().tokens().get(index_url) {
+            log::debug!("using token for {index_url}");
+            request = request.header(AUTHORIZATION, token);
+        }
+
+        let response = request.send().context("failed to send request")?;
 
         let status = response.status();
         let text = response.text().context("failed to get response text")?;

@@ -5,24 +5,16 @@ use serde::Deserialize;
 use url::Url;
 
 use pesde::{
-    errors::ManifestReadError,
     source::{pesde::PesdePackageSource, traits::PackageSource},
     Project,
 };
 
-use crate::cli::{
-    auth::{get_token_login, set_token},
-    config::read_config,
-};
+use crate::cli::auth::{get_token_login, set_token};
 
 #[derive(Debug, Args)]
 pub struct LoginCommand {
-    /// The index to use. Defaults to `default`, or the configured default index if current directory doesn't have a manifest
-    #[arg(short, long)]
-    index: Option<String>,
-
     /// The token to use for authentication, skipping login
-    #[arg(short, long, conflicts_with = "index")]
+    #[arg(short, long)]
     token: Option<String>,
 }
 
@@ -55,41 +47,13 @@ enum AccessTokenResponse {
 impl LoginCommand {
     pub fn authenticate_device_flow(
         &self,
+        index_url: &gix::Url,
         project: &Project,
         reqwest: &reqwest::blocking::Client,
     ) -> anyhow::Result<String> {
-        let manifest = match project.deser_manifest() {
-            Ok(manifest) => Some(manifest),
-            Err(e) => match e {
-                ManifestReadError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                e => return Err(e.into()),
-            },
-        };
+        println!("logging in into {index_url}");
 
-        let index_url = match self.index.as_deref() {
-            Some(index) => match index.try_into() {
-                Ok(url) => Some(url),
-                Err(_) => None,
-            },
-            None => match manifest {
-                Some(_) => None,
-                None => Some(read_config()?.default_index),
-            },
-        };
-
-        let index_url = match index_url {
-            Some(url) => url,
-            None => {
-                let index_name = self.index.as_deref().unwrap_or("default");
-
-                match manifest.unwrap().indices.get(index_name) {
-                    Some(index) => index.clone(),
-                    None => anyhow::bail!("Index {index_name} not found"),
-                }
-            }
-        };
-
-        let source = PesdePackageSource::new(index_url);
+        let source = PesdePackageSource::new(index_url.clone());
         source.refresh(project).context("failed to refresh index")?;
 
         let config = source
@@ -182,24 +146,32 @@ impl LoginCommand {
         anyhow::bail!("code expired, please re-run the login command");
     }
 
-    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
+    pub fn run(
+        self,
+        index_url: gix::Url,
+        project: Project,
+        reqwest: reqwest::blocking::Client,
+    ) -> anyhow::Result<()> {
         let token_given = self.token.is_some();
         let token = match self.token {
             Some(token) => token,
-            None => self.authenticate_device_flow(&project, &reqwest)?,
+            None => self.authenticate_device_flow(&index_url, &project, &reqwest)?,
         };
 
         let token = if token_given {
-            println!("set token");
+            println!("set token for {index_url}");
             token
         } else {
             let token = format!("Bearer {token}");
-            println!("logged in as {}", get_token_login(&reqwest, &token)?.bold());
+            println!(
+                "logged in as {} for {index_url}",
+                get_token_login(&reqwest, &token)?.bold()
+            );
 
             token
         };
 
-        set_token(Some(&token))?;
+        set_token(&index_url, Some(&token))?;
 
         Ok(())
     }
