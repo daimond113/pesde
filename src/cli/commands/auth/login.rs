@@ -95,7 +95,9 @@ impl LoginCommand {
         let config = source
             .config(project)
             .context("failed to read index config")?;
-        let client_id = config.github_oauth_client_id;
+        let Some(client_id) = config.github_oauth_client_id else {
+            anyhow::bail!("index not configured for Github oauth.");
+        };
 
         let response = reqwest
             .post(Url::parse_with_params(

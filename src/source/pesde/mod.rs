@@ -364,7 +364,8 @@ pub struct IndexConfig {
     #[serde(default)]
     pub wally_allowed: bool,
     /// The OAuth client ID for GitHub
-    pub github_oauth_client_id: String,
+    #[serde(default)]
+    pub github_oauth_client_id: Option<String>,
     /// The maximum size of an archive in bytes
     #[serde(default = "default_archive_size")]
     pub max_archive_size: usize,
