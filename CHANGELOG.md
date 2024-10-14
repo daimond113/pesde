@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0-rc.6] - 2024-10-14
 ### Added
 - Support full version requirements in workspace version field by @daimond113 
 - Improved authentication system for registry changes by @daimond113 
@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make registry much easier to self-host by @daimond113
 - Start maintaining a changelog by @daimond113
 
+[0.5.0-rc.6]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.5..v0.5.0-rc.6
 [0.5.0-rc.5]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.4..v0.5.0-rc.5
 [0.5.0-rc.4]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.3..v0.5.0-rc.4
 [0.5.0-rc.3]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.2..v0.5.0-rc.3
