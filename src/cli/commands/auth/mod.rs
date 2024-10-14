@@ -1,6 +1,6 @@
 use crate::cli::config::read_config;
 use clap::{Args, Subcommand};
-use pesde::{errors::ManifestReadError, Project};
+use pesde::{errors::ManifestReadError, Project, DEFAULT_INDEX_NAME};
 
 mod login;
 mod logout;
@@ -51,11 +51,11 @@ impl AuthSubcommand {
         let index_url = match index_url {
             Some(url) => url,
             None => {
-                let index_name = self.index.as_deref().unwrap_or("default");
+                let index_name = self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
 
                 match manifest.unwrap().indices.get(index_name) {
                     Some(index) => index.clone(),
-                    None => anyhow::bail!("index {index_name} not found"),
+                    None => anyhow::bail!("index {index_name} not found in manifest"),
                 }
             }
         };
