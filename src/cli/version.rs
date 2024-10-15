@@ -91,7 +91,7 @@ pub fn check_for_updates(reqwest: &reqwest::blocking::Client) -> anyhow::Result<
             .bold();
         let column = "|".bright_magenta().bold();
 
-        println!("\n{stars}\n{column} {message} {column}\n{stars}\n",);
+        println!("\n{stars}\n{column} {message} {column}\n{stars}\n");
     }
 
     Ok(())

@@ -88,7 +88,7 @@ pub(crate) fn insert_node(
 
             match (&current_node.direct, &node.direct) {
                 (Some(_), Some(_)) => {
-                    log::warn!("duplicate direct dependency for {name}@{version}",);
+                    log::warn!("duplicate direct dependency for {name}@{version}");
                 }
 
                 (None, Some(_)) => {

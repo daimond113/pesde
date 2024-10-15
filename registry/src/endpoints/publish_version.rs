@@ -455,7 +455,7 @@ pub async fn publish_package(
     let (a, b, c) = join!(
         app_state
             .storage
-            .store_package(&manifest.name, &version_id, bytes.to_vec(),),
+            .store_package(&manifest.name, &version_id, bytes.to_vec()),
         join_all(
             docs_pages
                 .into_iter()
