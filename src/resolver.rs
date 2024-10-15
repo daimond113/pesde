@@ -44,22 +44,22 @@ impl Project {
                         continue;
                     }
 
-                    if all_specifiers
-                        .remove(&(specifier.clone(), node.ty))
-                        .is_none()
-                    {
+                    let Some(alias) = all_specifiers.remove(&(specifier.clone(), node.ty)) else {
                         log::debug!(
                             "dependency {name}@{version} from old dependency graph is no longer in the manifest",
                         );
                         continue;
-                    }
+                    };
 
                     log::debug!("resolved {}@{} from old dependency graph", name, version);
                     insert_node(
                         &mut graph,
                         name.clone(),
                         version.clone(),
-                        node.clone(),
+                        DependencyGraphNode {
+                            direct: Some((alias.clone(), specifier.clone())),
+                            ..node.clone()
+                        },
                         true,
                     );
 
