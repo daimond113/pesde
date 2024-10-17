@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Fixed
 - Use updated aliases when reusing lockfile dependencies by @daimond113
+- Listen for device flow completion without requiring pressing enter by @daimond113
 
 ## [0.5.0-rc.6] - 2024-10-14
 ### Added

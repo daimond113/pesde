@@ -2,6 +2,7 @@ use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use serde::Deserialize;
+use std::thread::spawn;
 use url::Url;
 
 use pesde::{
@@ -81,19 +82,21 @@ impl LoginCommand {
             response.verification_uri.as_str().blue()
         );
 
-        {
-            let mut input = String::new();
-            std::io::stdin()
-                .read_line(&mut input)
-                .context("failed to read input")?;
-        }
-
-        match open::that(response.verification_uri.as_str()) {
-            Ok(_) => (),
-            Err(e) => {
-                eprintln!("failed to open browser: {e}");
+        spawn(move || {
+            {
+                let mut input = String::new();
+                std::io::stdin()
+                    .read_line(&mut input)
+                    .expect("failed to read input");
             }
-        }
+
+            match open::that(response.verification_uri.as_str()) {
+                Ok(_) => (),
+                Err(e) => {
+                    eprintln!("failed to open browser: {e}");
+                }
+            }
+        });
 
         let mut time_left = response.expires_in;
         let mut interval = std::time::Duration::from_secs(response.interval);
