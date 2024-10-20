@@ -64,7 +64,7 @@ impl PublishCommand {
             manifest.target,
             Target::Roblox { .. } | Target::RobloxServer { .. }
         ) {
-            if !manifest.target.build_files().is_some_and(|f| !f.is_empty()) {
+            if manifest.target.build_files().is_none_or(|f| f.is_empty()) {
                 anyhow::bail!("no build files found in target");
             }
 

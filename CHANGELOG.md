@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 - Clone dependency repos shallowly by @daimond113
 
+### Changed
+- Optimize boolean expression in `publish` command by @daimond113
+
 ## [0.5.0-rc.6] - 2024-10-14
 ### Added
 - Support full version requirements in workspace version field by @daimond113 
