@@ -11,12 +11,12 @@ PORT = '8080'
 COMMITTER_GIT_NAME = 'pesde index updater'
 COMMITTER_GIT_EMAIL = 'pesde@daimond113.com'
 INDEX_REPO_URL = 'https://github.com/daimond113/pesde-index'
-GITHUB_AUTH=1
+GITHUB_AUTH = '1'
 
 [http_service]
 internal_port = 8080
 force_https = true
-auto_stop_machines = "suspend"
+auto_stop_machines = "stop"
 auto_start_machines = true
 min_machines_running = 0
 processes = ['app']

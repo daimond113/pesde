@@ -1,4 +1,4 @@
-FROM rust:1.81-bookworm AS builder
+FROM rust:1.82-bookworm AS builder
 
 COPY . .
 
