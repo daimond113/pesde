@@ -3,7 +3,7 @@ use crate::{
     util::authenticate_conn,
 };
 use anyhow::Context;
-use gix::remote::Direction;
+use gix::remote::{fetch::Shallow, Direction};
 use pesde::Project;
 use std::path::Path;
 
@@ -33,6 +33,7 @@ fn update_repo<P: AsRef<Path>>(
         let results = connection
             .prepare_fetch(gix::progress::Discard, Default::default())
             .context(format!("failed to prepare {name} repository fetch"))?
+            .with_shallow(Shallow::Deepen(1))
             .receive(gix::progress::Discard, &false.into())
             .context(format!("failed to receive new {name} repository contents"))?;
 
@@ -89,6 +90,7 @@ fn update_repo<P: AsRef<Path>>(
 
         gix::prepare_clone(url, path)
             .context(format!("failed to prepare {name} repository clone"))?
+            .with_shallow(Shallow::Deepen(1))
             .fetch_then_checkout(gix::progress::Discard, &false.into())
             .context(format!("failed to fetch and checkout {name} repository"))?
             .0
