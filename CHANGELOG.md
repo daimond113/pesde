@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Use updated aliases when reusing lockfile dependencies by @daimond113
 - Listen for device flow completion without requiring pressing enter by @daimond113
+- Sync scripts repo in background by @daimond113
 
 ### Performance
 - Clone dependency repos shallowly by @daimond113

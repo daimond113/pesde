@@ -8,7 +8,9 @@ use pesde::{
     Project, PACKAGES_CONTAINER_NAME,
 };
 use relative_path::RelativePathBuf;
-use std::{env::current_dir, ffi::OsString, io::Write, path::PathBuf, process::Command};
+use std::{
+    env::current_dir, ffi::OsString, io::Write, path::PathBuf, process::Command, thread::JoinHandle,
+};
 
 #[derive(Debug, Args)]
 pub struct RunCommand {
@@ -22,8 +24,16 @@ pub struct RunCommand {
 }
 
 impl RunCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
-        let run = |path: PathBuf| {
+    pub fn run(
+        self,
+        project: Project,
+        update_task: &mut Option<JoinHandle<()>>,
+    ) -> anyhow::Result<()> {
+        let mut run = |path: PathBuf| {
+            if let Some(handle) = update_task.take() {
+                handle.join().expect("failed to join update task");
+            }
+
             let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
             caller
                 .write_all(

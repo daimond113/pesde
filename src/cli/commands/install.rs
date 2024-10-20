@@ -10,7 +10,10 @@ use pesde::{
     manifest::{target::TargetKind, DependencyType},
     Project, MANIFEST_FILE_NAME,
 };
-use std::collections::{BTreeSet, HashSet};
+use std::{
+    collections::{BTreeSet, HashSet},
+    thread::JoinHandle,
+};
 
 #[derive(Debug, Args, Copy, Clone)]
 pub struct InstallCommand {
@@ -93,6 +96,7 @@ impl InstallCommand {
         project: Project,
         multi: MultiProgress,
         reqwest: reqwest::blocking::Client,
+        update_task: &mut Option<JoinHandle<()>>,
     ) -> anyhow::Result<()> {
         let mut refreshed_sources = HashSet::new();
 
@@ -181,6 +185,11 @@ impl InstallCommand {
         let graph = project
             .dependency_graph(old_graph.as_ref(), &mut refreshed_sources)
             .context("failed to build dependency graph")?;
+
+        if let Some(task) = update_task.take() {
+            log::debug!("waiting for update task to finish");
+            task.join().expect("failed to join update task");
+        }
 
         let downloaded_graph = download_graph(
             &project,
@@ -274,7 +283,7 @@ impl InstallCommand {
                 graph: downloaded_graph,
 
                 workspace: run_on_workspace_members(&project, |project| {
-                    self.run(project, multi.clone(), reqwest.clone())
+                    self.run(project, multi.clone(), reqwest.clone(), &mut None)
                 })?,
             })
             .context("failed to write lockfile")?;

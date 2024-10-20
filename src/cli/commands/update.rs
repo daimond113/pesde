@@ -4,7 +4,7 @@ use clap::Args;
 use colored::Colorize;
 use indicatif::MultiProgress;
 use pesde::{lockfile::Lockfile, Project};
-use std::collections::HashSet;
+use std::{collections::HashSet, thread::JoinHandle};
 
 #[derive(Debug, Args, Copy, Clone)]
 pub struct UpdateCommand {
@@ -19,6 +19,7 @@ impl UpdateCommand {
         project: Project,
         multi: MultiProgress,
         reqwest: reqwest::blocking::Client,
+        update_task: &mut Option<JoinHandle<()>>,
     ) -> anyhow::Result<()> {
         let mut refreshed_sources = HashSet::new();
 
@@ -36,6 +37,10 @@ impl UpdateCommand {
         let graph = project
             .dependency_graph(None, &mut refreshed_sources)
             .context("failed to build dependency graph")?;
+
+        if let Some(handle) = update_task.take() {
+            handle.join().expect("failed to join update task");
+        }
 
         project
             .write_lockfile(Lockfile {
@@ -58,7 +63,7 @@ impl UpdateCommand {
                 )?,
 
                 workspace: run_on_workspace_members(&project, |project| {
-                    self.run(project, multi.clone(), reqwest.clone())
+                    self.run(project, multi.clone(), reqwest.clone(), &mut None)
                 })?,
             })
             .context("failed to write lockfile")?;

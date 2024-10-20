@@ -1,3 +1,8 @@
+#[cfg(feature = "version-management")]
+use crate::cli::version::{
+    check_for_updates, current_version, get_or_download_version, max_installed_version,
+};
+use crate::cli::{auth::get_tokens, home_dir, repos::update_repo_dependencies, HOME_DIR};
 use anyhow::Context;
 use clap::Parser;
 use colored::Colorize;
@@ -8,13 +13,8 @@ use std::{
     collections::HashSet,
     fs::create_dir_all,
     path::{Path, PathBuf},
+    thread::spawn,
 };
-
-#[cfg(feature = "version-management")]
-use crate::cli::version::{
-    check_for_updates, current_version, get_or_download_version, max_installed_version,
-};
-use crate::cli::{auth::get_tokens, home_dir, repos::update_repo_dependencies, HOME_DIR};
 
 mod cli;
 pub mod util;
@@ -257,12 +257,24 @@ fn run() -> anyhow::Result<()> {
         display_err(check_for_updates(&reqwest), " while checking for updates");
     }
 
-    display_err(
-        update_repo_dependencies(&project),
-        " while updating repository dependencies",
-    );
+    let project_2 = project.clone();
+    let update_task = spawn(move || {
+        display_err(
+            update_repo_dependencies(&project_2),
+            " while updating repository dependencies",
+        );
+    });
 
-    Cli::parse().subcommand.run(project, multi, reqwest)
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            let _ = err.print();
+            update_task.join().expect("failed to join update task");
+            std::process::exit(err.exit_code());
+        }
+    };
+
+    cli.subcommand.run(project, multi, reqwest, update_task)
 }
 
 fn display_err(result: anyhow::Result<()>, prefix: &str) {
