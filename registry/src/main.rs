@@ -110,7 +110,8 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
             storage
         },
         auth: {
-            let auth = get_auth_from_env(&source, &project);
+            let auth =
+                get_auth_from_env(source.config(&project).expect("failed to get index config"));
             info!("auth: {auth}");
             auth
         },
