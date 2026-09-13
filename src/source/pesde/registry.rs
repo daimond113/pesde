@@ -9,6 +9,7 @@ use jiff::Timestamp;
 use merkle_bplustree::TreeConfig;
 use merkle_bplustree::hasher::Hasher;
 use merkleberg::Merge;
+use paste::paste;
 use semver::Prerelease;
 use semver::Version;
 use serde::Deserialize;
@@ -46,13 +47,17 @@ pub struct Entry<T> {
 	pub payload: T,
 }
 
+/// An object that carries its own signing key
+pub trait WithSigner {
+	/// The key that should sign this
+	fn signer(&self) -> &PublicKey;
+}
+
 /// An unvalidated record carrying a signature and a signer
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UnvalidatedSigned<T> {
+pub struct UnvalidatedSigned<T: WithSigner> {
 	/// The signature
 	pub sig: Signature,
-	/// The person signing this
-	pub signer: PublicKey,
 	/// The body
 	#[serde(flatten)]
 	pub body: T,
@@ -66,14 +71,14 @@ pub struct SignedValidationFailed;
 /// A validated wrapper over [UnvalidatedSigned], allowing construction only if it's legal
 #[derive(Debug, Clone, Serialize)]
 #[serde(transparent)]
-pub struct Signed<T>(UnvalidatedSigned<T>);
+pub struct Signed<T: WithSigner>(UnvalidatedSigned<T>);
 
-impl<T: Serialize> Signed<T> {
+impl<T: WithSigner + Serialize> Signed<T> {
 	/// Validates the passed in [UnvalidatedSigned] and returns Some if it's valid
 	pub fn new(input: UnvalidatedSigned<T>) -> Result<Self, SignedValidationFailed> {
 		if !input
 			.sig
-			.verify(&input.signer, &canonical_bytes(&input.body))
+			.verify(input.body.signer(), &canonical_bytes(&input.body))
 		{
 			return Err(SignedValidationFailed);
 		}
@@ -87,7 +92,7 @@ impl<T: Serialize> Signed<T> {
 	}
 }
 
-impl<'de, T: Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
+impl<'de, T: WithSigner + Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
@@ -126,19 +131,36 @@ impl LocalNameId {
 	}
 }
 
-/// The payload of [GenesisEntry]
+/// The payload anchoring a scope's creation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename = "scope_genesis")]
 pub struct ScopeGenesisPayload {
 	/// The scope id being created
 	pub scope_id: ScopeId,
+	/// The owner of this scope
+	pub owner: PublicKey,
 	/// The hash of the first entry in the scope's log
 	pub first_entry_hash: Hash,
 }
 
-/// The scope creation entry in the registry's global log
-pub type GenesisEntry = Entry<Signed<ScopeGenesisPayload>>;
+impl WithSigner for ScopeGenesisPayload {
+	fn signer(&self) -> &PublicKey {
+		&self.owner
+	}
+}
 
-/// Maximum amount of packages a [Grant] can have
+/// The payload of an entry in the registry's global log
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GlobalEntryPayload {
+	/// A scope has been created
+	ScopeGenesis(Signed<ScopeGenesisPayload>),
+}
+
+/// An entry in the registry's global log
+pub type GlobalEntry = Entry<GlobalEntryPayload>;
+
+/// Maximum amount of packages a [ScopeGrant] can have
 pub const MAX_GRANT_PACKAGES: usize = 255;
 
 /// Maximum length, in characters, of a deprecation reason
@@ -162,118 +184,157 @@ impl ScopeGrant {
 	}
 }
 
-/// An operation to the scope issued by a regular user
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SignedOpKind {
+macro_rules! ops {
+	(
+		$(#[$nsmeta:meta])*
+		$ns:ident,
+		$(
+			$(#[$meta:meta])*
+			$variant:ident $tag:literal $body:tt,
+		)+
+	) => {
+		paste! {
+			$(
+				$(#[$meta])*
+				#[derive(Debug, Clone, Serialize, Deserialize)]
+				#[serde(tag = "kind", rename = $tag)]
+				pub struct [< $variant $ns OpBody >] $body
+
+				impl [< $variant $ns OpBody >] {
+					/// The tag of this operation to add when serialised
+					pub const TAG: &'static str = $tag;
+				}
+
+				impl From<[< $variant $ns OpBody >]> for [< $ns Op >] {
+					fn from(value: [< $variant $ns OpBody >]) -> Self {
+						Self::$variant(value)
+					}
+				}
+			)+
+
+			$(#[$nsmeta])*
+			#[derive(Debug, Clone, Serialize, Deserialize)]
+			#[serde(untagged)]
+			pub enum [< $ns Op >] {
+				$(
+					$(#[$meta])*
+					$variant([< $variant $ns OpBody >])
+				),+
+			}
+		}
+	};
+}
+
+ops!(
+	/// An operation to the scope issued by a regular user
+	Signed,
 	/// A member is being added
-	AddMember {
+	AddMember "add_member" {
 		/// The new member's key
-		member: PublicKey,
+		pub member: PublicKey,
 		/// The grant they're being added with
-		grant: ScopeGrant,
+		pub grant: ScopeGrant,
 		/// The proof of consent of the new member
-		consent: Signature,
+		pub consent: Signature,
 		/// A value used to prevent playbacks, this is what [consent] signs
-		nonce: Uuid,
+		pub nonce: Uuid,
 		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: CurrentHash,
+		pub scope_members_root: CurrentHash,
 	},
 	/// The owner is changing a member's grant
-	UpdateMemberGrant {
+	UpdateMemberGrant "update_member_grant" {
 		/// The member's key
-		member: PublicKey,
+		pub member: PublicKey,
 		/// The new grant
-		grant: ScopeGrant,
+		pub grant: ScopeGrant,
 		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: CurrentHash,
+		pub scope_members_root: CurrentHash,
 	},
 	/// A member is rotating their key
-	RotateKey {
+	RotateKey "rotate_key" {
 		/// The key to replace the old key with
-		new_key: PublicKey,
+		pub new_key: PublicKey,
 		/// The proof of possession of the new key
-		new_key_proof: Signature,
+		pub new_key_proof: Signature,
 		/// A value used to prevent playbacks, this is what [new_key_proof] signs
-		nonce: Uuid,
+		pub nonce: Uuid,
 		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: CurrentHash,
+		pub scope_members_root: CurrentHash,
 	},
 	/// The owner is removing a member
-	RemoveMember {
+	RemoveMember "remove_member" {
 		/// The member being removed. None if the member is removing themselves (signing key is who's leaving)
 		#[serde(default, skip_serializing_if = "Option::is_none")]
-		member: Option<PublicKey>,
+		pub member: Option<PublicKey>,
 		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: CurrentHash,
+		pub scope_members_root: CurrentHash,
 	},
 	/// The owner is transferring ownership
-	TransferOwnership {
+	TransferOwnership "transfer_ownership" {
 		/// The new owner
-		new_owner: PublicKey,
+		pub new_owner: PublicKey,
 		/// The proof of consent of the new owner
-		new_owner_consent: Signature,
+		pub new_owner_consent: Signature,
 		/// A value used to prevent playbacks, this is what [new_owner_consent] signs
-		nonce: Uuid,
+		pub nonce: Uuid,
 	},
 	/// A new version of a package is being published
-	PublishVersion {
+	PublishVersion "publish_version" {
 		/// The package being published
-		pkg: LocalNameId,
+		pub pkg: LocalNameId,
 		/// The version being published
-		version: PesdeVersionForRegistry,
+		pub version: PesdeVersionForRegistry,
 		/// The hash of the archive being published
-		archive_hash: Hash,
+		pub archive_hash: Hash,
 		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: CurrentHash,
+		pub versions_root: CurrentHash,
 	},
 	/// A package's yank status is being updated
-	SetYanked {
+	SetYanked "set_yanked" {
 		/// The package being updated
-		pkg: LocalNameId,
+		pub pkg: LocalNameId,
 		/// The version being updated
-		version: PesdeVersionForRegistry,
+		pub version: PesdeVersionForRegistry,
 		/// Whether it is yanked
-		yanked: bool,
+		pub yanked: bool,
 		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: CurrentHash,
+		pub versions_root: CurrentHash,
 	},
 	/// A package's deprecation status is being updated
-	SetDeprecation {
+	SetDeprecation "set_deprecation" {
 		/// The package being updated
-		pkg: LocalNameId,
+		pub pkg: LocalNameId,
 		/// The hash of the reason this package is deprecated
-		reason_hash: Hash,
+		pub reason_hash: Hash,
 		/// The root of the tree holding package deprecations. [merkle_bplustree::MerkleBPlusTree]<[PackageDeprecationsTreeConfig]>
-		deprecations_root: CurrentHash,
+		pub deprecations_root: CurrentHash,
 	},
-}
+);
 
-/// An operation to the scope issued by a registry admin
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum AdminOpKind {
+ops!(
+	/// An operation to the scope issued by a registry admin
+	Admin,
 	/// The admin is transferring ownership
-	TransferOwnership {
+	TransferOwnership "transfer_ownership" {
 		/// The new owner
-		new_owner: PublicKey,
+		pub new_owner: PublicKey,
 	},
 	/// A package's yank status is being updated
-	SetYanked {
+	SetYanked "set_yanked" {
 		/// The package being updated
-		pkg: LocalNameId,
+		pub pkg: LocalNameId,
 		/// The version being updated
-		version: PesdeVersionForRegistry,
+		pub version: PesdeVersionForRegistry,
 		/// Whether it is yanked
-		yanked: bool,
+		pub yanked: bool,
 		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: CurrentHash,
+		pub versions_root: CurrentHash,
 	},
-}
+);
 
-/// The body of [ScopeOp]
+/// The fields shared by every scope log entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScopeEntryBody<Op> {
+pub struct ScopeOpPayload<Op> {
 	/// The id of the scope
 	pub scope_id: ScopeId,
 	/// The hash of the previous entry in this scope's log
@@ -282,14 +343,40 @@ pub struct ScopeEntryBody<Op> {
 	pub op: Op,
 }
 
+/// A scope log entry payload issued by a normal scope member
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename = "user")]
+pub struct UserScopePayload<Op> {
+	/// The member signing this
+	pub signer: PublicKey,
+	/// The scope, prev-hash, and operation this entry carries
+	#[serde(flatten)]
+	pub op_payload: ScopeOpPayload<Op>,
+}
+
+impl<Op> WithSigner for UserScopePayload<Op> {
+	fn signer(&self) -> &PublicKey {
+		&self.signer
+	}
+}
+
+/// A scope log entry payload issued by the registry admin
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename = "admin")]
+pub struct AdminScopePayload<Op> {
+	/// The scope, prev-hash, and operation this entry carries
+	#[serde(flatten)]
+	pub op_payload: ScopeOpPayload<Op>,
+}
+
 /// The payload of an entry in the scope's log
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "payload_kind", rename_all = "snake_case")]
+#[serde(untagged)]
 pub enum ScopeEntryPayload {
 	/// An entry issued by a normal user
-	Signed(Signed<ScopeEntryBody<SignedOpKind>>),
+	User(Signed<UserScopePayload<SignedOp>>),
 	/// An entry issued by the registry admin
-	Admin(ScopeEntryBody<AdminOpKind>),
+	Admin(AdminScopePayload<AdminOp>),
 }
 
 /// An entry in the scope's chain
@@ -430,7 +517,7 @@ impl FromStr for VersionedLocalName {
 	}
 }
 
-/// The value to the map a [ScopeEntryBody::versions_root] points to.
+/// The value the map keyed by [PackageVersionsTreeConfig] (i.e. `versions_root`) points to.
 /// Monitors must ensure archive_hash is never changed, unlike the mutable [Self::yank_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageVersionState {
@@ -451,7 +538,7 @@ pub enum VersionYankState {
 	AdminYanked,
 }
 
-/// The tree config for the Merkle B+Tree [ScopeEntryBody::scope_members_root] points to
+/// The tree config for the Merkle B+Tree `scope_members_root` points to
 pub struct ScopeMembersTreeConfig;
 impl TreeConfig for ScopeMembersTreeConfig {
 	type Key = PublicKey;
@@ -460,7 +547,7 @@ impl TreeConfig for ScopeMembersTreeConfig {
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
 }
 
-/// The tree config for the Merkle B+Tree [ScopeEntryBody::versions_root] points to
+/// The tree config for the Merkle B+Tree `versions_root` points to
 pub struct PackageVersionsTreeConfig;
 impl TreeConfig for PackageVersionsTreeConfig {
 	type Key = VersionedLocalName;
@@ -469,7 +556,7 @@ impl TreeConfig for PackageVersionsTreeConfig {
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 63>;
 }
 
-/// The tree config for the Merkle B+Tree [ScopeEntryBody::deprecations_root] points to
+/// The tree config for the Merkle B+Tree `deprecations_root` points to
 pub struct PackageDeprecationsTreeConfig;
 impl TreeConfig for PackageDeprecationsTreeConfig {
 	type Key = LocalNameId;

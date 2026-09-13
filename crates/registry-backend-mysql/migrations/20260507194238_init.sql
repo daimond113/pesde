@@ -26,10 +26,12 @@ CREATE TABLE global_log_entry (
     FOREIGN KEY (pos) REFERENCES global_log_node (pos)
 );
 
-CREATE TABLE global_log_genesis_entry (
+CREATE TABLE global_log_scope_genesis_entry (
     pos BIGINT UNSIGNED PRIMARY KEY,
+
     scope BIGINT UNSIGNED NOT NULL UNIQUE,
     owner_id BIGINT UNSIGNED NOT NULL,
+    first_entry_hash VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
     FOREIGN KEY (pos) REFERENCES global_log_entry (pos),
     FOREIGN KEY (owner_id) REFERENCES public_key (id)
@@ -37,10 +39,13 @@ CREATE TABLE global_log_genesis_entry (
 
 CREATE TABLE scope (
     genesis_pos BIGINT UNSIGNED PRIMARY KEY,
-    name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,
+    name_blake3 BINARY(32) NOT NULL UNIQUE,
+    
     log_size BIGINT UNSIGNED NOT NULL,
 
-    FOREIGN KEY (genesis_pos) REFERENCES global_log_genesis_entry (pos)
+    name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin,
+
+    FOREIGN KEY (genesis_pos) REFERENCES global_log_scope_genesis_entry (pos)
 );
 
 CREATE TABLE scope_log_node (
@@ -59,9 +64,7 @@ CREATE TABLE scope_log_entry (
     published_at DATETIME NOT NULL DEFAULT(NOW()),
     
     sig BLOB,
-    prev_blake3 BINARY(32) NOT NULL,
-    versions_root_blake3 BINARY(32) NOT NULL,
-    deprecated_root_blake3 BINARY(32) NOT NULL,
+    prev_hash VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
     PRIMARY KEY (scope, pos),
     FOREIGN KEY (scope, pos) REFERENCES scope_log_node (scope, pos)
@@ -80,7 +83,7 @@ CREATE TABLE signed_scope_log_entry (
         'set_yanked',
         'set_deprecation'
     ),
-    signer BIGINT UNSIGNED,
+    signer BIGINT UNSIGNED NOT NULL,
 
     PRIMARY KEY (scope, pos),
     FOREIGN KEY (scope, pos) REFERENCES scope_log_entry (scope, pos),
@@ -93,9 +96,9 @@ CREATE TABLE scope_member_grant (
 
 CREATE TABLE scope_member_grant_package (
     grant_id BIGINT UNSIGNED NOT NULL,
-    package VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    local_name_blake3 BINARY(32) NOT NULL,
 
-    PRIMARY KEY (grant_id, package),
+    PRIMARY KEY (grant_id, local_name_blake3),
     FOREIGN KEY (grant_id) REFERENCES scope_member_grant (id)
 );
 
@@ -220,12 +223,13 @@ CREATE TABLE scope_package (
     scope BIGINT UNSIGNED NOT NULL,
     genesis_pos BIGINT UNSIGNED NOT NULL,
     
-    name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    local_name_blake3 BINARY(32) NOT NULL,
+    local_name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin,
 
     PRIMARY KEY (scope, genesis_pos),
     FOREIGN KEY (scope) REFERENCES scope (genesis_pos),
     FOREIGN KEY (scope, genesis_pos) REFERENCES signed_scope_log_entry (scope, pos),
-    UNIQUE (scope, name)
+    UNIQUE (scope, local_name_blake3)
 );
 
 CREATE TABLE versions_node (
@@ -311,7 +315,7 @@ CREATE TABLE deprecations_leaf_node_entry (
 
     scope BIGINT UNSIGNED NOT NULL,
     package_pos BIGINT UNSIGNED NOT NULL,
-    reason VARCHAR(255) NOT NULL,
+    reason_hash VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
     PRIMARY KEY (node_blake3, idx),
     FOREIGN KEY (node_blake3) REFERENCES deprecations_node (blake3),
@@ -348,12 +352,18 @@ CREATE TABLE signed_set_deprecation_scope_log_entry (
     deprecated_root_blake3 BINARY(32) NOT NULL,
 
     package_pos BIGINT UNSIGNED NOT NULL,
-    reason VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin,
+    reason_hash VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin,
 
     PRIMARY KEY (scope, pos),
     FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
     FOREIGN KEY (deprecated_root_blake3) REFERENCES deprecations_node (blake3),
     FOREIGN KEY (scope, package_pos) REFERENCES scope_package (scope, genesis_pos)
+);
+
+CREATE TABLE deprecation_messages (
+  reason_hash VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+
+  reason VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE admin_scope_log_entry (
