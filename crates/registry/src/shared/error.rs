@@ -25,7 +25,6 @@ pub fn http_response(
 		Category::Internal => StatusCode::INTERNAL_SERVER_ERROR,
 	};
 
-	// Internal errors are logged and their detail withheld from the response.
 	if matches!(category, Category::Internal) {
 		tracing::error!("internal server error: {error:#?}");
 		return HttpResponse::build(status).json(json!({ "error": "internal server error" }));

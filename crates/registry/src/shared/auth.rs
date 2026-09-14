@@ -7,7 +7,6 @@ use actix_web::http::header::AUTHORIZATION;
 use actix_web::middleware::Next;
 use actix_web::web;
 use constant_time_eq::constant_time_eq_n;
-use sha2::Digest as _;
 
 use crate::AppState;
 use crate::shared::error::Category;
@@ -23,11 +22,11 @@ impl ResponseError for Unauthenticated {
 	}
 }
 
-pub type TokenHash = [u8; 64];
+pub type TokenHash = [u8; 32];
 
 #[must_use]
 pub fn hash_token(token: &str) -> TokenHash {
-	let mut hasher = sha2::Sha512::default();
+	let mut hasher = blake3::Hasher::new();
 	hasher.update(token.as_bytes());
 	hasher.finalize().into()
 }

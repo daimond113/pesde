@@ -3,6 +3,7 @@ use actix_web::ResponseError;
 
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
+use crate::shared::log::FromLogError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -27,3 +28,5 @@ impl ResponseError for Error {
 		http_response(category, self)
 	}
 }
+
+impl FromLogError for Error {}

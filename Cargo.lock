@@ -4213,7 +4213,6 @@ dependencies = [
  "itertools",
  "merkleberg",
  "pesde",
- "pesde-registry-backend-mysql",
  "pesde-registry-core",
  "reqwest",
  "rusty-s3",

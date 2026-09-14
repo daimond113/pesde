@@ -8,7 +8,8 @@ publish = false
 workspace = true
 
 [features]
-mysql = ["dep:pesde-registry-backend-mysql"]
+# mysql = ["dep:pesde-registry-backend-mysql"]
+mysql = []
 
 [dependencies]
 fs-err = { workspace = true }
@@ -44,4 +45,4 @@ tantivy = "0.26.1"
 pesde = { path = "../..", default-features = false }
 pesde-registry-core = { path = "../registry-core" }
 
-pesde-registry-backend-mysql = { path = "../registry-backend-mysql", optional = true }
+# pesde-registry-backend-mysql = { path = "../registry-backend-mysql", optional = true }

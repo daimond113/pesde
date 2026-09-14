@@ -20,7 +20,7 @@ use std::time::Duration;
 
 const S3_SIGN_DURATION: Duration = Duration::from_secs(60 * 15);
 
-const ARCHIVE_CONTENT_TYPE: &str = "application/octet-stream";
+const ARCHIVE_CONTENT_TYPE: &str = "application/zstd";
 const README_CONTENT_TYPE: &str = "text/markdown; charset=utf-8";
 
 pub enum BlobStorage {
@@ -73,15 +73,8 @@ impl BlobStorage {
 		version: &PesdeVersionForRegistry,
 		data: R,
 	) -> anyhow::Result<()> {
-		self.put_object(
-			"packages",
-			name,
-			version,
-			data,
-			ARCHIVE_CONTENT_TYPE,
-			Some("zstd"),
-		)
-		.await
+		self.put_object("packages", name, version, data, ARCHIVE_CONTENT_TYPE, None)
+			.await
 	}
 
 	pub async fn get_package_readme(

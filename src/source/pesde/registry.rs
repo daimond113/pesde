@@ -517,7 +517,7 @@ impl FromStr for VersionedLocalName {
 	}
 }
 
-/// The value the map keyed by [PackageVersionsTreeConfig] (i.e. `versions_root`) points to.
+/// The value the map keyed by [PackageVersionsTreeConfig] points to.
 /// Monitors must ensure archive_hash is never changed, unlike the mutable [Self::yank_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageVersionState {

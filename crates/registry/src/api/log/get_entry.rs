@@ -3,7 +3,6 @@ use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
 use pesde::source::pesde::registry::Entry;
-use pesde::source::pesde::registry::EntryPayload;
 use pesde_registry_core::db::Backend;
 
 use crate::AppState;
