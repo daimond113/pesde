@@ -11,13 +11,14 @@ use crate::api::log::Error;
 use crate::shared::log::LogEntryQuery;
 use crate::shared::log::log_entry;
 
-#[get("/log/entry/{pos}")]
+#[get("/scope/{scope_id}/log/entry/{pos}")]
 pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
-	path: web::Path<u64>,
+	path: web::Path<(ScopeId, u64)>,
 	query: web::Query<LogEntryQuery>,
 ) -> Result<impl Responder, Error> {
-	let Some(entry) = handler(app_state.db.as_ref(), path.into_inner(), query.into_inner()).await?
+	let (scope_id, pos) = path.into_inner();
+	let Some(entry) = handler(app_state.db.as_ref(), &scope_id, pos, query.into_inner()).await?
 	else {
 		return Ok(HttpResponse::NotFound().finish());
 	};
@@ -27,17 +28,18 @@ pub(super) async fn http_v2(
 
 async fn handler(
 	db: &dyn Backend,
+	scope_id: &ScopeId,
 	pos: u64,
 	query: LogEntryQuery,
-) -> Result<Option<LogEntryResponse<GlobalEntryPayload>>, Error> {
-	let Some(entry) = db.global_log_entry(pos).await? else {
+) -> Result<Option<LogEntryResponse<ScopeEntryPayload>>, Error> {
+	let Some(entry) = db.scope_log_entry(scope_id, pos).await? else {
 		return Ok(None);
 	};
 
 	log_entry(
 		async || {
-			let size = db.global_log_size().await?;
-			Ok(MMRIVER::new(size, db.global_mmr_read_store()))
+			let size = db.scope_log_size(scope_id).await?;
+			Ok(MMRIVER::new(size, db.scope_mmr_read_store(scope_id)))
 		},
 		entry,
 		query,

@@ -147,7 +147,7 @@ impl PackageSource for PesdePackageSource {
 				let proof = ConsistencyProof::<CurrentMerkleHasher>::new(
 					old_state.mmr_size,
 					remote_state.mmr_size,
-					remote_state.proof_paths,
+					remote_state.consistency_proof,
 				);
 
 				if !proof.verify(

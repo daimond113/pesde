@@ -1,6 +1,5 @@
 use actix_web::HttpResponse;
 use actix_web::ResponseError;
-use pesde_registry_core::features::scope::ManifestError;
 
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
@@ -21,15 +20,6 @@ pub enum Error {
 
 	#[error("{0}")]
 	BadRequest(String),
-}
-
-impl From<ManifestError> for Error {
-	fn from(error: ManifestError) -> Self {
-		match error {
-			ManifestError::Internal(e) => Error::Internal(e),
-			e @ ManifestError::UnregisteredIdentity(_) => Error::BadRequest(e.to_string()),
-		}
-	}
 }
 
 impl ResponseError for Error {
