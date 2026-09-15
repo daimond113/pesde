@@ -7,7 +7,7 @@ use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
 use crate::AppState;
-use crate::api::log::Error;
+use crate::api::log::error::Error;
 use crate::shared::log::LogEntryQuery;
 use crate::shared::log::log_entry;
 
@@ -30,18 +30,14 @@ async fn handler(
 	pos: u64,
 	query: LogEntryQuery,
 ) -> Result<Option<LogEntryResponse<GlobalEntryPayload>>, Error> {
-	let Some(entry) = db.global_log_entry(pos).await? else {
-		return Ok(None);
-	};
-
 	log_entry(
+		pos,
+		|pos| db.global_log_entry(pos),
 		async || {
 			let size = db.global_log_size().await?;
 			Ok(MMRIVER::new(size, db.global_mmr_read_store()))
 		},
-		entry,
 		query,
 	)
 	.await
-	.map(Some)
 }

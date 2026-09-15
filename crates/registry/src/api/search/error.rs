@@ -6,7 +6,7 @@ use crate::shared::error::http_response;
 
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
-pub struct Error(#[from] anyhow::Error);
+pub(super) struct Error(#[from] anyhow::Error);
 
 impl ResponseError for Error {
 	fn error_response(&self) -> HttpResponse {

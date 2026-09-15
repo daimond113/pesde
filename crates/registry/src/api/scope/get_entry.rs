@@ -7,7 +7,7 @@ use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
 use crate::AppState;
-use crate::api::log::Error;
+use crate::api::scope::error::Error;
 use crate::shared::log::LogEntryQuery;
 use crate::shared::log::log_entry;
 
@@ -32,18 +32,14 @@ async fn handler(
 	pos: u64,
 	query: LogEntryQuery,
 ) -> Result<Option<LogEntryResponse<ScopeEntryPayload>>, Error> {
-	let Some(entry) = db.scope_log_entry(scope_id, pos).await? else {
-		return Ok(None);
-	};
-
 	log_entry(
+		pos,
+		|pos| db.scope_log_entry(scope_id, pos),
 		async || {
 			let size = db.scope_log_size(scope_id).await?;
 			Ok(MMRIVER::new(size, db.scope_mmr_read_store(scope_id)))
 		},
-		entry,
 		query,
 	)
 	.await
-	.map(Some)
 }

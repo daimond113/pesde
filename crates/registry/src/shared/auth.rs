@@ -14,7 +14,7 @@ use crate::shared::error::http_response;
 
 #[derive(Debug, thiserror::Error)]
 #[error("authentication required")]
-pub struct Unauthenticated;
+struct Unauthenticated;
 
 impl ResponseError for Unauthenticated {
 	fn error_response(&self) -> HttpResponse {

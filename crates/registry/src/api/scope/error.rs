@@ -3,34 +3,26 @@ use actix_web::ResponseError;
 
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
+use crate::shared::log::FromLogError;
 
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub(super) enum Error {
 	#[error(transparent)]
 	Internal(#[from] anyhow::Error),
 
-	#[error("signature verification failed")]
-	InvalidSignature,
-
-	#[error("the identity is not registered")]
-	UnknownIdentity,
-
-	#[error("not authorized to manage this scope")]
-	Unauthorized,
-
-	#[error("{0}")]
-	BadRequest(String),
+	#[error(transparent)]
+	Merkleberg(#[from] merkleberg::Error),
 }
 
 impl ResponseError for Error {
 	fn error_response(&self) -> HttpResponse {
 		let category = match self {
 			Error::Internal(_) => Category::Internal,
-			Error::InvalidSignature | Error::UnknownIdentity | Error::BadRequest(_) => {
-				Category::BadRequest
-			}
-			Error::Unauthorized => Category::Unauthorized,
+			Error::Merkleberg(merkleberg::Error::GenProofForInvalidLeaves) => Category::NotFound,
+			Error::Merkleberg(_) => Category::Internal,
 		};
 		http_response(category, self)
 	}
 }
+
+impl FromLogError for Error {}

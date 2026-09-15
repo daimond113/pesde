@@ -7,7 +7,7 @@ use crate::shared::error::Category;
 use crate::shared::error::http_response;
 
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub(super) enum Error {
 	#[error(transparent)]
 	Internal(#[from] anyhow::Error),
 

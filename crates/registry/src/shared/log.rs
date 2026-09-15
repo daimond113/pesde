@@ -44,30 +44,39 @@ pub struct LogEntryQuery {
 }
 
 pub async fn log_entry<P, E: FromLogError>(
-	get_mmr: impl AsyncFn() -> anyhow::Result<MMRIVER<CurrentMerkleHasher, Box<dyn MmrReadStore>>>,
-	entry: Entry<P>,
+	pos: u64,
+	get_entry: impl AsyncFnOnce(u64) -> anyhow::Result<Option<Entry<P>>>,
+	get_mmr: impl AsyncFnOnce() -> anyhow::Result<MMRIVER<CurrentMerkleHasher, Box<dyn MmrReadStore>>>,
 	query: LogEntryQuery,
-) -> Result<LogEntryResponse<P>, E> {
-	let inclusion_proof = match query.at_size {
-		Some(at_size) => {
-			if at_size.get() < entry.pos {
-				return Err(merkleberg::Error::GenProofForInvalidLeaves.into());
+) -> Result<Option<LogEntryResponse<P>>, E> {
+	if query.at_size.is_some_and(|s| s.get() < pos) {
+		return Err(merkleberg::Error::GenProofForInvalidLeaves.into());
+	}
+
+	let entry = get_entry(pos);
+	let inclusion_proof = async {
+		Ok(match query.at_size {
+			Some(at_size) => {
+				let mmr = get_mmr().await?;
+
+				if mmr.mmr_size() < at_size.get() {
+					return Err(merkleberg::Error::GenProofForInvalidLeaves.into());
+				}
+
+				let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(at_size.get(), mmr.into_store());
+				mmr.gen_inclusion_proof(pos).await?.proof().to_vec()
 			}
-
-			let mmr = get_mmr().await?;
-
-			if mmr.mmr_size() < at_size.get() {
-				return Err(merkleberg::Error::GenProofForInvalidLeaves.into());
-			}
-
-			let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(at_size.get(), mmr.into_store());
-			mmr.gen_inclusion_proof(entry.pos).await?.proof().to_vec()
-		}
-		None => Vec::new(),
+			None => Vec::new(),
+		})
 	};
 
-	Ok(LogEntryResponse {
+	let (entry, inclusion_proof) = tokio::try_join!(entry, inclusion_proof)?;
+	let Some(entry) = entry else {
+		return Ok(None);
+	};
+
+	Ok(Some(LogEntryResponse {
 		entry,
 		inclusion_proof,
-	})
+	}))
 }

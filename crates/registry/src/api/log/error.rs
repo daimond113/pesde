@@ -6,7 +6,7 @@ use crate::shared::error::http_response;
 use crate::shared::log::FromLogError;
 
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub(super) enum Error {
 	#[error(transparent)]
 	Internal(#[from] anyhow::Error),
 

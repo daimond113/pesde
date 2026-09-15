@@ -7,7 +7,7 @@ use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
 use crate::AppState;
-use crate::api::log::Error;
+use crate::api::log::error::Error;
 use crate::shared::log::LogHeadQuery;
 use crate::shared::log::log_head;
 
